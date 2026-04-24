@@ -61,6 +61,10 @@ const EVENT_CATALOG_SYNC_OVERRIDES: Record<string, CatalogSyncOverride> = {
     defaultPublicState: 'open',
     openOnCatalogSyncWhenStateIsSoon: true,
   },
+  'demografiya-pervogo-desyatiletiya-kaliningradskoy-oblasti': {
+    defaultPublicState: 'open',
+    openOnCatalogSyncWhenStateIsSoon: true,
+  },
 };
 
 const HALLS: HallSeed[] = [
@@ -70,6 +74,13 @@ const HALLS: HallSeed[] = [
     hallName: 'Лекционный зал, 4 этаж',
     address: 'проспект Мира, 9/11',
     capacity: 80,
+  },
+  {
+    code: 'bfu-scientific-library',
+    venueName: 'Научная библиотека БФУ им. И. Канта',
+    hallName: 'Читальный зал',
+    address: 'Университетская ул., 2',
+    capacity: 50,
   },
   {
     code: 'chekhov-library-reading-room',
@@ -138,31 +149,35 @@ function matchHall(event: FestivalEvent) {
   const venue = `${event.venue} ${event.address}`.toLowerCase();
 
   if (venue.includes('научн') && venue.includes('библиот')) {
+    if (venue.includes('бфу') || venue.includes('университетск')) {
+      return HALLS[1];
+    }
+
     return HALLS[0];
   }
 
   if (venue.includes('чехов') && venue.includes('библиот')) {
-    return HALLS[1];
-  }
-
-  if (venue.includes('ицаэ') || venue.includes('кгту')) {
     return HALLS[2];
   }
 
-  if (venue.includes('третьяков')) {
+  if (venue.includes('ицаэ') || venue.includes('кгту')) {
     return HALLS[3];
   }
 
-  if (venue.includes('фридланд')) {
+  if (venue.includes('третьяков')) {
     return HALLS[4];
   }
 
-  if (venue.includes('мирового океана')) {
+  if (venue.includes('фридланд')) {
     return HALLS[5];
   }
 
-  if (venue.includes('историко') || venue.includes('клиническ')) {
+  if (venue.includes('мирового океана')) {
     return HALLS[6];
+  }
+
+  if (venue.includes('историко') || venue.includes('клиническ')) {
+    return HALLS[7];
   }
 
   return null;

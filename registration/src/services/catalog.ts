@@ -65,6 +65,10 @@ const EVENT_CATALOG_SYNC_OVERRIDES: Record<string, CatalogSyncOverride> = {
     defaultPublicState: 'open',
     openOnCatalogSyncWhenStateIsSoon: true,
   },
+  'kaliningradskiy-morskoy-torgovyy-port-yarkie-stranitsy-sovetskoy-istorii-i-sovremennost': {
+    defaultPublicState: 'open',
+    openOnCatalogSyncWhenStateIsSoon: true,
+  },
 };
 
 const HALLS: HallSeed[] = [

@@ -69,7 +69,7 @@ SPEAKER_STRIP_PRESETS = {
     },
     "nizhegorodtseva-evgeniya": {
         "source": SPEAKERS_CUTOUTS / "Нижегородцева Евгения.png",
-        "face": (1074, 328, 367, 367),
+        "face": (690, 282, 395, 395),
     },
     "popadin-aleksandr": {
         "source": SPEAKERS_CUTOUTS / "Попадин Александр.png",

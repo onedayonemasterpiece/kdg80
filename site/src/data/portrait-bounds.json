@@ -683,34 +683,34 @@
     "slices": {
       "head": {
         "y": 0.2198,
-        "visibleLeft": 0.3012,
-        "visibleRight": 0.6357,
-        "coverage": 0.3345
+        "visibleLeft": 0.3754,
+        "visibleRight": 0.8017,
+        "coverage": 0.4264
       },
       "shoulder": {
         "y": 0.3399,
-        "visibleLeft": 0.2925,
-        "visibleRight": 0.6935,
-        "coverage": 0.4011
+        "visibleLeft": 0.1819,
+        "visibleRight": 0.8643,
+        "coverage": 0.6824
       },
       "chest": {
         "y": 0.4803,
-        "visibleLeft": 0.1708,
-        "visibleRight": 0.7907,
-        "coverage": 0.62
+        "visibleLeft": 0.128,
+        "visibleRight": 0.7873,
+        "coverage": 0.6593
       },
       "waist": {
         "y": 0.6201,
-        "visibleLeft": 0.1165,
-        "visibleRight": 0.7102,
-        "coverage": 0.5937
+        "visibleLeft": 0.1203,
+        "visibleRight": 0.7767,
+        "coverage": 0.6564
       }
     },
-    "width": 1142,
+    "width": 1039,
     "height": 1524,
-    "visibleLeft": 0.021,
+    "visibleLeft": 0.0962,
     "visibleTop": 0.0157,
-    "visibleRight": 0.8065,
+    "visibleRight": 0.9769,
     "visibleBottom": 1
   },
   "/generated/speaker-strip/nikitin-nikita.webp": {

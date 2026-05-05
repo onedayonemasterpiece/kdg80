@@ -12,6 +12,7 @@ COPY registration/package.json registration/package-lock.json registration/tscon
 RUN npm ci
 
 COPY registration/src ./src
+COPY registration/scripts ./scripts
 
 RUN npm run check
 

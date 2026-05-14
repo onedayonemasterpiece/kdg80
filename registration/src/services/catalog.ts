@@ -69,6 +69,10 @@ const EVENT_CATALOG_SYNC_OVERRIDES: Record<string, CatalogSyncOverride> = {
     defaultPublicState: 'open',
     openOnCatalogSyncWhenStateIsSoon: true,
   },
+  'ot-konfrontatsii-k-sosuschestvovaniyu-kak-vystraivalis-otnosheniya-mezhdu-sovetskimi-pereselentsami-i-nemetskim-naseleniem-kenigsberga-kaliningrada-v-pervye-poslevoennye-gody': {
+    defaultPublicState: 'open',
+    openOnCatalogSyncWhenStateIsSoon: true,
+  },
 };
 
 const HALLS: HallSeed[] = [

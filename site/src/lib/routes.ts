@@ -112,6 +112,10 @@ const HOMEPAGE_DIALOGUES_ITEM: RouteNavItem = {
   href: '/#dialogues',
   isShortcut: true,
 };
+const TEMPORARY_PROGRAM_HREF_PIN = {
+  slug: 'o-chem-mechtali-v-sovetskom-kaliningrade-kuda-stremilis-i-kuda-popali',
+  activeUntil: '2026-05-16T00:00:00+02:00',
+};
 
 let cachedRoutes: FestivalRoute[] | null = null;
 let cachedHomepageMyths: RouteMyth[] | null = null;
@@ -474,9 +478,17 @@ export function getSmartProgramHref(events: FestivalEvent[], isHome = false, now
   const festivalStarted = firstEvent.isoStart
     ? now.getTime() >= new Date(firstEvent.isoStart).getTime()
     : false;
+  const pinnedEvent = scheduledEvents.find((event) => event.slug === TEMPORARY_PROGRAM_HREF_PIN.slug);
+  const shouldUseTemporaryPin = Boolean(
+    pinnedEvent
+    && now.getTime() < new Date(TEMPORARY_PROGRAM_HREF_PIN.activeUntil).getTime()
+    && getEventTemporalState(pinnedEvent, now) !== 'past',
+  );
   const currentOrUpcomingScheduled = scheduledEvents.find((event) => getEventTemporalState(event, now) !== 'past');
   const currentOrUpcomingRange = rangeEvents.find((event) => getEventTemporalState(event, now) !== 'past');
-  const targetAnchor = !festivalStarted
+  const targetAnchor = shouldUseTemporaryPin && pinnedEvent
+    ? `#event-${pinnedEvent.slug}`
+    : !festivalStarted
     ? `#month-${firstEvent.monthAnchor}`
     : currentOrUpcomingScheduled
       ? `#event-${currentOrUpcomingScheduled.slug}`

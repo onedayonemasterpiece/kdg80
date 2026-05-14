@@ -1908,7 +1908,11 @@ summary {
   max-width: 12.1ch;
   font-size: clamp(1.26rem, 2.44vw, 1.64rem);
   line-height: 0.93;
-  letter-spacing: -0.045em;
+  letter-spacing: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 8;
+  overflow: hidden;
 }
 
 .event-card__format {
@@ -3371,7 +3375,8 @@ summary {
 
   .event-card--lecture .event-card__visual-title--xxlong {
     max-width: 11.1ch;
-    font-size: clamp(1.06rem, 1.68vw, 1.3rem);
+    font-size: clamp(0.96rem, 1.5vw, 1.18rem);
+    line-height: 0.95;
   }
 
   .event-card--special .event-card__stage {

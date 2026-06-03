@@ -1121,6 +1121,40 @@
     "visibleRight": 0.7799,
     "visibleBottom": 1
   },
+  "/generated/speaker-strip/finkova-yuliya.webp": {
+    "slices": {
+      "head": {
+        "y": 0.2198,
+        "visibleLeft": 0.252,
+        "visibleRight": 0.649,
+        "coverage": 0.3971
+      },
+      "shoulder": {
+        "y": 0.3399,
+        "visibleLeft": 0.1766,
+        "visibleRight": 0.7829,
+        "coverage": 0.6063
+      },
+      "chest": {
+        "y": 0.4803,
+        "visibleLeft": 0.0799,
+        "visibleRight": 0.8954,
+        "coverage": 0.8155
+      },
+      "waist": {
+        "y": 0.6201,
+        "visibleLeft": 0.0652,
+        "visibleRight": 0.9719,
+        "coverage": 0.9066
+      }
+    },
+    "width": 889,
+    "height": 1524,
+    "visibleLeft": 0.027,
+    "visibleTop": 0.0157,
+    "visibleRight": 0.973,
+    "visibleBottom": 1
+  },
   "/generated/speaker-strip/tsedrik-mihail.webp": {
     "slices": {
       "head": {

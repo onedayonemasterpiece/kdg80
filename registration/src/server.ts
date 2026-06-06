@@ -9,6 +9,7 @@ import { runMigrations } from './db/migrate';
 import { registerPublicApi } from './api/public';
 import { registerRegistrationApi } from './api/registration';
 import { registerAdminApi } from './api/admin';
+import { registerSpecialApi } from './api/special';
 import { createStoragePublisher } from './lib/storage';
 import { syncCatalog } from './services/catalog';
 import { startDailyJobs } from './services/daily-jobs';
@@ -110,6 +111,15 @@ await registerAdminApi(app, {
   db,
   emergencyExportToken: config.emergencyExportToken,
   privateKeyPemBase64: config.piiPrivateKeyPemBase64,
+});
+await registerSpecialApi(app, {
+  db,
+  consentVersion: config.consentVersion,
+  consentTextHash: config.consentTextHash,
+  fingerprintSecret: config.piiFingerprintSecret,
+  publicKeyPemBase64: config.piiPublicKeyPemBase64,
+  privateKeyPemBase64: config.piiPrivateKeyPemBase64,
+  storagePublisher,
 });
 await registerRegistrationApi(app, {
   db,

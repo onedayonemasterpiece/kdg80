@@ -30,6 +30,13 @@ export type PublicStorageFile = {
   cacheControl: string;
 };
 
+export type PrivateStorageFile = {
+  key: string;
+  body: Buffer | string;
+  contentType: string;
+  cacheControl?: string;
+};
+
 export type TicketArtifactBundle = {
   publicHash: string;
   files: TicketArtifactFile[];
@@ -40,6 +47,7 @@ export type StoragePublisher = {
   publishTicketArtifacts(bundle: TicketArtifactBundle): Promise<TicketArtifacts>;
   deleteTicketArtifacts(publicHash: string): Promise<void>;
   publishPublicAsset(file: PublicStorageFile): Promise<void>;
+  publishPrivateAsset(file: PrivateStorageFile): Promise<void>;
 };
 
 function trimSlashes(value: string) {
@@ -91,6 +99,15 @@ function createS3Publisher(config: StorageConfig): StoragePublisher {
         CacheControl: file.cacheControl,
       }));
     },
+    async publishPrivateAsset(file) {
+      await client.send(new PutObjectCommand({
+        Bucket: config.s3Bucket!,
+        Key: file.key,
+        Body: file.body,
+        ContentType: file.contentType,
+        CacheControl: file.cacheControl ?? 'private, max-age=0, no-store',
+      }));
+    },
     async publishTicketArtifacts(bundle) {
       for (const file of bundle.files) {
         await this.publishPublicAsset(file);
@@ -116,6 +133,11 @@ function createLocalPublisher(config: StorageConfig): StoragePublisher {
   return {
     driver: 'local',
     async publishPublicAsset(file) {
+      const targetPath = path.join(config.localPublicRoot, file.key);
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+      fs.writeFileSync(targetPath, file.body);
+    },
+    async publishPrivateAsset(file) {
       const targetPath = path.join(config.localPublicRoot, file.key);
       fs.mkdirSync(path.dirname(targetPath), { recursive: true });
       fs.writeFileSync(targetPath, file.body);

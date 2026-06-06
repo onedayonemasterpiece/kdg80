@@ -36,96 +36,266 @@ function renderPreviewPage(eventJson: string) {
   <meta name="robots" content="noindex,nofollow,noarchive">
   <title>Заявка на розыгрыш — Этюды той весны</title>
   <style>
+    @font-face {
+      font-family: "Cygre";
+      src: url("/shared-assets/fonts/Cygre-Regular.woff2") format("woff2");
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "Cygre";
+      src: url("/shared-assets/fonts/Cygre-SemiBold.woff2") format("woff2");
+      font-weight: 600;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "Cygre";
+      src: url("/shared-assets/fonts/Cygre-Bold.woff2") format("woff2");
+      font-weight: 700;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "FavoritPro";
+      src: url("/shared-assets/fonts/FavoritPro-Book.otf") format("opentype");
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "FavoritPro";
+      src: url("/shared-assets/fonts/FavoritPro-Medium.otf") format("opentype");
+      font-weight: 500;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "FavoritPro";
+      src: url("/shared-assets/fonts/FavoritPro-Bold.otf") format("opentype");
+      font-weight: 800;
+      font-style: normal;
+      font-display: swap;
+    }
     :root {
       color-scheme: light;
-      --bg: #f6f4ef;
-      --surface: #fffdfa;
-      --text: #1b1b1d;
-      --muted: #5e6068;
-      --line: #d8d1c4;
-      --accent: #b51f2a;
-      --accent-dark: #871721;
-      --focus: #1d6f8f;
-      --success: #0f6b4f;
-      --error: #9e1c23;
-      --shadow: 0 18px 45px rgba(38, 31, 23, 0.12);
+      --paper: #f1eadf;
+      --paper-soft: #f7f1e8;
+      --paper-strong: #fcf6ed;
+      --paper-deep: #e0d2c0;
+      --ink: #12110e;
+      --ink-soft: #554f48;
+      --ink-muted: #8c847a;
+      --line: rgba(18, 17, 14, 0.12);
+      --line-strong: rgba(18, 17, 14, 0.2);
+      --accent: #d84b31;
+      --accent-deep: #9b2e1a;
+      --accent-soft: rgba(216, 75, 49, 0.12);
+      --success: #236144;
+      --error: #a52f20;
+      --shadow: 0 18px 42px rgba(26, 21, 16, 0.08);
+      --shadow-strong: 0 34px 84px rgba(18, 15, 12, 0.18);
+      --radius-sm: 12px;
+      --radius-md: 20px;
+      --radius-lg: 30px;
+      --font-body: "FavoritPro", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-display: "Cygre", "Helvetica Neue", Arial, sans-serif;
     }
     * { box-sizing: border-box; }
+    html {
+      -webkit-text-size-adjust: 100%;
+    }
     body {
       margin: 0;
       min-height: 100dvh;
-      font-family: Arial, "Helvetica Neue", sans-serif;
-      color: var(--text);
+      font-family: var(--font-body);
+      font-size: 16px;
+      line-height: 1.5;
+      color: var(--ink);
       background:
-        linear-gradient(90deg, rgba(181, 31, 42, 0.08), transparent 30%),
-        var(--bg);
+        linear-gradient(180deg, #f7f1e8 0%, #f1eadf 46%, #f6efe6 100%);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    button, input {
+      font: inherit;
+    }
+    .page {
+      position: relative;
+      min-height: 100dvh;
+      overflow: hidden;
+      isolation: isolate;
+    }
+    .page::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background:
+        linear-gradient(115deg, rgba(252, 246, 237, 0.96) 0%, rgba(252, 246, 237, 0.72) 48%, rgba(216, 75, 49, 0.1) 100%),
+        linear-gradient(180deg, rgba(18, 17, 14, 0.04), transparent 34%);
     }
     main {
-      width: min(1080px, 100%);
+      position: relative;
+      z-index: 1;
+      width: min(1180px, 100%);
       margin: 0 auto;
-      padding: 32px 20px 48px;
+      padding: 26px 20px 52px;
+    }
+    .topbar {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 26px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      width: 190px;
+      max-width: 58vw;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      background: var(--accent);
+      box-shadow: 0 16px 34px rgba(155, 46, 26, 0.2);
+    }
+    .brand img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .preview-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 36px;
+      padding: 0 14px;
+      border: 1px solid rgba(18, 17, 14, 0.1);
+      border-radius: 999px;
+      background: rgba(255, 252, 248, 0.72);
+      color: var(--ink-soft);
+      font-size: 13px;
+      font-weight: 700;
     }
     .shell {
+      position: relative;
+      z-index: 1;
       display: grid;
-      grid-template-columns: minmax(0, 0.9fr) minmax(360px, 1.1fr);
-      gap: 28px;
+      grid-template-columns: minmax(0, 0.92fr) minmax(410px, 1.08fr);
+      gap: 30px;
       align-items: start;
     }
     .intro {
-      padding: 28px 0;
+      display: grid;
+      gap: 24px;
+      padding: 10px 0;
     }
     .kicker {
       margin: 0 0 12px;
+      color: var(--accent-deep);
       font-size: 14px;
-      font-weight: 700;
+      line-height: 1.4;
+      font-weight: 800;
+      letter-spacing: 0;
       text-transform: uppercase;
-      color: var(--accent);
     }
     h1 {
       margin: 0;
       max-width: 560px;
-      font-size: clamp(36px, 6vw, 68px);
-      line-height: 0.96;
+      font-family: var(--font-display);
+      font-size: 72px;
+      line-height: 0.94;
       letter-spacing: 0;
+      font-weight: 700;
     }
     .lead {
-      max-width: 560px;
-      margin: 22px 0 0;
-      color: var(--muted);
+      max-width: 520px;
+      margin: 20px 0 0;
+      color: var(--ink-soft);
       font-size: 18px;
-      line-height: 1.55;
+      line-height: 1.5;
     }
     .event-meta {
       display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 10px;
-      margin: 28px 0 0;
+      margin: 0;
       padding: 0;
       list-style: none;
-      font-size: 16px;
     }
     .event-meta li {
-      display: flex;
-      gap: 10px;
-      align-items: center;
+      min-height: 120px;
+      display: grid;
+      align-content: space-between;
+      gap: 12px;
+      padding: 16px;
+      border: 1px solid rgba(18, 17, 14, 0.08);
+      border-radius: var(--radius-md);
+      background: rgba(255, 252, 248, 0.68);
+      box-shadow: 0 14px 30px rgba(18, 17, 14, 0.05);
     }
-    .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--accent);
-      flex: 0 0 auto;
+    .event-meta strong {
+      display: block;
+      font-family: var(--font-display);
+      font-size: 30px;
+      line-height: 0.95;
+      font-weight: 700;
+    }
+    .event-meta span {
+      color: var(--ink-soft);
+      font-size: 14px;
+      line-height: 1.35;
+      font-weight: 500;
+    }
+    .note-panel {
+      max-width: 560px;
+      padding: 18px 20px;
+      border: 1px solid rgba(155, 46, 26, 0.14);
+      border-radius: var(--radius-md);
+      background: rgba(216, 75, 49, 0.08);
+      color: var(--ink-soft);
+      font-size: 15px;
+      line-height: 1.5;
+    }
+    .note-panel strong {
+      color: var(--accent-deep);
     }
     form {
-      background: var(--surface);
-      border: 1px solid var(--line);
-      box-shadow: var(--shadow);
-      border-radius: 8px;
+      display: grid;
+      gap: 18px;
       padding: 24px;
+      border: 1px solid rgba(18, 17, 14, 0.08);
+      border-radius: var(--radius-lg);
+      background:
+        linear-gradient(180deg, rgba(252, 246, 237, 0.98), rgba(247, 241, 232, 0.96));
+      box-shadow: var(--shadow-strong);
+    }
+    .form-head {
+      display: grid;
+      gap: 8px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid rgba(18, 17, 14, 0.08);
+    }
+    .form-head h2 {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: 34px;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+    .form-head p {
+      margin: 0;
+      color: var(--ink-soft);
+      font-size: 15px;
+      line-height: 1.45;
     }
     fieldset {
       border: 0;
       padding: 0;
-      margin: 0 0 22px;
+      margin: 0;
     }
     legend, .group-title {
       display: block;
@@ -141,17 +311,25 @@ function renderPreviewPage(eventJson: string) {
     }
     input[type="text"], input[type="email"], input[type="tel"] {
       width: 100%;
-      min-height: 48px;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 12px 13px;
+      min-height: 52px;
+      border: 1px solid rgba(18, 17, 14, 0.12);
+      border-radius: var(--radius-sm);
+      padding: 0 15px;
       font: inherit;
-      background: #fff;
-      color: var(--text);
+      background: rgba(255, 252, 248, 0.92);
+      color: var(--ink);
+      transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
     }
     input:focus-visible, button:focus-visible, .upload:focus-within {
-      outline: 3px solid color-mix(in srgb, var(--focus), white 20%);
+      outline: 2px solid rgba(184, 63, 47, 0.35);
       outline-offset: 2px;
+    }
+    input[type="text"]:focus-visible,
+    input[type="email"]:focus-visible,
+    input[type="tel"]:focus-visible {
+      border-color: rgba(184, 63, 47, 0.3);
+      box-shadow: 0 0 0 3px rgba(184, 63, 47, 0.08);
+      background: rgba(255, 252, 248, 0.98);
     }
     .fields {
       display: grid;
@@ -163,25 +341,50 @@ function renderPreviewPage(eventJson: string) {
     }
     .date-option {
       display: grid;
-      grid-template-columns: 22px 1fr;
-      gap: 10px;
+      grid-template-columns: 24px 1fr;
+      gap: 12px;
       align-items: center;
-      min-height: 48px;
-      padding: 12px;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      background: #fff;
-      font-weight: 600;
+      min-height: 62px;
+      padding: 13px 14px;
+      border: 1px solid rgba(18, 17, 14, 0.1);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 252, 248, 0.78);
+      font-weight: 700;
+      cursor: pointer;
+      transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease;
+    }
+    .date-option:hover {
+      transform: translateY(-1px);
+      border-color: rgba(155, 46, 26, 0.22);
+      background: rgba(255, 252, 248, 0.98);
+    }
+    .date-option:has(input:checked) {
+      border-color: rgba(155, 46, 26, 0.4);
+      background: rgba(216, 75, 49, 0.1);
+      box-shadow: inset 0 0 0 1px rgba(155, 46, 26, 0.18);
+    }
+    .date-option__main {
+      display: grid;
+      gap: 4px;
+    }
+    .date-option__meta {
+      color: var(--ink-muted);
+      font-size: 13px;
+      line-height: 1.25;
+      font-weight: 500;
+    }
+    .date-option__tag {
+      color: var(--accent-deep);
     }
     .date-option input {
-      width: 20px;
-      height: 20px;
+      width: 22px;
+      height: 22px;
       margin: 0;
       accent-color: var(--accent);
     }
     .hint {
       margin: 8px 0 0;
-      color: var(--muted);
+      color: var(--ink-soft);
       font-size: 14px;
       line-height: 1.45;
     }
@@ -189,15 +392,29 @@ function renderPreviewPage(eventJson: string) {
       position: relative;
       display: grid;
       place-items: center;
-      min-height: 170px;
-      border: 2px dashed #b9ad9b;
-      border-radius: 8px;
-      background: #fff;
+      min-height: 180px;
+      padding: 22px;
+      border: 1.5px dashed rgba(155, 46, 26, 0.36);
+      border-radius: var(--radius-md);
+      background: rgba(255, 252, 248, 0.68);
       cursor: pointer;
       text-align: center;
-      transition: border-color 160ms ease, background 160ms ease;
+      transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+      overflow: hidden;
     }
-    .upload:hover { border-color: var(--accent); background: #fff8f7; }
+    .upload::before {
+      content: "";
+      position: absolute;
+      inset: 8px;
+      border-radius: 16px;
+      border: 1px solid rgba(18, 17, 14, 0.04);
+      pointer-events: none;
+    }
+    .upload:hover {
+      transform: translateY(-1px);
+      border-color: rgba(155, 46, 26, 0.62);
+      background: rgba(255, 252, 248, 0.94);
+    }
     .upload input {
       position: absolute;
       inset: 0;
@@ -207,27 +424,63 @@ function renderPreviewPage(eventJson: string) {
     .plus {
       width: 52px;
       height: 52px;
-      border-radius: 50%;
+      border-radius: 999px;
       display: grid;
       place-items: center;
       margin: 0 auto 12px;
-      background: var(--accent);
+      background: linear-gradient(135deg, var(--accent), var(--accent-deep));
       color: #fff;
-      font-size: 36px;
+      font-size: 38px;
       line-height: 1;
+      font-weight: 400;
+      box-shadow: 0 14px 28px rgba(155, 46, 26, 0.24);
+    }
+    .upload strong {
+      display: block;
+      font-size: 16px;
+      line-height: 1.3;
+      color: var(--ink);
     }
     .file-list {
       display: grid;
-      gap: 8px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
       margin-top: 12px;
-      color: var(--muted);
+      color: var(--ink-soft);
       font-size: 14px;
+    }
+    .file-chip {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+      padding: 8px;
+      border: 1px solid rgba(18, 17, 14, 0.08);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 252, 248, 0.82);
+      overflow: hidden;
+    }
+    .file-chip img {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      border-radius: 8px;
+      object-fit: cover;
+      background: rgba(18, 17, 14, 0.06);
+    }
+    .file-chip span {
+      overflow-wrap: anywhere;
+      color: var(--ink-soft);
+      font-size: 12px;
+      line-height: 1.25;
     }
     .consent {
       display: grid;
       grid-template-columns: 22px 1fr;
-      gap: 10px;
+      gap: 12px;
       align-items: start;
+      padding: 14px;
+      border: 1px solid rgba(18, 17, 14, 0.08);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 252, 248, 0.56);
       font-size: 14px;
       line-height: 1.4;
       font-weight: 500;
@@ -240,87 +493,156 @@ function renderPreviewPage(eventJson: string) {
     }
     button {
       width: 100%;
-      min-height: 52px;
+      min-height: 56px;
       border: 0;
-      border-radius: 6px;
-      background: var(--accent);
-      color: #fff;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+      color: #fff5ee;
       font: inherit;
       font-weight: 800;
       cursor: pointer;
-      transition: background 160ms ease, transform 120ms ease;
+      box-shadow: 0 14px 28px rgba(155, 46, 26, 0.24);
+      transition: transform 160ms ease, filter 160ms ease, opacity 160ms ease;
     }
-    button:hover { background: var(--accent-dark); }
+    button:hover { transform: translateY(-1px); filter: brightness(1.02); }
     button:active { transform: translateY(1px); }
     button:disabled {
       cursor: wait;
       opacity: 0.72;
+      transform: none;
     }
     .status {
       min-height: 24px;
-      margin-top: 14px;
+      margin-top: -4px;
       font-size: 15px;
       line-height: 1.45;
     }
     .status[data-kind="success"] { color: var(--success); }
     .status[data-kind="error"] { color: var(--error); }
     .summary {
-      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: -4px;
       padding: 14px;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      background: #fff;
+      border: 1px solid rgba(18, 17, 14, 0.08);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 252, 248, 0.86);
       font-size: 14px;
       line-height: 1.5;
     }
+    .summary[hidden] {
+      display: none;
+    }
+    .summary-item {
+      min-width: 0;
+      padding: 10px;
+      border-radius: 10px;
+      background: rgba(18, 17, 14, 0.035);
+    }
+    .summary-item span {
+      display: block;
+      color: var(--ink-muted);
+      font-size: 12px;
+      line-height: 1.25;
+    }
+    .summary-item strong {
+      display: block;
+      margin-top: 2px;
+      overflow-wrap: anywhere;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+      }
+    }
+    @media (max-width: 980px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+      .event-meta {
+        max-width: 680px;
+      }
+    }
     @media (max-width: 820px) {
-      main { padding: 20px 14px 36px; }
-      .shell { grid-template-columns: 1fr; gap: 18px; }
-      .intro { padding: 8px 0 0; }
-      h1 { font-size: 42px; }
+      main { padding: 16px 14px 36px; }
+      .topbar { margin-bottom: 18px; }
+      .brand { width: 158px; }
+      .preview-pill { min-height: 32px; padding: 0 10px; font-size: 12px; }
+      .shell { gap: 18px; }
+      .intro { gap: 18px; padding: 0; }
+      h1 { font-size: 48px; }
       .lead { font-size: 16px; }
-      form { padding: 18px; }
+      .event-meta { grid-template-columns: 1fr; }
+      .event-meta li { min-height: 84px; }
+      .event-meta strong { font-size: 26px; }
+      form { padding: 18px; border-radius: var(--radius-md); }
+      .form-head h2 { font-size: 30px; }
+      .summary { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 420px) {
+      h1 { font-size: 42px; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .date-option { align-items: start; }
+      .upload { min-height: 198px; padding: 18px; }
+      .file-list { grid-template-columns: 1fr 1fr; }
     }
   </style>
 </head>
 <body>
-  <main>
+  <main class="page">
+    <div class="topbar">
+      <span class="brand" aria-label="Знание. 80 лет Калининградской области">
+        <img src="/shared-assets/logo-festival-single.svg" alt="" width="629" height="150" decoding="async">
+      </span>
+      <span class="preview-pill">Тестовая preview-ссылка</span>
+    </div>
     <div class="shell">
       <section class="intro" aria-labelledby="page-title">
-        <p class="kicker">Заявка на розыгрыш</p>
-        <h1 id="page-title">Этюды той весны</h1>
-        <p class="lead">Иммерсивный спектакль. Заявка не является билетом и не гарантирует проход; после проверки паспорта участника вы участвуете в розыгрыше выбранных дат.</p>
+        <div>
+          <p class="kicker">Заявка на розыгрыш</p>
+          <h1 id="page-title">Этюды той весны</h1>
+          <p class="lead">Иммерсивный спектакль. После проверки паспорта участника фестиваля заявка попадает в розыгрыш выбранных дат.</p>
+        </div>
         <ul class="event-meta">
-          <li><span class="dot" aria-hidden="true"></span><span>11 июня 18:00 Южный Вокзал</span></li>
-          <li><span class="dot" aria-hidden="true"></span><span>16 июня Южный Вокзал</span></li>
-          <li><span class="dot" aria-hidden="true"></span><span>21 июня Южный Вокзал</span></li>
+          <li><strong>11 июня</strong><span>18:00<br>Южный Вокзал</span></li>
+          <li><strong>16 июня</strong><span>Южный Вокзал<br>тестовая дата</span></li>
+          <li><strong>21 июня</strong><span>Южный Вокзал<br>тестовая дата</span></li>
         </ul>
+        <p class="note-panel"><strong>Важно:</strong> заявка не является билетом и не гарантирует проход. Победители получат место на конкретный показ после розыгрыша.</p>
       </section>
       <form id="special-form" data-testid="special-form">
+        <div class="form-head">
+          <h2>Подать заявку</h2>
+          <p>Выберите даты, на которые сможете прийти, и приложите фото паспорта участника с заполненным ФИО.</p>
+        </div>
         <input type="hidden" name="website" autocomplete="off">
         <fieldset>
           <legend>Даты показа</legend>
           <div class="dates" id="dates"></div>
         </fieldset>
         <div class="fields">
-          <label>ФИО
-            <input name="fullName" type="text" autocomplete="name" required>
+          <label for="fullName">ФИО
+            <input id="fullName" name="fullName" type="text" autocomplete="name" maxlength="120" placeholder="Имя и фамилия" required>
           </label>
-          <label>Email
-            <input name="email" type="email" autocomplete="email" required>
+          <label for="email">Email
+            <input id="email" name="email" type="email" autocomplete="email" maxlength="254" placeholder="name@example.com" required>
           </label>
-          <label>Телефон
-            <input name="phone" type="tel" autocomplete="tel" required>
+          <label for="phone">Телефон
+            <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+7 (___) ___-__-__" required>
           </label>
         </div>
         <fieldset>
           <span class="group-title">Паспорт участника фестиваля</span>
-          <label class="upload">
+          <label class="upload" for="photos">
             <input id="photos" name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple required data-testid="photo-input">
             <span>
               <span class="plus" aria-hidden="true">+</span>
               <strong>Приложите фотографию паспорта участника фестиваля</strong>
-              <span class="hint">с заполненным полем ФИО. Если у вас несколько экземпляров, приложите несколько фотографий. Фотографии принимаются только с лицевой стороны.</span>
+              <span class="hint">С заполненным полем ФИО. Если у вас несколько экземпляров, приложите несколько фотографий. Фотографии принимаются только с лицевой стороны.</span>
             </span>
           </label>
           <p class="hint">У вас должно быть не менее 5 штампов о посещении событий фестиваля.</p>
@@ -346,17 +668,34 @@ function renderPreviewPage(eventJson: string) {
     const statusEl = document.querySelector('#status');
     const summaryEl = document.querySelector('#summary');
     const submit = document.querySelector('[data-testid="submit-special"]');
+    let previewUrls = [];
 
     dates.innerHTML = SPECIAL_EVENT.showings.map((showing, index) => \`
       <label class="date-option">
         <input type="checkbox" name="selectedShowingSlugs" value="\${showing.slug}" \${index === 0 ? 'checked' : ''}>
-        <span>\${showing.displayLabel}\${showing.timeIsFinal ? '' : ' · тестовая дата'}</span>
+        <span class="date-option__main">
+          <span>\${showing.displayLabel}</span>
+          <span class="date-option__meta">\${showing.lotteryQuota} мест в розыгрыше\${showing.timeIsFinal ? '' : ' · <span class="date-option__tag">тестовая дата</span>'}</span>
+        </span>
       </label>
     \`).join('');
 
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/gu, '&amp;')
+        .replace(/</gu, '&lt;')
+        .replace(/>/gu, '&gt;')
+        .replace(/"/gu, '&quot;')
+        .replace(/'/gu, '&#39;');
+    }
+
     photosInput.addEventListener('change', () => {
       const files = [...photosInput.files];
-      fileList.textContent = files.length ? files.map((file) => file.name).join(', ') : '';
+      previewUrls.forEach((url) => URL.revokeObjectURL(url));
+      previewUrls = files.map((file) => URL.createObjectURL(file));
+      fileList.innerHTML = files.length
+        ? files.map((file, index) => \`<span class="file-chip"><img src="\${previewUrls[index]}" alt=""><span>\${escapeHtml(file.name)}</span></span>\`).join('')
+        : '';
     });
 
     function fileToBase64(file) {
@@ -420,11 +759,11 @@ function renderPreviewPage(eventJson: string) {
         }
         summaryEl.hidden = false;
         summaryEl.innerHTML = [
-          \`Код заявки: <strong>\${data.applicationCode}</strong>\`,
-          \`Штампы: <strong>\${data.scoring.stampCount}</strong>\`,
-          \`Баллы: <strong>\${data.scoring.score}</strong>\`,
-          \`Выбрано дат: <strong>\${data.selectedShowings.length}</strong>\`,
-        ].join('<br>');
+          \`<div class="summary-item"><span>Код заявки</span><strong>\${data.applicationCode}</strong></div>\`,
+          \`<div class="summary-item"><span>Штампы</span><strong>\${data.scoring.stampCount}</strong></div>\`,
+          \`<div class="summary-item"><span>Баллы</span><strong>\${data.scoring.score}</strong></div>\`,
+          \`<div class="summary-item"><span>Выбрано дат</span><strong>\${data.selectedShowings.length}</strong></div>\`,
+        ].join('');
       } catch (error) {
         setStatus('error', error instanceof Error ? error.message : 'Не удалось отправить заявку.');
       } finally {

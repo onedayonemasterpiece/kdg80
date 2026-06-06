@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import fs from 'node:fs';
+import path from 'node:path';
 import { loadConfig } from './config';
 import { createDatabase } from './db/client';
 import { runMigrations } from './db/migrate';
@@ -85,6 +86,12 @@ await app.register(cors, {
 await app.register(rateLimit, {
   max: 120,
   timeWindow: '1 minute',
+});
+
+await app.register(fastifyStatic, {
+  root: path.resolve(process.cwd(), '../assets'),
+  prefix: '/shared-assets/',
+  decorateReply: false,
 });
 
 if (config.storageDriver === 'local') {

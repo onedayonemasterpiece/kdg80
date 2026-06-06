@@ -7,6 +7,7 @@ import { createStoragePublisher } from '../src/lib/storage.js';
 import { syncCatalog } from '../src/services/catalog.js';
 import { publishPublicStateManifest } from '../src/services/state-manifest.js';
 import { registerTelegramBot } from '../src/services/telegram-bot.js';
+import { startTelegramOutboxWorker } from '../src/services/telegram-outbox.js';
 
 const config = loadConfig();
 
@@ -70,6 +71,15 @@ app.log.info({ username: botInfo.username }, 'telegram_e2e_polling_bot');
 await registered.bot.api.deleteWebhook({ drop_pending_updates: true });
 app.log.info('telegram_e2e_webhook_deleted');
 
+const outboxWorker = config.piiPrivateKeyPemBase64
+  ? startTelegramOutboxWorker({
+      db,
+      bot: registered.bot,
+      logger: app.log,
+      privateKeyPemBase64: config.piiPrivateKeyPemBase64,
+    })
+  : null;
+
 const stopPolling = registered.bot.start({
   allowed_updates: ['message', 'callback_query'],
   onStart: (info) => {
@@ -80,6 +90,7 @@ const stopPolling = registered.bot.start({
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {
     app.log.info({ signal }, 'telegram_e2e_polling_stopping');
+    outboxWorker?.stop();
     registered.bot.stop(signal);
   });
 }

@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3';
 import type { StoragePublisher } from '../lib/storage';
 import { computeFingerprint, decryptPii, encryptPii } from '../lib/crypto';
 import { normalizeEmail, normalizeFullName, normalizePhone } from '../lib/normalize';
+import { enqueueSpecialApplicationCreated } from './telegram-outbox';
 
 const SPECIAL_PHOTO_PREFIX = 'special-passports';
 const MAX_PHOTO_BYTES = 6 * 1024 * 1024;
@@ -387,16 +388,75 @@ function computeScore(options: {
   return { noShowCount, score };
 }
 
+type OrdinaryRegistrationNameMatchSummary = {
+  totalCount: number;
+  exactCount: number;
+  tokenPrefixCount: number;
+};
+
+function normalizeNameForMatching(value: string) {
+  return normalizeFullName(value)
+    .toLowerCase()
+    .replace(/ё/gu, 'е');
+}
+
+function nameTokens(value: string) {
+  return normalizeNameForMatching(value)
+    .split(' ')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function isTokenPrefixNameMatch(targetTokens: string[], currentTokens: string[]) {
+  if (targetTokens.length < 2 || currentTokens.length < 2) {
+    return false;
+  }
+
+  let exactTokenMatches = 0;
+  let prefixTokenMatches = 0;
+
+  for (const targetToken of targetTokens) {
+    const currentMatch = currentTokens.find((currentToken) => {
+      if (currentToken === targetToken) {
+        return true;
+      }
+
+      if (targetToken.length < 2) {
+        return false;
+      }
+
+      return currentToken.startsWith(targetToken);
+    });
+
+    if (!currentMatch) {
+      return false;
+    }
+
+    if (currentMatch === targetToken) {
+      exactTokenMatches += 1;
+    } else {
+      prefixTokenMatches += 1;
+    }
+  }
+
+  return exactTokenMatches >= 1 && prefixTokenMatches >= 1;
+}
+
 function countOrdinaryRegistrationsByFullName(
   db: Database.Database,
   privateKeyPemBase64: string | null,
   normalizedFullName: string,
 ) {
   if (!privateKeyPemBase64) {
-    return 0;
+    return {
+      totalCount: 0,
+      exactCount: 0,
+      tokenPrefixCount: 0,
+    } satisfies OrdinaryRegistrationNameMatchSummary;
   }
 
-  const target = normalizedFullName.toLowerCase();
+  const target = normalizeNameForMatching(normalizedFullName);
+  const targetTokens = nameTokens(normalizedFullName);
   const rows = db.prepare(`
     SELECT pii_ciphertext, pii_wrapped_key, pii_iv, pii_alg
     FROM registrations
@@ -409,7 +469,12 @@ function countOrdinaryRegistrationsByFullName(
     pii_alg: string;
   }>;
 
-  let count = 0;
+  const summary: OrdinaryRegistrationNameMatchSummary = {
+    totalCount: 0,
+    exactCount: 0,
+    tokenPrefixCount: 0,
+  };
+
   for (const row of rows) {
     try {
       const pii = decryptPii(privateKeyPemBase64, {
@@ -418,16 +483,23 @@ function countOrdinaryRegistrationsByFullName(
         piiIv: row.pii_iv,
         piiAlg: row.pii_alg,
       });
-      const current = normalizeFullName(String(pii.fullName ?? '')).toLowerCase();
+      const current = normalizeNameForMatching(String(pii.fullName ?? ''));
       if (current === target) {
-        count += 1;
+        summary.totalCount += 1;
+        summary.exactCount += 1;
+        continue;
+      }
+
+      if (isTokenPrefixNameMatch(targetTokens, current.split(' ').filter(Boolean))) {
+        summary.totalCount += 1;
+        summary.tokenPrefixCount += 1;
       }
     } catch {
       continue;
     }
   }
 
-  return count;
+  return summary;
 }
 
 function duplicateMessage(error: unknown) {
@@ -568,14 +640,14 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     });
   }
 
-  const ordinaryRegistrationCount = countOrdinaryRegistrationsByFullName(
+  const ordinaryRegistrationMatchSummary = countOrdinaryRegistrationsByFullName(
     deps.db,
     deps.privateKeyPemBase64,
     fullName,
   );
   const scoreResult = computeScore({
     stampCount,
-    ordinaryRegistrationCount,
+    ordinaryRegistrationCount: ordinaryRegistrationMatchSummary.totalCount,
     minStampCount: loaded.event.min_stamp_count,
     basePoints: loaded.event.base_points,
     extraStampPoints: loaded.event.extra_stamp_points,
@@ -601,6 +673,7 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     minStampCount: loaded.event.min_stamp_count,
     acceptedPhotoCount,
     uniquePhotoCount,
+    ordinaryRegistrationMatch: ordinaryRegistrationMatchSummary,
     photos: photoResults.map((photo) => ({
       fileName: photo.fileName,
       sha256: photo.sha256,
@@ -713,7 +786,7 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
       uniquePhotoCount,
       acceptedPhotoCount,
       stampCount,
-      ordinaryRegistrationCount,
+      ordinaryRegistrationCount: ordinaryRegistrationMatchSummary.totalCount,
       noShowCount: scoreResult.noShowCount,
       score: scoreResult.score,
       ocrProvider,
@@ -783,6 +856,10 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     throw error;
   }
 
+  enqueueSpecialApplicationCreated(deps.db, {
+    applicationId,
+  });
+
   return {
     applicationId,
     applicationCode,
@@ -796,7 +873,7 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     })),
     scoring: {
       stampCount,
-      ordinaryRegistrationCount,
+      ordinaryRegistrationCount: ordinaryRegistrationMatchSummary.totalCount,
       noShowCount: scoreResult.noShowCount,
       score: scoreResult.score,
       uploadedPhotoCount: photos.length,

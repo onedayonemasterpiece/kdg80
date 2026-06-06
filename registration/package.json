@@ -9,7 +9,9 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "special:e2e:seed": "tsx scripts/seed-special-e2e-data.ts",
+    "telegram:e2e:polling": "tsx scripts/run-telegram-e2e-polling.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.888.0",

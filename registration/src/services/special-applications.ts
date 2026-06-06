@@ -123,20 +123,33 @@ function readSpecialEvent(db: Database.Database, slug: string, token: string) {
   return { event, showings };
 }
 
+function getShowingUnavailableReason(showing: SpecialShowingRow, now = new Date()) {
+  if (showing.draw_status === 'published' || showing.draw_status === 'final') {
+    return 'Розыгрыш по этой дате уже проведен.';
+  }
+
+  if (showing.lottery_quota <= 0) {
+    return 'На эту дату нет мест в розыгрыше.';
+  }
+
+  if (new Date(showing.starts_at).getTime() <= now.getTime()) {
+    return 'Показ уже прошел.';
+  }
+
+  return null;
+}
+
+function isShowingAvailableForApplication(showing: SpecialShowingRow) {
+  return getShowingUnavailableReason(showing) === null;
+}
+
 function publicSpecialEventView(event: SpecialEventRow, showings: SpecialShowingRow[]) {
-  return {
-    slug: event.slug,
-    title: event.title,
-    formatLabel: event.format_label,
-    venueName: event.venue_name,
-    minStampCount: event.min_stamp_count,
-    pointRules: {
-      basePoints: event.base_points,
-      extraStampPoints: event.extra_stamp_points,
-      noShowGraceCount: event.no_show_grace_count,
-      noShowPenaltyPoints: event.no_show_penalty_points,
-    },
-    showings: showings.map((showing) => ({
+  const publicShowings = showings.map((showing) => {
+    const unavailableReason = event.public_state === 'closed'
+      ? 'Заявки на это спецмероприятие закрыты.'
+      : getShowingUnavailableReason(showing);
+
+    return {
       slug: showing.slug,
       startsAt: showing.starts_at,
       displayLabel: showing.display_label,
@@ -145,7 +158,25 @@ function publicSpecialEventView(event: SpecialEventRow, showings: SpecialShowing
       reservedSeats: showing.reserved_seats,
       lotteryQuota: showing.lottery_quota,
       drawStatus: showing.draw_status,
-    })),
+      applicationAvailable: unavailableReason === null,
+      unavailableReason,
+    };
+  });
+
+  return {
+    slug: event.slug,
+    title: event.title,
+    formatLabel: event.format_label,
+    venueName: event.venue_name,
+    applicationAvailable: event.public_state !== 'closed' && publicShowings.some((showing) => showing.applicationAvailable),
+    minStampCount: event.min_stamp_count,
+    pointRules: {
+      basePoints: event.base_points,
+      extraStampPoints: event.extra_stamp_points,
+      noShowGraceCount: event.no_show_grace_count,
+      noShowPenaltyPoints: event.no_show_penalty_points,
+    },
+    showings: publicShowings,
   };
 }
 
@@ -429,6 +460,10 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     throw new SpecialApplicationError(404, 'special_event_not_found', 'Спецмероприятие не найдено или preview-ссылка неверна.');
   }
 
+  if (loaded.event.public_state === 'closed') {
+    throw new SpecialApplicationError(410, 'special_event_closed', 'Заявки на это спецмероприятие закрыты.');
+  }
+
   const selectedSlugs = Array.isArray(payload.selectedShowingSlugs)
     ? payload.selectedShowingSlugs.map((item) => String(item).trim()).filter(Boolean)
     : [];
@@ -439,6 +474,15 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
   const selectedShowings = loaded.showings.filter((showing) => selectedSlugs.includes(showing.slug));
   if (selectedShowings.length !== new Set(selectedSlugs).size) {
     throw new SpecialApplicationError(400, 'invalid_showing', 'Одна из выбранных дат недоступна.');
+  }
+
+  const unavailableShowing = selectedShowings.find((showing) => !isShowingAvailableForApplication(showing));
+  if (unavailableShowing) {
+    throw new SpecialApplicationError(
+      410,
+      'showing_closed',
+      `${unavailableShowing.display_label}: ${getShowingUnavailableReason(unavailableShowing) ?? 'дата недоступна для заявки'}`,
+    );
   }
 
   let fullName: string;

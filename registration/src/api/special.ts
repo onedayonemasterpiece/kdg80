@@ -367,6 +367,18 @@ function renderPreviewPage(eventJson: string) {
       display: grid;
       gap: 4px;
     }
+    .date-option.is-disabled {
+      cursor: not-allowed;
+      color: var(--ink-muted);
+      background: rgba(255, 252, 248, 0.42);
+      border-color: rgba(18, 17, 14, 0.08);
+      box-shadow: none;
+    }
+    .date-option.is-disabled:hover {
+      transform: none;
+      background: rgba(255, 252, 248, 0.42);
+      border-color: rgba(18, 17, 14, 0.08);
+    }
     .date-option__meta {
       color: var(--ink-muted);
       font-size: 13px;
@@ -375,6 +387,12 @@ function renderPreviewPage(eventJson: string) {
     }
     .date-option__tag {
       color: var(--accent-deep);
+    }
+    .date-option__closed {
+      color: var(--error);
+      font-size: 13px;
+      line-height: 1.25;
+      font-weight: 700;
     }
     .date-option input {
       width: 22px;
@@ -507,9 +525,12 @@ function renderPreviewPage(eventJson: string) {
     button:hover { transform: translateY(-1px); filter: brightness(1.02); }
     button:active { transform: translateY(1px); }
     button:disabled {
-      cursor: wait;
+      cursor: not-allowed;
       opacity: 0.72;
       transform: none;
+    }
+    button[data-loading="true"] {
+      cursor: wait;
     }
     .status {
       min-height: 24px;
@@ -550,6 +571,20 @@ function renderPreviewPage(eventJson: string) {
       display: block;
       margin-top: 2px;
       overflow-wrap: anywhere;
+    }
+    .closed-panel {
+      display: none;
+      padding: 14px;
+      border: 1px solid rgba(165, 47, 32, 0.18);
+      border-radius: var(--radius-sm);
+      background: rgba(165, 47, 32, 0.08);
+      color: var(--error);
+      font-size: 14px;
+      line-height: 1.45;
+      font-weight: 700;
+    }
+    .closed-panel.is-visible {
+      display: block;
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
@@ -624,6 +659,7 @@ function renderPreviewPage(eventJson: string) {
           <legend>Даты показа</legend>
           <div class="dates" id="dates"></div>
         </fieldset>
+        <div class="closed-panel" id="closed-panel">Все даты уже закрыты для заявки.</div>
         <div class="fields">
           <label for="fullName">ФИО
             <input id="fullName" name="fullName" type="text" autocomplete="name" maxlength="120" placeholder="Имя и фамилия" required>
@@ -668,17 +704,8 @@ function renderPreviewPage(eventJson: string) {
     const statusEl = document.querySelector('#status');
     const summaryEl = document.querySelector('#summary');
     const submit = document.querySelector('[data-testid="submit-special"]');
+    const closedPanel = document.querySelector('#closed-panel');
     let previewUrls = [];
-
-    dates.innerHTML = SPECIAL_EVENT.showings.map((showing, index) => \`
-      <label class="date-option">
-        <input type="checkbox" name="selectedShowingSlugs" value="\${showing.slug}" \${index === 0 ? 'checked' : ''}>
-        <span class="date-option__main">
-          <span>\${showing.displayLabel}</span>
-          <span class="date-option__meta">\${showing.lotteryQuota} мест в розыгрыше\${showing.timeIsFinal ? '' : ' · <span class="date-option__tag">тестовая дата</span>'}</span>
-        </span>
-      </label>
-    \`).join('');
 
     function escapeHtml(value) {
       return String(value)
@@ -687,6 +714,29 @@ function renderPreviewPage(eventJson: string) {
         .replace(/>/gu, '&gt;')
         .replace(/"/gu, '&quot;')
         .replace(/'/gu, '&#39;');
+    }
+
+    const firstAvailableIndex = SPECIAL_EVENT.showings.findIndex((showing) => showing.applicationAvailable);
+    const hasAvailableShowings = firstAvailableIndex >= 0;
+    dates.innerHTML = SPECIAL_EVENT.showings.map((showing, index) => {
+      const disabled = !showing.applicationAvailable;
+      const quotaText = \`Всего мест: \${showing.physicalQuota} · в розыгрыше: \${showing.lotteryQuota}\${showing.reservedSeats ? \` · бронь: \${showing.reservedSeats}\` : ''}\`;
+      return \`
+      <label class="date-option\${disabled ? ' is-disabled' : ''}">
+        <input type="checkbox" name="selectedShowingSlugs" value="\${showing.slug}" \${index === firstAvailableIndex ? 'checked' : ''} \${disabled ? 'disabled' : ''}>
+        <span class="date-option__main">
+          <span>\${escapeHtml(showing.displayLabel)}</span>
+          <span class="date-option__meta">\${escapeHtml(quotaText)}\${showing.timeIsFinal ? '' : ' · <span class="date-option__tag">тестовая дата</span>'}</span>
+          \${disabled ? \`<span class="date-option__closed">\${escapeHtml(showing.unavailableReason || 'Дата закрыта для заявки.')}</span>\` : ''}
+        </span>
+      </label>
+    \`;
+    }).join('');
+    closedPanel.classList.toggle('is-visible', !hasAvailableShowings);
+    if (!hasAvailableShowings) {
+      submit.disabled = true;
+      submit.textContent = 'Заявки закрыты';
+      setStatus('error', 'Регистрация на все даты этого спецмероприятия закрыта.');
     }
 
     photosInput.addEventListener('change', () => {
@@ -721,10 +771,15 @@ function renderPreviewPage(eventJson: string) {
       summaryEl.textContent = '';
       setStatus('', '');
       submit.disabled = true;
+      submit.dataset.loading = 'true';
       submit.textContent = 'Проверяем фото...';
 
       try {
         const formData = new FormData(form);
+        const selectedShowingSlugs = formData.getAll('selectedShowingSlugs');
+        if (!selectedShowingSlugs.length) {
+          throw new Error('Выберите хотя бы одну доступную дату показа.');
+        }
         const files = [...photosInput.files];
         const photos = await Promise.all(files.map(async (file) => ({
           fileName: file.name,
@@ -734,7 +789,7 @@ function renderPreviewPage(eventJson: string) {
         const payload = {
           token: TOKEN,
           eventSlug: SPECIAL_EVENT.slug,
-          selectedShowingSlugs: formData.getAll('selectedShowingSlugs'),
+          selectedShowingSlugs,
           fullName: String(formData.get('fullName') || ''),
           email: String(formData.get('email') || ''),
           phone: String(formData.get('phone') || ''),
@@ -767,8 +822,14 @@ function renderPreviewPage(eventJson: string) {
       } catch (error) {
         setStatus('error', error instanceof Error ? error.message : 'Не удалось отправить заявку.');
       } finally {
-        submit.disabled = false;
-        submit.textContent = 'Отправить заявку';
+        submit.dataset.loading = 'false';
+        if (hasAvailableShowings) {
+          submit.disabled = false;
+          submit.textContent = 'Отправить заявку';
+        } else {
+          submit.disabled = true;
+          submit.textContent = 'Заявки закрыты';
+        }
       }
     });
   </script>

@@ -186,20 +186,17 @@ function getLatestDrawRow(db: Database.Database, showingId: number, runType?: Sp
   `).get(...params) as SpecialDrawRunRow | undefined;
 }
 
-function getPublishedWinnerProfileIdsForOtherShowings(
+function getPublishedWinnerProfileIdsForOtherSpecialDraws(
   db: Database.Database,
-  eventId: number,
   currentShowingId: number,
 ) {
   const rows = db.prepare(`
     SELECT dr.*
     FROM special_draw_runs dr
-    INNER JOIN special_event_showings s ON s.id = dr.showing_id
-    WHERE s.special_event_id = ?
-      AND s.id != ?
+    WHERE dr.showing_id != ?
       AND dr.run_type = 'published'
     ORDER BY dr.id ASC
-  `).all(eventId, currentShowingId) as SpecialDrawRunRow[];
+  `).all(currentShowingId) as SpecialDrawRunRow[];
 
   const ids = new Set<number>();
   for (const row of rows) {
@@ -217,9 +214,8 @@ function listCandidateRows(
   db: Database.Database,
   showing: SpecialShowingRow,
 ) {
-  const excludedProfileIds = getPublishedWinnerProfileIdsForOtherShowings(
+  const excludedProfileIds = getPublishedWinnerProfileIdsForOtherSpecialDraws(
     db,
-    showing.special_event_id,
     showing.id,
   );
   const rows = db.prepare(`

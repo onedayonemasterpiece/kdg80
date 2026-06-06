@@ -53,6 +53,7 @@ type TelegramBotDeps = {
   privateKeyPemBase64: string | null;
   storagePublisher: StoragePublisher;
   syncPublicStateManifest: (reason: string) => Promise<boolean>;
+  skipWebhook?: boolean;
 };
 
 const EVENTS_PER_PAGE = 6;
@@ -1340,19 +1341,21 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
     });
   });
 
-  const webhookHandler = webhookCallback(bot, 'fastify');
+  if (!deps.skipWebhook) {
+    const webhookHandler = webhookCallback(bot, 'fastify');
 
-  app.post(deps.webhookPath, async (request, reply) => {
-    const secret = request.headers['x-telegram-bot-api-secret-token'];
-    if (secret !== deps.webhookSecret) {
-      reply.code(401);
-      return {
-        error: 'telegram_secret_mismatch',
-      };
-    }
+    app.post(deps.webhookPath, async (request, reply) => {
+      const secret = request.headers['x-telegram-bot-api-secret-token'];
+      if (secret !== deps.webhookSecret) {
+        reply.code(401);
+        return {
+          error: 'telegram_secret_mismatch',
+        };
+      }
 
-    return webhookHandler(request, reply);
-  });
+      return webhookHandler(request, reply);
+    });
+  }
 
   return {
     bot,

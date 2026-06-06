@@ -57,6 +57,19 @@
 - Не подменять production-данные локальными кэшами, историческими `outputs/*.xlsx` или вручную сохранёнными файлами, если пользователь явно не просит именно исторический snapshot.
 - Если актуальный production-export недоступен, сообщать об этом явно и не выдавать локальную устаревшую выгрузку как свежую.
 
+## Fly Production Access
+
+- Registration production Fly app: `znanie-kgd80-fest`.
+- Eventsbot production Fly app: `events-bot-new-wngqia`.
+- Fly CLI is installed at `/home/dev/.fly/bin/flyctl`.
+- Plain `flyctl auth whoami` can report `no access token available` even when a usable token exists locally. First check `/home/dev/.fly/config.yml`.
+- The usable Fly token is the full `access_token:` YAML value from `/home/dev/.fly/config.yml`; it is a composite token and can contain commas plus `+`, `/`, and `=` characters. Do not extract it with a narrow regex that only captures `fm2_...` or `fo1_...` fragments.
+- Use it by exporting/passing `FLY_API_TOKEN` for each command, for example:
+  `FLY_API_TOKEN="$(python3 -c 'from pathlib import Path; import re; print(re.search(r"^access_token:\\s*(.+)$", Path("/home/dev/.fly/config.yml").read_text(), re.M).group(1).strip())')" /home/dev/.fly/bin/flyctl secrets list -a znanie-kgd80-fest`
+- When copying secrets between Fly apps, never print secret values. Read runtime env through `flyctl ssh console -a <source> -C 'sh -lc ...'` and pass captured values directly to `flyctl secrets set -a <target> KEY=value`.
+- `flyctl ssh console -C` does not run commands through a shell by default. Wrap compound commands, pipes, heredocs, and env extraction in `sh -lc`.
+- As of 2026-06-06, `SUPABASE_URL` and `SUPABASE_KEY` were copied from `events-bot-new-wngqia` runtime to `znanie-kgd80-fest` Fly secrets.
+
 ## Visual Verification Policy
 
 - For any website, frontend, layout, or visual task, do not mark the work complete until you have done a visual verification pass through Playwright CLI or an equivalent Playwright command-line workflow.

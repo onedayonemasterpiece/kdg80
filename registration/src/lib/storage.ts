@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { S3Client, DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import type { TicketArtifacts } from '../types';
 
 type StorageConfig = {
@@ -48,6 +48,7 @@ export type StoragePublisher = {
   deleteTicketArtifacts(publicHash: string): Promise<void>;
   publishPublicAsset(file: PublicStorageFile): Promise<void>;
   publishPrivateAsset(file: PrivateStorageFile): Promise<void>;
+  readPrivateAsset(key: string): Promise<Buffer>;
 };
 
 function trimSlashes(value: string) {
@@ -108,6 +109,21 @@ function createS3Publisher(config: StorageConfig): StoragePublisher {
         CacheControl: file.cacheControl ?? 'private, max-age=0, no-store',
       }));
     },
+    async readPrivateAsset(key) {
+      const response = await client.send(new GetObjectCommand({
+        Bucket: config.s3Bucket!,
+        Key: key,
+      }));
+      const body = response.Body as unknown as {
+        transformToByteArray?: () => Promise<Uint8Array>;
+      } | undefined;
+
+      if (!body?.transformToByteArray) {
+        throw new Error(`Unable to read private asset: ${key}`);
+      }
+
+      return Buffer.from(await body.transformToByteArray());
+    },
     async publishTicketArtifacts(bundle) {
       for (const file of bundle.files) {
         await this.publishPublicAsset(file);
@@ -141,6 +157,9 @@ function createLocalPublisher(config: StorageConfig): StoragePublisher {
       const targetPath = path.join(config.localPublicRoot, file.key);
       fs.mkdirSync(path.dirname(targetPath), { recursive: true });
       fs.writeFileSync(targetPath, file.body);
+    },
+    async readPrivateAsset(key) {
+      return fs.readFileSync(path.join(config.localPublicRoot, key));
     },
     async publishTicketArtifacts(bundle) {
       for (const file of bundle.files) {

@@ -28,6 +28,20 @@ import {
 } from './registration-exports';
 import { cleanupTestRun, createSqliteBackup } from './admin-maintenance';
 import { searchRegistrationsByFullName } from './registration-search';
+import {
+  buildSpecialDrawXlsxBuffer,
+  formatSpecialDrawResult,
+  formatSpecialEventPanel,
+  formatSpecialEventsPanel,
+  formatSpecialShowingPanel,
+  getLatestSpecialDrawResult,
+  getSpecialEventForTelegram,
+  getSpecialShowingForTelegram,
+  listSpecialApplicationPhotos,
+  listSpecialEventsForTelegram,
+  runSpecialDraw,
+  type SpecialDrawResult,
+} from './special-draws';
 import type { StoragePublisher } from '../lib/storage';
 
 type TelegramBotDeps = {
@@ -59,6 +73,7 @@ function formatDisplayName(from: {
 function buildMainKeyboard(role: TelegramAdminRole) {
   const keyboard = new Keyboard()
     .text('События')
+    .text('Спецмероприятия')
     .text('Поиск')
     .text('Экспорт')
     .row();
@@ -79,6 +94,7 @@ function formatHelp(role: TelegramAdminRole) {
     '',
     'Кнопки:',
     'События — список событий и карточки событий.',
+    'Спецмероприятия — розыгрыши спецпоказов, XLSX и фото для сверки.',
     'Поиск — поиск регистрации по ФИО.',
   ];
 
@@ -87,6 +103,7 @@ function formatHelp(role: TelegramAdminRole) {
     lines.push('/registration_open <slug> — открыть регистрацию на событие.');
     lines.push('/registration_close <slug> — закрыть регистрацию на событие.');
     lines.push('/export_all — общий XLSX по всем событиям.');
+    lines.push('/spec — спецмероприятия, черновой и опубликованный розыгрыш.');
     lines.push('/backup_sqlite — резервная копия SQLite.');
     lines.push('/cleanup_test_run <run_id> — удалить тестовые регистрации конкретного прогона.');
     lines.push('');
@@ -304,6 +321,56 @@ function buildExportKeyboard() {
     .text('SQLite backup', 'exp:backup');
 }
 
+function buildSpecialEventsKeyboard(items: ReturnType<typeof listSpecialEventsForTelegram>) {
+  const keyboard = new InlineKeyboard();
+  for (const item of items) {
+    keyboard.text(truncateLabel(item.event.title), `spe:${item.event.id}`).row();
+  }
+  return keyboard;
+}
+
+function buildSpecialEventKeyboard(item: NonNullable<ReturnType<typeof getSpecialEventForTelegram>>) {
+  const keyboard = new InlineKeyboard();
+  for (const showing of item.showings) {
+    keyboard.text(truncateLabel(showing.display_label), `sps:${showing.id}`).row();
+  }
+  keyboard.text('Назад к спецмероприятиям', 'spl');
+  return keyboard;
+}
+
+function buildSpecialShowingKeyboard(
+  eventId: number,
+  showingId: number,
+  role: TelegramAdminRole,
+  latestPublished: SpecialDrawResult | null,
+) {
+  const keyboard = new InlineKeyboard();
+
+  if (role === 'superadmin') {
+    keyboard.text('Черновой розыгрыш', `spd:${showingId}`);
+    keyboard.text('Опубликовать розыгрыш', `spp:${showingId}`).row();
+  }
+
+  if (latestPublished) {
+    keyboard.text('XLSX победителей', `spx:${showingId}`).row();
+    for (const winner of latestPublished.winners.slice(0, 10)) {
+      keyboard.text(`Фото: ${truncateLabel(winner.fullName, 28)}`, `sph:${winner.applicationId}`).row();
+    }
+  }
+
+  keyboard.text('Назад к спецмероприятию', `spe:${eventId}`);
+  keyboard.text('К списку', 'spl');
+  return keyboard;
+}
+
+function safeXlsxName(value: string) {
+  return value.replace(/[^a-zA-Z0-9._-]+/gu, '-').replace(/-+/gu, '-').replace(/^-|-$/gu, '') || 'special-draw';
+}
+
+function safePhotoFileName(value: string, fallback: string) {
+  return value.replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/-+/gu, '-').replace(/^-|-$/gu, '') || fallback;
+}
+
 function paginate<T>(items: T[], page: number, perPage: number) {
   const start = (page - 1) * perPage;
   return items.slice(start, start + perPage);
@@ -381,6 +448,102 @@ async function sendOperatorsPanel(
   });
 }
 
+async function sendSpecialEventsPanel(
+  ctx: Context,
+  db: Database.Database,
+  editCurrentMessage = false,
+) {
+  const items = listSpecialEventsForTelegram(db);
+  const text = formatSpecialEventsPanel(items);
+  const keyboard = items.length ? buildSpecialEventsKeyboard(items) : undefined;
+
+  if (editCurrentMessage && ctx.callbackQuery?.message) {
+    await ctx.editMessageText(text, {
+      reply_markup: keyboard,
+    });
+    return;
+  }
+
+  await ctx.reply(text, {
+    reply_markup: keyboard,
+  });
+}
+
+async function sendSpecialEventPanel(
+  ctx: Context,
+  db: Database.Database,
+  eventId: number,
+  editCurrentMessage = false,
+) {
+  const item = getSpecialEventForTelegram(db, eventId);
+  if (!item) {
+    if (ctx.callbackQuery) {
+      await ctx.answerCallbackQuery({
+        text: 'Спецмероприятие не найдено.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    await ctx.reply('Спецмероприятие не найдено.');
+    return;
+  }
+
+  const text = formatSpecialEventPanel(item);
+  const keyboard = buildSpecialEventKeyboard(item);
+
+  if (editCurrentMessage && ctx.callbackQuery?.message) {
+    await ctx.editMessageText(text, {
+      reply_markup: keyboard,
+    });
+    return;
+  }
+
+  await ctx.reply(text, {
+    reply_markup: keyboard,
+  });
+}
+
+async function sendSpecialShowingPanel(
+  ctx: Context,
+  db: Database.Database,
+  role: TelegramAdminRole,
+  showingId: number,
+  privateKeyPemBase64: string | null,
+  editCurrentMessage = false,
+) {
+  const item = getSpecialShowingForTelegram(db, showingId, privateKeyPemBase64);
+  if (!item) {
+    if (ctx.callbackQuery) {
+      await ctx.answerCallbackQuery({
+        text: 'Показ не найден.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    await ctx.reply('Показ не найден.');
+    return;
+  }
+
+  const latestPublished = privateKeyPemBase64
+    ? getLatestSpecialDrawResult(db, showingId, 'published', privateKeyPemBase64)
+    : null;
+  const keyboard = buildSpecialShowingKeyboard(item.event.id, showingId, role, latestPublished);
+  const text = formatSpecialShowingPanel(item);
+
+  if (editCurrentMessage && ctx.callbackQuery?.message) {
+    await ctx.editMessageText(text, {
+      reply_markup: keyboard,
+    });
+    return;
+  }
+
+  await ctx.reply(text, {
+    reply_markup: keyboard,
+  });
+}
+
 export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps) {
   const bot = new Bot(deps.token);
   const pendingFindPrompts = new Map<string, number>();
@@ -444,6 +607,16 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
     }
 
     await sendEventList(ctx, deps.db, admin.role, 'all', 1);
+  });
+
+  bot.command('spec', async (ctx) => {
+    const admin = requireAdminRole(String(ctx.from?.id ?? ''));
+    if (!admin) {
+      await ctx.reply('Доступ к боту ограничен администраторами.');
+      return;
+    }
+
+    await sendSpecialEventsPanel(ctx, deps.db);
   });
 
   bot.command('registration_open', async (ctx) => {
@@ -616,6 +789,15 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
     await sendEventList(ctx, deps.db, admin.role, 'all', 1);
   });
 
+  bot.hears('Спецмероприятия', async (ctx) => {
+    const admin = requireAdminRole(String(ctx.from?.id ?? ''));
+    if (!admin) {
+      return;
+    }
+
+    await sendSpecialEventsPanel(ctx, deps.db);
+  });
+
   bot.hears('Открыть регистрацию', async (ctx) => {
     const admin = requireAdminRole(String(ctx.from?.id ?? ''));
     if (!admin || admin.role !== 'superadmin') {
@@ -728,6 +910,185 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
         reply_markup: buildMainKeyboard(admin.role),
       },
     );
+  });
+
+  bot.callbackQuery(/^spl$/u, async (ctx) => {
+    const admin = requireAdminRole(String(ctx.from?.id ?? ''));
+    if (!admin) {
+      await ctx.answerCallbackQuery({
+        text: 'Недостаточно прав.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    await ctx.answerCallbackQuery();
+    await sendSpecialEventsPanel(ctx, deps.db, true);
+  });
+
+  bot.callbackQuery(/^spe:(\d+)$/u, async (ctx) => {
+    const admin = requireAdminRole(String(ctx.from?.id ?? ''));
+    if (!admin) {
+      await ctx.answerCallbackQuery({
+        text: 'Недостаточно прав.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    const [, eventIdRaw] = ctx.match;
+    await ctx.answerCallbackQuery();
+    await sendSpecialEventPanel(ctx, deps.db, Number(eventIdRaw), true);
+  });
+
+  bot.callbackQuery(/^sps:(\d+)$/u, async (ctx) => {
+    const admin = requireAdminRole(String(ctx.from?.id ?? ''));
+    if (!admin) {
+      await ctx.answerCallbackQuery({
+        text: 'Недостаточно прав.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    const [, showingIdRaw] = ctx.match;
+    await ctx.answerCallbackQuery();
+    await sendSpecialShowingPanel(ctx, deps.db, admin.role, Number(showingIdRaw), deps.privateKeyPemBase64, true);
+  });
+
+  bot.callbackQuery(/^(spd|spp):(\d+)$/u, async (ctx) => {
+    const admin = requireAdminRole(String(ctx.from?.id ?? ''));
+    if (!admin || admin.role !== 'superadmin') {
+      await ctx.answerCallbackQuery({
+        text: 'Розыгрыш может запускать только суперадмин.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    if (!deps.privateKeyPemBase64) {
+      await ctx.answerCallbackQuery({
+        text: 'Нужен приватный ключ, чтобы подготовить розыгрыш.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    const [, action, showingIdRaw] = ctx.match;
+    const runType = action === 'spd' ? 'draft' : 'published';
+    const showingId = Number(showingIdRaw);
+    await ctx.answerCallbackQuery({
+      text: runType === 'draft' ? 'Считаю черновой розыгрыш.' : 'Публикую розыгрыш.',
+    });
+
+    try {
+      const result = runSpecialDraw(deps.db, showingId, runType, deps.privateKeyPemBase64);
+      await ctx.reply(formatSpecialDrawResult(result));
+
+      if (runType === 'published') {
+        const buffer = await buildSpecialDrawXlsxBuffer(result);
+        await ctx.replyWithDocument(
+          new InputFile(buffer, `${safeXlsxName(result.event.slug)}-${safeXlsxName(result.showing.slug)}-winners.xlsx`),
+          {
+            caption: `XLSX победителей: ${result.event.title}, ${result.showing.display_label}`,
+          },
+        );
+      }
+
+      await sendSpecialShowingPanel(ctx, deps.db, admin.role, showingId, deps.privateKeyPemBase64);
+    } catch (error) {
+      app.log.error({ err: error, showingId, runType }, 'special_draw_failed');
+      await ctx.reply('Не удалось выполнить розыгрыш. Ошибка записана в лог сервера.');
+    }
+  });
+
+  bot.callbackQuery(/^spx:(\d+)$/u, async (ctx) => {
+    const admin = requireAdminRole(String(ctx.from?.id ?? ''));
+    if (!admin) {
+      await ctx.answerCallbackQuery({
+        text: 'Недостаточно прав.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    if (!deps.privateKeyPemBase64) {
+      await ctx.answerCallbackQuery({
+        text: 'Нужен приватный ключ, чтобы подготовить XLSX.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    const [, showingIdRaw] = ctx.match;
+    const showingId = Number(showingIdRaw);
+    const result = getLatestSpecialDrawResult(deps.db, showingId, 'published', deps.privateKeyPemBase64);
+    if (!result) {
+      await ctx.answerCallbackQuery({
+        text: 'Опубликованного результата пока нет.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    await ctx.answerCallbackQuery({
+      text: 'Готовлю XLSX победителей.',
+    });
+    const buffer = await buildSpecialDrawXlsxBuffer(result);
+    await ctx.replyWithDocument(
+      new InputFile(buffer, `${safeXlsxName(result.event.slug)}-${safeXlsxName(result.showing.slug)}-winners.xlsx`),
+      {
+        caption: `XLSX победителей: ${result.event.title}, ${result.showing.display_label}`,
+      },
+    );
+  });
+
+  bot.callbackQuery(/^sph:(\d+)$/u, async (ctx) => {
+    const admin = requireAdminRole(String(ctx.from?.id ?? ''));
+    if (!admin) {
+      await ctx.answerCallbackQuery({
+        text: 'Недостаточно прав.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    const [, applicationIdRaw] = ctx.match;
+    const applicationId = Number(applicationIdRaw);
+    const photos = listSpecialApplicationPhotos(deps.db, applicationId);
+    if (!photos.length) {
+      await ctx.answerCallbackQuery({
+        text: 'Фото для этой заявки не найдены.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    await ctx.answerCallbackQuery({
+      text: `Отправляю фото: ${photos.length}`,
+    });
+
+    for (const [index, photo] of photos.entries()) {
+      try {
+        const buffer = await deps.storagePublisher.readPrivateAsset(photo.storage_key);
+        const fileName = safePhotoFileName(photo.original_filename, `special-photo-${applicationId}-${index + 1}`);
+        await ctx.replyWithDocument(
+          new InputFile(buffer, fileName),
+          {
+            caption: [
+              `Фото ${index + 1} из ${photos.length}`,
+              `Заявка ID: ${applicationId}`,
+              `Штампы на фото: ${photo.stamp_count}`,
+              `Зачтено: ${photo.accepted ? 'да' : 'нет'}`,
+              photo.duplicate_of_sha256 ? 'Точный дубль: да' : null,
+            ].filter(Boolean).join('\n'),
+          },
+        );
+      } catch (error) {
+        app.log.error({ err: error, applicationId, storageKey: photo.storage_key }, 'special_photo_send_failed');
+        await ctx.reply(`Не удалось отправить фото ${index + 1}: ошибка чтения private storage.`);
+      }
+    }
   });
 
   bot.hears('Операторы', async (ctx) => {
@@ -951,6 +1312,7 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
     const text = ctx.message.text.trim();
     const reservedLabels = new Set([
       'События',
+      'Спецмероприятия',
       'Поиск',
       'Экспорт',
       'Открыть регистрацию',

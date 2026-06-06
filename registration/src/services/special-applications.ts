@@ -496,9 +496,9 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
       uniquePhotoCount += 1;
       ocr = await runOpenAiPassportOcr(photo);
       hasFullName = hasFullName || ocr.hasFullName;
-      stampCount += ocr.stampCount;
       if (ocr.accepted) {
         acceptedPhotoCount += 1;
+        stampCount += ocr.stampCount;
       }
       ocrProvider = ocr.provider;
       ocrModel = ocr.model;

@@ -1,4 +1,4 @@
-ALTER TABLE events ADD COLUMN overbooking_percent INTEGER NOT NULL DEFAULT 6;
+ALTER TABLE events ADD COLUMN overbooking_percent INTEGER NOT NULL DEFAULT 63;
 ALTER TABLE events ADD COLUMN registration_limit INTEGER NOT NULL DEFAULT 0;
 
 UPDATE halls

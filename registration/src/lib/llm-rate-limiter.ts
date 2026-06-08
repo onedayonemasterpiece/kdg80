@@ -1,0 +1,134 @@
+type LlmLimitedRunOptions = {
+  consumer: string;
+  provider: string;
+  model: string;
+  minIntervalMs?: number;
+  maxRetries?: number;
+};
+
+export type LlmLimiterTrace = {
+  consumer: string;
+  provider: string;
+  model: string;
+  limited: true;
+  attempts: number;
+  queuedMs: number;
+  minIntervalMs: number;
+  maxRetries: number;
+};
+
+export class LlmProviderError extends Error {
+  statusCode: number;
+  retryAfterMs: number | null;
+
+  constructor(message: string, statusCode: number, retryAfterMs: number | null = null) {
+    super(message);
+    this.statusCode = statusCode;
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+let queueTail: Promise<void> = Promise.resolve();
+let lastStartedAt = 0;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function readPositiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function isRetryable(error: unknown) {
+  if (!(error instanceof LlmProviderError)) {
+    return false;
+  }
+
+  return error.statusCode === 429 || error.statusCode === 408 || error.statusCode >= 500;
+}
+
+function retryDelayMs(error: unknown, attempt: number) {
+  if (error instanceof LlmProviderError && error.retryAfterMs !== null) {
+    return Math.min(Math.max(error.retryAfterMs, 0), 30_000);
+  }
+
+  const base = 750 * 2 ** Math.max(attempt - 1, 0);
+  const jitter = randomInt(250);
+  return Math.min(base + jitter, 15_000);
+}
+
+async function runWithRetries<T>(task: () => Promise<T>, maxRetries: number) {
+  let attempts = 0;
+  let lastError: unknown;
+
+  while (attempts <= maxRetries) {
+    attempts += 1;
+    try {
+      return {
+        value: await task(),
+        attempts,
+      };
+    } catch (error) {
+      lastError = error;
+      if (attempts > maxRetries || !isRetryable(error)) {
+        break;
+      }
+
+      await sleep(retryDelayMs(error, attempts));
+    }
+  }
+
+  throw lastError;
+}
+
+export async function runLlmLimited<T>(
+  task: () => Promise<T>,
+  options: LlmLimitedRunOptions,
+) {
+  const minIntervalMs = options.minIntervalMs ?? readPositiveInteger(
+    process.env.SPECIAL_OCR_LLM_MIN_INTERVAL_MS,
+    1_200,
+  );
+  const maxRetries = options.maxRetries ?? readPositiveInteger(
+    process.env.SPECIAL_OCR_LLM_MAX_RETRIES,
+    3,
+  );
+  const enqueuedAt = Date.now();
+
+  const previous = queueTail;
+  let releaseCurrent: () => void;
+  queueTail = new Promise((resolve) => {
+    releaseCurrent = resolve;
+  });
+
+  await previous.catch(() => undefined);
+
+  try {
+    const waitMs = Math.max(0, lastStartedAt + minIntervalMs - Date.now());
+    if (waitMs > 0) {
+      await sleep(waitMs);
+    }
+
+    lastStartedAt = Date.now();
+    const result = await runWithRetries(task, maxRetries);
+    return {
+      value: result.value,
+      trace: {
+        consumer: options.consumer,
+        provider: options.provider,
+        model: options.model,
+        limited: true,
+        attempts: result.attempts,
+        queuedMs: Math.max(0, lastStartedAt - enqueuedAt),
+        minIntervalMs,
+        maxRetries,
+      } satisfies LlmLimiterTrace,
+    };
+  } finally {
+    releaseCurrent!();
+  }
+}
+import { randomInt } from 'node:crypto';

@@ -644,8 +644,8 @@ function renderPreviewPage(eventJson: string) {
         </div>
         <ul class="event-meta">
           <li><strong>11 июня</strong><span>18:00<br>Южный Вокзал</span></li>
-          <li><strong>16 июня</strong><span>Южный Вокзал<br>тестовая дата</span></li>
-          <li><strong>21 июня</strong><span>Южный Вокзал<br>тестовая дата</span></li>
+          <li><strong>23 июня</strong><span>Южный Вокзал<br>время уточняется</span></li>
+          <li><strong>25 июня</strong><span>Южный Вокзал<br>время уточняется</span></li>
         </ul>
         <p class="note-panel"><strong>Важно:</strong> заявка не является билетом и не гарантирует проход. Победители получат место на конкретный показ после розыгрыша.</p>
       </section>
@@ -657,6 +657,7 @@ function renderPreviewPage(eventJson: string) {
         <input type="hidden" name="website" autocomplete="off">
         <fieldset>
           <legend>Даты показа</legend>
+          <p class="hint">Выберите самую раннюю дату, на которую хотите попасть: будущие показы отметятся автоматически. Если какая-то дополнительная дата вам не подходит, снимите галочку.</p>
           <div class="dates" id="dates"></div>
         </fieldset>
         <div class="closed-panel" id="closed-panel">Все даты уже закрыты для заявки.</div>
@@ -723,10 +724,10 @@ function renderPreviewPage(eventJson: string) {
       const quotaText = \`Всего мест: \${showing.physicalQuota} · в розыгрыше: \${showing.lotteryQuota}\${showing.reservedSeats ? \` · бронь: \${showing.reservedSeats}\` : ''}\`;
       return \`
       <label class="date-option\${disabled ? ' is-disabled' : ''}">
-        <input type="checkbox" name="selectedShowingSlugs" value="\${showing.slug}" \${index === firstAvailableIndex ? 'checked' : ''} \${disabled ? 'disabled' : ''}>
+        <input type="checkbox" name="selectedShowingSlugs" value="\${showing.slug}" data-showing-index="\${index}" \${disabled ? 'disabled' : ''}>
         <span class="date-option__main">
           <span>\${escapeHtml(showing.displayLabel)}</span>
-          <span class="date-option__meta">\${escapeHtml(quotaText)}\${showing.timeIsFinal ? '' : ' · <span class="date-option__tag">тестовая дата</span>'}</span>
+          <span class="date-option__meta">\${escapeHtml(quotaText)}\${showing.timeIsFinal ? '' : ' · <span class="date-option__tag">время уточняется</span>'}</span>
           \${disabled ? \`<span class="date-option__closed">\${escapeHtml(showing.unavailableReason || 'Дата закрыта для заявки.')}</span>\` : ''}
         </span>
       </label>
@@ -737,6 +738,28 @@ function renderPreviewPage(eventJson: string) {
       submit.disabled = true;
       submit.textContent = 'Заявки закрыты';
       setStatus('error', 'Регистрация на все даты этого спецмероприятия закрыта.');
+    } else {
+      selectCascadeFrom(firstAvailableIndex);
+    }
+
+    dates.addEventListener('change', (event) => {
+      const input = event.target;
+      if (!(input instanceof HTMLInputElement) || input.name !== 'selectedShowingSlugs' || !input.checked) {
+        return;
+      }
+
+      selectCascadeFrom(Number(input.dataset.showingIndex || '0'));
+    });
+
+    function selectCascadeFrom(index) {
+      const checkboxes = [...dates.querySelectorAll('input[name="selectedShowingSlugs"]')];
+      checkboxes.forEach((checkbox, checkboxIndex) => {
+        if (checkbox.disabled) {
+          return;
+        }
+
+        checkbox.checked = checkboxIndex >= index;
+      });
     }
 
     photosInput.addEventListener('change', () => {
@@ -818,6 +841,9 @@ function renderPreviewPage(eventJson: string) {
           \`<div class="summary-item"><span>Штампы</span><strong>\${data.scoring.stampCount}</strong></div>\`,
           \`<div class="summary-item"><span>Баллы</span><strong>\${data.scoring.score}</strong></div>\`,
           \`<div class="summary-item"><span>Выбрано дат</span><strong>\${data.selectedShowings.length}</strong></div>\`,
+          data.scoring.volunteerBonusPoints > 0
+            ? \`<div class="summary-item"><span>Волонтерский бонус</span><strong>+10 баллов — добро! Спасибо за помощь фестивалю.</strong></div>\`
+            : '',
         ].join('');
       } catch (error) {
         setStatus('error', error instanceof Error ? error.message : 'Не удалось отправить заявку.');

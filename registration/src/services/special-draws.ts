@@ -89,6 +89,29 @@ export type SpecialParticipant = {
 
 export type SpecialDrawWinner = SpecialParticipant & {
   position: number;
+  selectedTicket: number;
+  ticketRangeStart: number;
+  ticketRangeEnd: number;
+  poolWeightBeforeDraw: number;
+  randomSource: string;
+};
+
+export type SpecialDrawTicketRange = {
+  applicationId: number;
+  applicationCode: string;
+  score: number;
+  ticketRangeStart: number;
+  ticketRangeEnd: number;
+};
+
+export type SpecialDrawAuditEntry = {
+  position: number;
+  totalTickets: number;
+  selectedTicket: number;
+  winnerApplicationId: number;
+  winnerApplicationCode: string;
+  ticketRanges: SpecialDrawTicketRange[];
+  randomSource: string;
 };
 
 export type SpecialDrawResult = {
@@ -101,6 +124,12 @@ export type SpecialDrawResult = {
   totalWeight: number;
   winners: SpecialDrawWinner[];
   candidates: SpecialParticipant[];
+  drawMechanism: {
+    algorithm: 'weighted_ticket_draw_without_replacement';
+    ticketRule: '1_score_point_equals_1_ticket';
+    randomSource: string;
+    audit: SpecialDrawAuditEntry[];
+  };
 };
 
 function formatKaliningradDateTime(value: string) {
@@ -267,6 +296,8 @@ function mapParticipants(rows: SpecialApplicationRow[], privateKeyPemBase64: str
 function weightedDraw(candidates: SpecialParticipant[], limit: number) {
   const pool = candidates.map((candidate) => ({ ...candidate }));
   const winners: SpecialDrawWinner[] = [];
+  const audit: SpecialDrawAuditEntry[] = [];
+  const randomSource = 'node:crypto.randomInt';
 
   while (pool.length && winners.length < limit) {
     const totalWeight = pool.reduce((sum, candidate) => sum + candidate.score, 0);
@@ -274,24 +305,53 @@ function weightedDraw(candidates: SpecialParticipant[], limit: number) {
       break;
     }
 
-    let target = crypto.randomInt(totalWeight);
-    let winnerIndex = 0;
+    const selectedTicket = crypto.randomInt(totalWeight) + 1;
+    let target = selectedTicket;
+    let winnerIndex = -1;
+    let ticketCursor = 1;
+    const ticketRanges: SpecialDrawTicketRange[] = [];
     for (const [index, candidate] of pool.entries()) {
+      const ticketRangeStart = ticketCursor;
+      const ticketRangeEnd = ticketCursor + candidate.score - 1;
+      ticketRanges.push({
+        applicationId: candidate.applicationId,
+        applicationCode: candidate.applicationCode,
+        score: candidate.score,
+        ticketRangeStart,
+        ticketRangeEnd,
+      });
+
       target -= candidate.score;
-      if (target < 0) {
+      if (winnerIndex === -1 && target <= 0) {
         winnerIndex = index;
-        break;
       }
+      ticketCursor = ticketRangeEnd + 1;
     }
 
-    const [winner] = pool.splice(winnerIndex, 1);
+    const [winner] = pool.splice(Math.max(winnerIndex, 0), 1);
+    const winnerRange = ticketRanges.find((range) => range.applicationId === winner.applicationId);
+    const position = winners.length + 1;
     winners.push({
       ...winner,
-      position: winners.length + 1,
+      position,
+      selectedTicket,
+      ticketRangeStart: winnerRange?.ticketRangeStart ?? selectedTicket,
+      ticketRangeEnd: winnerRange?.ticketRangeEnd ?? selectedTicket,
+      poolWeightBeforeDraw: totalWeight,
+      randomSource,
+    });
+    audit.push({
+      position,
+      totalTickets: totalWeight,
+      selectedTicket,
+      winnerApplicationId: winner.applicationId,
+      winnerApplicationCode: winner.applicationCode,
+      ticketRanges,
+      randomSource,
     });
   }
 
-  return winners;
+  return { winners, audit, randomSource };
 }
 
 function snapshotParticipant(participant: SpecialParticipant) {
@@ -319,12 +379,29 @@ function rowToDrawResult(
   const result = JSON.parse(row.result_json) as {
     totalCandidates: number;
     totalWeight: number;
-    winners: Array<{ applicationId: number; position: number }>;
+    winners: Array<{
+      applicationId: number;
+      position: number;
+      selectedTicket?: number;
+      ticketRangeStart?: number;
+      ticketRangeEnd?: number;
+      poolWeightBeforeDraw?: number;
+      randomSource?: string;
+    }>;
+    drawMechanism?: SpecialDrawResult['drawMechanism'];
   };
   const byId = new Map(candidates.map((candidate) => [candidate.applicationId, candidate]));
   const winners = result.winners.flatMap((winner) => {
     const participant = byId.get(winner.applicationId);
-    return participant ? [{ ...participant, position: winner.position }] : [];
+    return participant ? [{
+      ...participant,
+      position: winner.position,
+      selectedTicket: winner.selectedTicket ?? 0,
+      ticketRangeStart: winner.ticketRangeStart ?? 0,
+      ticketRangeEnd: winner.ticketRangeEnd ?? 0,
+      poolWeightBeforeDraw: winner.poolWeightBeforeDraw ?? result.totalWeight,
+      randomSource: winner.randomSource ?? result.drawMechanism?.randomSource ?? 'node:crypto.randomInt',
+    }] : [];
   });
 
   return {
@@ -337,6 +414,12 @@ function rowToDrawResult(
     totalWeight: result.totalWeight,
     winners,
     candidates,
+    drawMechanism: result.drawMechanism ?? {
+      algorithm: 'weighted_ticket_draw_without_replacement',
+      ticketRule: '1_score_point_equals_1_ticket',
+      randomSource: 'node:crypto.randomInt',
+      audit: [],
+    },
   } satisfies SpecialDrawResult;
 }
 
@@ -427,7 +510,8 @@ export function runSpecialDraw(
   }
 
   const candidates = mapParticipants(listCandidateRows(db, showing), privateKeyPemBase64);
-  const winners = weightedDraw(candidates, showing.lottery_quota);
+  const draw = weightedDraw(candidates, showing.lottery_quota);
+  const winners = draw.winners;
   const totalWeight = candidates.reduce((sum, candidate) => sum + candidate.score, 0);
   const snapshot = {
     createdAt: new Date().toISOString(),
@@ -442,6 +526,12 @@ export function runSpecialDraw(
     totalCandidates: candidates.length,
     totalWeight,
     quota: showing.lottery_quota,
+    drawMechanism: {
+      algorithm: 'weighted_ticket_draw_without_replacement',
+      ticketRule: '1_score_point_equals_1_ticket',
+      randomSource: draw.randomSource,
+      audit: draw.audit,
+    } as const,
     winners: winners.map((winner) => ({
       position: winner.position,
       applicationId: winner.applicationId,
@@ -450,6 +540,11 @@ export function runSpecialDraw(
       score: winner.score,
       stampCount: winner.stampCount,
       noShowCount: winner.noShowCount,
+      selectedTicket: winner.selectedTicket,
+      ticketRangeStart: winner.ticketRangeStart,
+      ticketRangeEnd: winner.ticketRangeEnd,
+      poolWeightBeforeDraw: winner.poolWeightBeforeDraw,
+      randomSource: winner.randomSource,
     })),
   };
 
@@ -479,6 +574,7 @@ export function runSpecialDraw(
     totalWeight,
     winners,
     candidates,
+    drawMechanism: result.drawMechanism,
   } satisfies SpecialDrawResult;
 }
 
@@ -570,8 +666,10 @@ export function formatSpecialDrawResult(result: SpecialDrawResult) {
     result.showing.display_label,
     '',
     `Кандидатов: ${result.totalCandidates}`,
-    `Сумма баллов: ${result.totalWeight}`,
+    `Билетов в барабане: ${result.totalWeight}`,
     `Победителей: ${result.winners.length} из ${result.showing.lottery_quota}`,
+    'Механика: 1 балл = 1 билет; выбирается один случайный номер билета в раунде.',
+    `Источник случайности: ${result.drawMechanism.randomSource}`,
     '',
   ];
 
@@ -582,6 +680,8 @@ export function formatSpecialDrawResult(result: SpecialDrawResult) {
   const winners = result.winners.slice(0, 30).map((winner) => [
     `${winner.position}. ${winner.fullName}`,
     `   Баллы: ${winner.score}, штампы: ${winner.stampCount}, неявки: ${winner.noShowCount}`,
+    `   Раунд: выпал билет №${winner.selectedTicket} из ${winner.poolWeightBeforeDraw}`,
+    `   Билеты участника: №${winner.ticketRangeStart}–${winner.ticketRangeEnd} (${winner.score} шт.)`,
     `   ${maskEmail(winner.email)}, ${maskPhone(winner.phone)}`,
     `   Код заявки: ${winner.applicationCode}`,
   ].join('\n'));
@@ -606,6 +706,10 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
     { header: 'Телефон', key: 'phone', width: 20 },
     { header: 'Код заявки', key: 'applicationCode', width: 42 },
     { header: 'Баллы', key: 'score', width: 10 },
+    { header: 'Выпавший билет', key: 'selectedTicket', width: 18 },
+    { header: 'Всего билетов в раунде', key: 'poolWeightBeforeDraw', width: 24 },
+    { header: 'Диапазон билетов победителя', key: 'ticketRange', width: 30 },
+    { header: 'Источник случайности', key: 'randomSource', width: 28 },
     { header: 'Штампы', key: 'stampCount', width: 10 },
     { header: 'Неявки', key: 'noShowCount', width: 10 },
     { header: 'Дата заявки', key: 'createdAt', width: 28 },
@@ -619,6 +723,10 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
       phone: winner.phone,
       applicationCode: winner.applicationCode,
       score: winner.score,
+      selectedTicket: winner.selectedTicket,
+      poolWeightBeforeDraw: winner.poolWeightBeforeDraw,
+      ticketRange: `№${winner.ticketRangeStart}–№${winner.ticketRangeEnd}`,
+      randomSource: winner.randomSource,
       stampCount: winner.stampCount,
       noShowCount: winner.noShowCount,
       createdAt: formatKaliningradDateTime(winner.createdAt),
@@ -652,7 +760,34 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
     });
   }
 
-  for (const sheet of [winnersSheet, candidatesSheet]) {
+  const auditSheet = workbook.addWorksheet('Аудит розыгрыша');
+  auditSheet.columns = [
+    { header: 'Место', key: 'position', width: 10 },
+    { header: 'Всего билетов в раунде', key: 'totalTickets', width: 24 },
+    { header: 'Выпавший билет', key: 'selectedTicket', width: 18 },
+    { header: 'Код заявки', key: 'applicationCode', width: 42 },
+    { header: 'Баллы участника', key: 'score', width: 18 },
+    { header: 'Диапазон билетов', key: 'ticketRange', width: 24 },
+    { header: 'Победитель', key: 'winner', width: 14 },
+    { header: 'Источник случайности', key: 'randomSource', width: 28 },
+  ];
+
+  for (const round of result.drawMechanism.audit) {
+    for (const range of round.ticketRanges) {
+      auditSheet.addRow({
+        position: round.position,
+        totalTickets: round.totalTickets,
+        selectedTicket: round.selectedTicket,
+        applicationCode: range.applicationCode,
+        score: range.score,
+        ticketRange: `№${range.ticketRangeStart}–№${range.ticketRangeEnd}`,
+        winner: range.applicationId === round.winnerApplicationId ? 'да' : '',
+        randomSource: round.randomSource,
+      });
+    }
+  }
+
+  for (const sheet of [winnersSheet, candidatesSheet, auditSheet]) {
     sheet.getRow(1).font = { bold: true };
     sheet.views = [{ state: 'frozen', ySplit: 1 }];
   }

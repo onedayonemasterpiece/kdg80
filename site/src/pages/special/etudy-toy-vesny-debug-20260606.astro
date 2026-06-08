@@ -1,0 +1,608 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import SiteHeader from '../../components/SiteHeader.astro';
+import { getRouteNavItems } from '../../lib/routes';
+
+const apiBaseUrl = (import.meta.env.PUBLIC_REGISTRATION_API_BASE_URL || 'https://znanie-kgd80-fest.fly.dev').replace(/\/+$/u, '');
+const token = 'etudy-toy-vesny-debug-20260606';
+const eventSlug = 'etudy-toy-vesny';
+const routeItems = getRouteNavItems();
+const canonicalPath = `/special/${token}/`;
+const title = 'Заявка на розыгрыш — Этюды той весны';
+const description = 'Секретная тестовая страница заявки на розыгрыш приглашений на иммерсивный спектакль «Этюды той весны».';
+---
+
+<Layout
+  title={title}
+  description={description}
+  canonicalPath={canonicalPath}
+  robots="noindex, nofollow, noarchive"
+>
+  <div class="special-page">
+    <SiteHeader programHref="/programma/" routeItems={routeItems} />
+    <main class="special-page__main">
+      <section class="special-intro" aria-labelledby="special-title">
+        <p class="special-kicker">Заявка на розыгрыш</p>
+        <h1 id="special-title">Этюды той весны</h1>
+        <p class="special-lead">Иммерсивный спектакль фестиваля «80 историй о главном». После проверки паспорта участника фестиваля заявка попадает в розыгрыш выбранных дат.</p>
+        <ul class="special-meta" aria-label="Показы спектакля">
+          <li><strong>11 июня</strong><span>18:00 · Южный Вокзал</span></li>
+          <li><strong>23 июня</strong><span>Южный Вокзал · время уточняется</span></li>
+          <li><strong>25 июня</strong><span>Южный Вокзал · время уточняется</span></li>
+        </ul>
+        <p class="special-note"><strong>Важно:</strong> заявка не является билетом. Победители получат приглашение на конкретный показ после розыгрыша.</p>
+      </section>
+
+      <form class="special-form" data-special-form>
+        <div class="special-form__head">
+          <h2>Подать заявку</h2>
+          <p>Выберите даты, на которые сможете прийти, и приложите фото паспорта участника фестиваля.</p>
+        </div>
+
+        <input type="hidden" name="website" autocomplete="off" />
+
+        <fieldset>
+          <legend>Даты показа</legend>
+          <p class="special-hint">Выберите самую раннюю дату, на которую хотите попасть: будущие показы отметятся автоматически. Если дополнительная дата не подходит, снимите галочку.</p>
+          <div class="special-dates" data-special-dates aria-live="polite"></div>
+        </fieldset>
+
+        <div class="special-closed" data-special-closed hidden>Все даты уже закрыты для заявки.</div>
+
+        <div class="special-fields">
+          <label>ФИО
+            <input name="fullName" type="text" autocomplete="name" maxlength="120" placeholder="Фамилия Имя Отчество" required />
+          </label>
+          <label>Email
+            <input name="email" type="email" autocomplete="email" maxlength="254" placeholder="name@example.com" required />
+          </label>
+          <label>Телефон
+            <input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+7 (___) ___-__-__" required />
+          </label>
+        </div>
+
+        <fieldset>
+          <legend>Паспорт участника фестиваля</legend>
+          <label class="special-upload">
+            <input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple required data-special-photos />
+            <span class="special-upload__plus" aria-hidden="true">+</span>
+            <span>
+              <strong>Приложите фотографию паспорта участника фестиваля</strong>
+              <span>С заполненным полем ФИО. Если у вас несколько экземпляров, приложите несколько фотографий. Фотографии принимаются только с лицевой стороны.</span>
+            </span>
+          </label>
+          <p class="special-hint">У вас должно быть не менее 5 штампов о посещении событий фестиваля.</p>
+          <div class="special-files" data-special-files></div>
+        </fieldset>
+
+        <label class="special-consent">
+          <input name="consentAccepted" type="checkbox" required />
+          <span>Согласен на обработку персональных данных, загрузку фотографий паспорта участника фестиваля и автоматическую OCR/LLM-проверку изображений для участия в розыгрыше.</span>
+        </label>
+
+        <button class="special-submit" type="submit" data-special-submit>Отправить заявку</button>
+        <div class="special-status" data-special-status role="status" aria-live="polite"></div>
+        <div class="special-summary" data-special-summary hidden></div>
+      </form>
+    </main>
+  </div>
+
+  <script define:vars={{ apiBaseUrl, token, eventSlug }} is:inline>
+    const form = document.querySelector('[data-special-form]');
+    const dates = document.querySelector('[data-special-dates]');
+    const photosInput = document.querySelector('[data-special-photos]');
+    const fileList = document.querySelector('[data-special-files]');
+    const statusEl = document.querySelector('[data-special-status]');
+    const summaryEl = document.querySelector('[data-special-summary]');
+    const submit = document.querySelector('[data-special-submit]');
+    const closedPanel = document.querySelector('[data-special-closed]');
+    let specialEvent = null;
+    let previewUrls = [];
+    let submitted = false;
+
+    const htmlEntities = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    };
+
+    const escapeHtml = (value) => Array.from(String(value))
+      .map((character) => htmlEntities[character] || character)
+      .join('');
+
+    const setStatus = (kind, text) => {
+      statusEl.dataset.kind = kind;
+      statusEl.textContent = text;
+    };
+
+    const fileToBase64 = (file) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('file_read_failed'));
+      reader.onload = () => {
+        const text = String(reader.result || '');
+        resolve(text.includes(',') ? text.split(',').pop() : text);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    const selectCascadeFrom = (index) => {
+      const checkboxes = [...dates.querySelectorAll('input[name="selectedShowingSlugs"]')];
+      checkboxes.forEach((checkbox, checkboxIndex) => {
+        if (!checkbox.disabled) {
+          checkbox.checked = checkboxIndex >= index;
+        }
+      });
+    };
+
+    const renderDates = () => {
+      const firstAvailableIndex = specialEvent.showings.findIndex((showing) => showing.applicationAvailable);
+      const hasAvailableShowings = firstAvailableIndex >= 0;
+      dates.innerHTML = specialEvent.showings.map((showing, index) => {
+        const disabled = !showing.applicationAvailable;
+        const quotaText = `Всего мест: ${showing.physicalQuota} · в розыгрыше: ${showing.lotteryQuota}${showing.reservedSeats ? ` · бронь: ${showing.reservedSeats}` : ''}`;
+        return `
+          <label class="special-date${disabled ? ' is-disabled' : ''}">
+            <input type="checkbox" name="selectedShowingSlugs" value="${escapeHtml(showing.slug)}" data-showing-index="${index}" ${disabled ? 'disabled' : ''}>
+            <span>
+              <strong>${escapeHtml(showing.displayLabel)}</strong>
+              <small>${escapeHtml(quotaText)}${showing.timeIsFinal ? '' : ' · время уточняется'}</small>
+              ${disabled ? `<em>${escapeHtml(showing.unavailableReason || 'Дата закрыта для заявки.')}</em>` : ''}
+            </span>
+          </label>
+        `;
+      }).join('');
+
+      closedPanel.hidden = hasAvailableShowings;
+      if (hasAvailableShowings) {
+        selectCascadeFrom(firstAvailableIndex);
+      } else {
+        submit.disabled = true;
+        submit.textContent = 'Заявки закрыты';
+        setStatus('error', 'Регистрация на все даты этого спецмероприятия закрыта.');
+      }
+    };
+
+    const loadEvent = async () => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/v1/special/events/${eventSlug}?token=${encodeURIComponent(token)}`);
+        if (!response.ok) {
+          throw new Error('event_load_failed');
+        }
+        specialEvent = await response.json();
+        renderDates();
+      } catch {
+        submit.disabled = true;
+        setStatus('error', 'Не удалось загрузить даты показа. Обновите страницу чуть позже.');
+      }
+    };
+
+    dates.addEventListener('change', (event) => {
+      const input = event.target;
+      if (!(input instanceof HTMLInputElement) || input.name !== 'selectedShowingSlugs' || !input.checked) {
+        return;
+      }
+      selectCascadeFrom(Number(input.dataset.showingIndex || '0'));
+    });
+
+    photosInput.addEventListener('change', () => {
+      const files = [...photosInput.files];
+      previewUrls.forEach((url) => URL.revokeObjectURL(url));
+      previewUrls = files.map((file) => URL.createObjectURL(file));
+      fileList.innerHTML = files.map((file, index) => `
+        <span class="special-file"><img src="${previewUrls[index]}" alt=""><span class="special-file__name">${escapeHtml(file.name)}</span></span>
+      `).join('');
+    });
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!specialEvent) {
+        return;
+      }
+
+      summaryEl.hidden = true;
+      summaryEl.textContent = '';
+      setStatus('', '');
+      submit.disabled = true;
+      submit.textContent = 'Проверяем фото...';
+
+      try {
+        const formData = new FormData(form);
+        const selectedShowingSlugs = formData.getAll('selectedShowingSlugs');
+        if (!selectedShowingSlugs.length) {
+          throw new Error('Выберите хотя бы одну доступную дату показа.');
+        }
+
+        const files = [...photosInput.files];
+        const photos = await Promise.all(files.map(async (file) => ({
+          fileName: file.name,
+          contentType: file.type || 'application/octet-stream',
+          dataBase64: await fileToBase64(file),
+        })));
+
+        const response = await fetch(`${apiBaseUrl}/api/v1/special/applications`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            token,
+            eventSlug: specialEvent.slug,
+            selectedShowingSlugs,
+            fullName: String(formData.get('fullName') || ''),
+            email: String(formData.get('email') || ''),
+            phone: String(formData.get('phone') || ''),
+            consentAccepted: formData.get('consentAccepted') === 'on',
+            website: String(formData.get('website') || ''),
+            photos,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.message || 'Не удалось отправить заявку.');
+        }
+        submitted = data.status === 'accepted';
+
+        setStatus(
+          data.status === 'accepted' ? 'success' : 'error',
+          data.status === 'accepted'
+            ? 'Заявка принята к розыгрышу. Это не билет; результаты будут подведены отдельно.'
+            : data.rejectionReason || 'Заявка не допущена к розыгрышу.',
+        );
+        summaryEl.hidden = false;
+        summaryEl.innerHTML = [
+          `<div><span class="special-summary__label">Код заявки:</span><strong class="special-summary__value">${escapeHtml(data.applicationCode)}</strong></div>`,
+          `<div><span class="special-summary__label">Штампы:</span><strong class="special-summary__value">${data.scoring.stampCount}</strong></div>`,
+          `<div><span class="special-summary__label">Баллы:</span><strong class="special-summary__value">${data.scoring.score}</strong></div>`,
+          `<div><span class="special-summary__label">Выбрано дат:</span><strong class="special-summary__value">${data.selectedShowings.length}</strong></div>`,
+          data.scoring.volunteerBonusPoints > 0
+            ? `<div class="special-summary__wide"><span class="special-summary__label">Волонтерский бонус:</span><strong class="special-summary__value">+10 баллов — добро! Спасибо за помощь фестивалю.</strong></div>`
+            : '',
+        ].join('');
+      } catch (error) {
+        setStatus('error', error instanceof Error ? error.message : 'Не удалось отправить заявку.');
+      } finally {
+        if (submitted) {
+          submit.disabled = true;
+          submit.textContent = 'Заявка отправлена';
+        } else if (!closedPanel.hidden) {
+          submit.disabled = true;
+          submit.textContent = 'Заявки закрыты';
+        } else {
+          submit.disabled = false;
+          submit.textContent = 'Отправить заявку';
+        }
+      }
+    });
+
+    loadEvent();
+  </script>
+</Layout>
+
+<style>
+  .special-page {
+    min-height: 100dvh;
+    background:
+      linear-gradient(115deg, rgba(255, 251, 244, 0.96), rgba(248, 239, 228, 0.9)),
+      url('/shared-assets/hero-added-05.webp') center / cover fixed;
+    color: #15110f;
+  }
+
+  .special-page__main {
+    width: min(1180px, calc(100% - 2rem));
+    margin: 0 auto;
+    padding: clamp(2rem, 5vw, 4rem) 0 clamp(3rem, 6vw, 5rem);
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(24rem, 1.1fr);
+    gap: clamp(1.5rem, 4vw, 3rem);
+    align-items: start;
+  }
+
+  .special-intro {
+    display: grid;
+    gap: 1.4rem;
+  }
+
+  .special-kicker,
+  .special-hint,
+  .special-dates :global(.special-date small),
+  .special-summary :global(span) {
+    color: rgba(21, 17, 15, 0.62);
+  }
+
+  .special-kicker {
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .special-intro h1 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: clamp(3.2rem, 8vw, 6.8rem);
+    line-height: 0.9;
+    letter-spacing: -0.04em;
+  }
+
+  .special-lead,
+  .special-note {
+    max-width: 34rem;
+    margin: 0;
+    font-size: 1.08rem;
+    line-height: 1.55;
+    color: rgba(21, 17, 15, 0.72);
+  }
+
+  .special-meta {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.65rem;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+  }
+
+  .special-meta li,
+  .special-note,
+  .special-form,
+  .special-dates :global(.special-date),
+  .special-summary :global(div) {
+    border: 1px solid rgba(21, 17, 15, 0.1);
+    background: rgba(255, 253, 249, 0.78);
+  }
+
+  .special-meta li {
+    min-height: 7rem;
+    padding: 1rem;
+    border-radius: 1rem;
+    display: grid;
+    align-content: space-between;
+  }
+
+  .special-meta strong {
+    font-family: var(--font-display);
+    font-size: 1.7rem;
+    line-height: 0.95;
+  }
+
+  .special-meta span {
+    color: rgba(21, 17, 15, 0.64);
+  }
+
+  .special-note {
+    padding: 1rem 1.15rem;
+    border-radius: 1rem;
+  }
+
+  .special-form {
+    display: grid;
+    gap: 1.15rem;
+    padding: clamp(1.1rem, 3vw, 1.6rem);
+    border-radius: 1.4rem;
+    box-shadow: 0 22px 70px rgba(21, 17, 15, 0.12);
+    backdrop-filter: blur(10px);
+  }
+
+  .special-form__head h2 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 4vw, 3rem);
+    line-height: 0.96;
+  }
+
+  .special-form__head p,
+  .special-hint {
+    margin: 0.45rem 0 0;
+    line-height: 1.5;
+  }
+
+  .special-form fieldset {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .special-form legend {
+    padding: 0;
+    font-weight: 800;
+  }
+
+  .special-dates,
+  .special-fields,
+  .special-summary {
+    display: grid;
+    gap: 0.65rem;
+  }
+
+  .special-dates :global(.special-date) {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.75rem;
+    padding: 0.9rem;
+    border-radius: 0.85rem;
+    cursor: pointer;
+  }
+
+  .special-dates :global(.special-date input) {
+    width: 1.2rem;
+    height: 1.2rem;
+    margin-top: 0.16rem;
+    accent-color: #d8482f;
+  }
+
+  .special-dates :global(.special-date strong),
+  .special-dates :global(.special-date small),
+  .special-dates :global(.special-date em) {
+    display: block;
+    font-style: normal;
+  }
+
+  .special-dates :global(.special-date em) {
+    margin-top: 0.2rem;
+    color: #9b2f20;
+  }
+
+  .special-dates :global(.special-date.is-disabled) {
+    opacity: 0.62;
+    cursor: not-allowed;
+  }
+
+  .special-fields label {
+    display: grid;
+    gap: 0.38rem;
+    font-weight: 800;
+  }
+
+  .special-fields input {
+    min-height: 3rem;
+    border: 1px solid rgba(21, 17, 15, 0.16);
+    border-radius: 0.7rem;
+    padding: 0.7rem 0.85rem;
+    font: inherit;
+    background: rgba(255, 255, 255, 0.82);
+  }
+
+  .special-upload {
+    min-height: 12rem;
+    display: grid;
+    place-items: center;
+    gap: 0.8rem;
+    padding: 1.2rem;
+    border: 1.5px dashed rgba(216, 72, 47, 0.48);
+    border-radius: 1rem;
+    background: rgba(216, 72, 47, 0.07);
+    text-align: center;
+    cursor: pointer;
+  }
+
+  .special-upload input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .special-upload__plus {
+    display: inline-grid;
+    place-items: center;
+    width: 3.2rem;
+    height: 3.2rem;
+    margin: 0 auto 0.7rem;
+    border-radius: 50%;
+    background: #d8482f;
+    color: #fff;
+    font-size: 2rem;
+    line-height: 1;
+  }
+
+  .special-upload span span {
+    display: block;
+    margin-top: 0.4rem;
+    color: rgba(21, 17, 15, 0.62);
+  }
+
+  .special-files {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .special-files :global(.special-file) {
+    min-width: 0;
+    display: grid;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+    color: rgba(21, 17, 15, 0.68);
+  }
+
+  .special-files :global(.special-file img) {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 0.65rem;
+  }
+
+  .special-files :global(.special-file__name) {
+    display: block;
+    max-width: 100%;
+    min-width: 0;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    word-break: break-all;
+    white-space: normal;
+  }
+
+  .special-consent {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.65rem;
+    font-size: 0.92rem;
+    line-height: 1.45;
+  }
+
+  .special-submit {
+    min-height: 3.2rem;
+    border: 0;
+    border-radius: 0.75rem;
+    background: #d8482f;
+    color: #fff;
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .special-submit:disabled {
+    cursor: not-allowed;
+    opacity: 0.72;
+  }
+
+  .special-status[data-kind="success"] {
+    color: #236144;
+  }
+
+  .special-status[data-kind="error"],
+  .special-closed {
+    color: #9b2f20;
+  }
+
+  .special-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .special-summary[hidden] {
+    display: none;
+  }
+
+  .special-summary :global(div) {
+    min-width: 0;
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.75rem;
+    border-radius: 0.75rem;
+  }
+
+  .special-summary :global(span) {
+    display: block;
+    font-size: 0.78rem;
+  }
+
+  .special-summary :global(strong) {
+    display: block;
+    overflow-wrap: anywhere;
+  }
+
+  .special-summary :global(.special-summary__wide) {
+    grid-column: 1 / -1;
+  }
+
+  @media (max-width: 900px) {
+    .special-page__main,
+    .special-meta,
+    .special-summary {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -2,10 +2,13 @@ import crypto from 'node:crypto';
 import type Database from 'better-sqlite3';
 import type { StoragePublisher } from '../lib/storage';
 import { computeFingerprint, decryptPii, encryptPii } from '../lib/crypto';
+import { LlmProviderError, runLlmLimited } from '../lib/llm-rate-limiter';
 import { normalizeEmail, normalizeFullName, normalizePhone } from '../lib/normalize';
 import { enqueueSpecialApplicationCreated } from './telegram-outbox';
+import { findSpecialVolunteerMatch } from './special-volunteers';
 
-const SPECIAL_PHOTO_PREFIX = 'special-passports';
+const SPECIAL_PHOTO_PREFIX = (process.env.SPECIAL_PHOTO_PREFIX?.trim() || 'exports/special-passports')
+  .replace(/^\/+|\/+$/gu, '');
 const MAX_PHOTO_BYTES = 6 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
@@ -223,6 +226,11 @@ function safeNumber(value: unknown, fallback: number) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
+function readPositiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 function normalizeOcrBoolean(value: unknown) {
   return value === true || value === 'true' || value === 1 || value === '1';
 }
@@ -282,6 +290,24 @@ function knownDebugOcr(sha256: string): OcrResult | null {
   return parsed ? mapOcrJson(parsed, 'debug-fixture', null) : null;
 }
 
+function parseRetryAfterMs(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const seconds = Number.parseFloat(value);
+  if (Number.isFinite(seconds)) {
+    return Math.max(0, Math.trunc(seconds * 1_000));
+  }
+
+  const timestamp = Date.parse(value);
+  if (Number.isFinite(timestamp)) {
+    return Math.max(0, timestamp - Date.now());
+  }
+
+  return null;
+}
+
 async function runOpenAiPassportOcr(photo: PreparedPhoto): Promise<OcrResult> {
   const token = process.env.FOUR_O_TOKEN?.trim() || process.env.OPENAI_API_KEY?.trim();
   if (!token) {
@@ -296,67 +322,99 @@ async function runOpenAiPassportOcr(photo: PreparedPhoto): Promise<OcrResult> {
   const model = process.env.SPECIAL_OCR_OPENAI_MODEL?.trim() || 'gpt-4o-mini';
   const url = process.env.FOUR_O_URL?.trim() || 'https://api.openai.com/v1/chat/completions';
   const dataUrl = `data:${photo.contentType};base64,${photo.bytes.toString('base64')}`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${token}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: 'system',
-          content: [
-            'Ты проверяешь фото паспорта участника фестиваля для допуска к розыгрышу.',
-            'Не раскрывай полное ФИО в ответе.',
-            'Отдельные видимые штампы на одной странице считаются отдельными посещениями, даже если дизайн штампов одинаковый.',
-            'Верни только JSON без markdown.',
-          ].join(' '),
-        },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: [
-                'Определи, есть ли заполненное поле ФИО, и посчитай видимые штампы посещений.',
-                'Минимум допуска: заполненное ФИО и 5 штампов.',
-                'Верни JSON с полями has_full_name, stamp_count, accepted, rejection_reason, confidence, notes.',
-              ].join(' '),
-            },
-            {
-              type: 'image_url',
-              image_url: {
-                url: dataUrl,
-                detail: 'high',
+  let limited: Awaited<ReturnType<typeof runLlmLimited<OcrResult>>>;
+  try {
+    limited = await runLlmLimited(async () => {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      signal: AbortSignal.timeout(readPositiveInteger(process.env.SPECIAL_OCR_OPENAI_TIMEOUT_MS, 45_000)),
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'system',
+            content: [
+              'Ты проверяешь фото паспорта участника фестиваля для допуска к розыгрышу.',
+              'Не раскрывай полное ФИО в ответе.',
+              'Отдельные видимые штампы на одной странице считаются отдельными посещениями, даже если дизайн штампов одинаковый.',
+              'Верни только JSON без markdown.',
+            ].join(' '),
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: [
+                  'Определи, есть ли заполненное поле ФИО, и посчитай видимые штампы посещений.',
+                  'Минимум допуска: заполненное ФИО и 5 штампов.',
+                  'Верни JSON с полями has_full_name, stamp_count, accepted, rejection_reason, confidence, notes.',
+                ].join(' '),
               },
-            },
-          ],
-        },
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0,
-    }),
-  });
+              {
+                type: 'image_url',
+                image_url: {
+                  url: dataUrl,
+                  detail: 'high',
+                },
+              },
+            ],
+          },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0,
+      }),
+    });
 
-  if (!response.ok) {
+    if (!response.ok) {
+      throw new LlmProviderError(
+        `OCR provider failed with HTTP ${response.status}`,
+        response.status,
+        parseRetryAfterMs(response.headers.get('retry-after')),
+      );
+    }
+
+    const payload = await response.json() as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = payload.choices?.[0]?.message?.content?.trim() || '';
+    let parsed: Record<string, unknown>;
+
+    try {
+      parsed = JSON.parse(content) as Record<string, unknown>;
+    } catch {
+      throw new SpecialApplicationError(502, 'ocr_invalid_response', 'Автоматическая проверка вернула неожиданный ответ.');
+    }
+
+    return mapOcrJson(parsed, 'openai', model);
+    }, {
+      consumer: 'registration-special-passport-ocr',
+      provider: 'openai',
+      model,
+    });
+  } catch (error) {
+    if (error instanceof SpecialApplicationError) {
+      throw error;
+    }
+
+    if (error instanceof LlmProviderError && error.statusCode === 429) {
+      throw new SpecialApplicationError(503, 'ocr_rate_limited', 'Автоматическая проверка временно перегружена. Попробуйте ещё раз чуть позже.');
+    }
+
     throw new SpecialApplicationError(502, 'ocr_failed', 'Не удалось автоматически проверить фото. Попробуйте ещё раз чуть позже.');
   }
 
-  const payload = await response.json() as {
-    choices?: Array<{ message?: { content?: string } }>;
+  return {
+    ...limited.value,
+    raw: {
+      ...limited.value.raw,
+      limiter: limited.trace,
+    },
   };
-  const content = payload.choices?.[0]?.message?.content?.trim() || '';
-  let parsed: Record<string, unknown>;
-
-  try {
-    parsed = JSON.parse(content) as Record<string, unknown>;
-  } catch {
-    throw new SpecialApplicationError(502, 'ocr_invalid_response', 'Автоматическая проверка вернула неожиданный ответ.');
-  }
-
-  return mapOcrJson(parsed, 'openai', model);
 }
 
 function computeScore(options: {
@@ -367,6 +425,7 @@ function computeScore(options: {
   extraStampPoints: number;
   noShowGraceCount: number;
   noShowPenaltyPoints: number;
+  volunteerBonusPoints: number;
 }) {
   if (options.stampCount < options.minStampCount) {
     return {
@@ -381,6 +440,7 @@ function computeScore(options: {
   const score = Math.max(
     options.basePoints
       + extraStamps * options.extraStampPoints
+      + options.volunteerBonusPoints
       - penaltyCount * options.noShowPenaltyPoints,
     0,
   );
@@ -398,6 +458,13 @@ function normalizeNameForMatching(value: string) {
   return normalizeFullName(value)
     .toLowerCase()
     .replace(/ё/gu, 'е');
+}
+
+function stripInternalTestPrefixForMatching(value: string) {
+  return value
+    .trim()
+    .replace(/\s+/gu, ' ')
+    .replace(/^(?:тест|test)\s+/iu, '');
 }
 
 function nameTokens(value: string) {
@@ -455,8 +522,9 @@ function countOrdinaryRegistrationsByFullName(
     } satisfies OrdinaryRegistrationNameMatchSummary;
   }
 
-  const target = normalizeNameForMatching(normalizedFullName);
-  const targetTokens = nameTokens(normalizedFullName);
+  const matchFullName = stripInternalTestPrefixForMatching(normalizedFullName);
+  const target = normalizeNameForMatching(matchFullName);
+  const targetTokens = nameTokens(matchFullName);
   const rows = db.prepare(`
     SELECT pii_ciphertext, pii_wrapped_key, pii_iv, pii_alg
     FROM registrations
@@ -645,6 +713,7 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     deps.privateKeyPemBase64,
     fullName,
   );
+  const volunteerMatch = findSpecialVolunteerMatch(stripInternalTestPrefixForMatching(fullName));
   const scoreResult = computeScore({
     stampCount,
     ordinaryRegistrationCount: ordinaryRegistrationMatchSummary.totalCount,
@@ -653,6 +722,7 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     extraStampPoints: loaded.event.extra_stamp_points,
     noShowGraceCount: loaded.event.no_show_grace_count,
     noShowPenaltyPoints: loaded.event.no_show_penalty_points,
+    volunteerBonusPoints: volunteerMatch.bonusPoints,
   });
   const rejectionReasons = [
     hasFullName ? null : 'На фото не распознано заполненное поле ФИО.',
@@ -674,6 +744,7 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     acceptedPhotoCount,
     uniquePhotoCount,
     ordinaryRegistrationMatch: ordinaryRegistrationMatchSummary,
+    volunteerMatch,
     photos: photoResults.map((photo) => ({
       fileName: photo.fileName,
       sha256: photo.sha256,
@@ -732,6 +803,8 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
         stamp_count,
         ordinary_registration_count,
         no_show_count,
+        volunteer_bonus_points,
+        volunteer_match_json,
         score,
         ocr_provider,
         ocr_model,
@@ -761,6 +834,8 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
         @stampCount,
         @ordinaryRegistrationCount,
         @noShowCount,
+        @volunteerBonusPoints,
+        @volunteerMatchJson,
         @score,
         @ocrProvider,
         @ocrModel,
@@ -788,6 +863,8 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
       stampCount,
       ordinaryRegistrationCount: ordinaryRegistrationMatchSummary.totalCount,
       noShowCount: scoreResult.noShowCount,
+      volunteerBonusPoints: volunteerMatch.bonusPoints,
+      volunteerMatchJson: JSON.stringify(volunteerMatch),
       score: scoreResult.score,
       ocrProvider,
       ocrModel,
@@ -875,6 +952,8 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
       stampCount,
       ordinaryRegistrationCount: ordinaryRegistrationMatchSummary.totalCount,
       noShowCount: scoreResult.noShowCount,
+      volunteerBonusPoints: volunteerMatch.bonusPoints,
+      volunteerMatch,
       score: scoreResult.score,
       uploadedPhotoCount: photos.length,
       uniquePhotoCount,

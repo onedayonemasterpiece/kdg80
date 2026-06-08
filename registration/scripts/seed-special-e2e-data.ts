@@ -146,10 +146,26 @@ const seeded = [];
 seeded.push(await seedApplication({
   eventSlug: 'etudy-toy-vesny',
   token: ETUDY_TOKEN,
-  selectedShowingSlugs: ['2026-06-11-1800'],
+  selectedShowingSlugs: ['2026-06-11-1800', '2026-06-23', '2026-06-25'],
   fullName: 'ТЕСТ Победитель Один',
   email: 'winner-one@example.test',
   phone: '+79000000001',
+}));
+seeded.push(await seedApplication({
+  eventSlug: 'etudy-toy-vesny',
+  token: ETUDY_TOKEN,
+  selectedShowingSlugs: ['2026-06-23', '2026-06-25'],
+  fullName: 'ТЕСТ Победитель Два',
+  email: 'winner-two@example.test',
+  phone: '+79000000021',
+}));
+seeded.push(await seedApplication({
+  eventSlug: 'etudy-toy-vesny',
+  token: ETUDY_TOKEN,
+  selectedShowingSlugs: ['2026-06-25'],
+  fullName: 'ТЕСТ Победитель Три',
+  email: 'winner-three@example.test',
+  phone: '+79000000022',
 }));
 seeded.push(await seedApplication({
   eventSlug: 'zoo-excursion-e2e',

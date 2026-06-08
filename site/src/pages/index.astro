@@ -30,6 +30,7 @@ const routeItems = getRouteNavItems();
 const now = new Date();
 const programHref = getSmartProgramHref(events, true, now);
 const homepageHeroMyths = getHomepageHeroMyths();
+const SPECIAL_REGISTRATION_HREF = '/special/etudy-toy-vesny-debug-20260606/';
 const SPEAKER_SHOWCASE_LIMIT = 8;
 const allSpeakerShowcase = getSpeakerShowcase(events, Number.POSITIVE_INFINITY);
 const speakerShowcase = allSpeakerShowcase.slice(0, SPEAKER_SHOWCASE_LIMIT);
@@ -42,6 +43,8 @@ type HeroVariantBase = {
   kind: 'quote' | 'myth';
   prompt: string;
   priority: number;
+  ctaLabel?: string;
+  fixedFirst?: boolean;
 };
 type HeroQuoteVariantSpec = {
   id: string;
@@ -71,7 +74,7 @@ type HeroMythVariant = HeroVariantBase & {
   title: string;
   body: string;
   eventHref: string;
-  themeHref: string;
+  themeHref?: string;
 };
 type HeroVariant = HeroQuoteVariant | HeroMythVariant;
 
@@ -730,7 +733,19 @@ const fallbackHeroVariant: HeroMythVariant = {
   themeHref: '/zaselenie-i-obzhivanie/',
   priority: 1,
 };
-const heroStoryVariants = heroVariants.length ? heroVariants : [fallbackHeroVariant];
+const specialHeroVariant: HeroMythVariant = {
+  id: 'special-etudy-toy-vesny',
+  kind: 'myth',
+  prompt: 'Заявка на розыгрыш',
+  label: 'Заявка на розыгрыш',
+  title: 'Этюды той весны',
+  body: 'Иммерсивный спектакль на площадке Южный Вокзал: 11 июня в 18:00, а также показы 23 и 25 июня. Заявка не является билетом — победители получат приглашение после розыгрыша.',
+  eventHref: SPECIAL_REGISTRATION_HREF,
+  ctaLabel: 'Подать заявку на розыгрыш',
+  priority: 1000,
+  fixedFirst: true,
+};
+const heroStoryVariants = [specialHeroVariant, ...(heroVariants.length ? heroVariants : [fallbackHeroVariant])];
 const defaultHeroVariant = heroStoryVariants[0];
 const defaultHeroIsQuote = isHeroQuoteVariant(defaultHeroVariant);
 const defaultHeroIsMyth = isHeroMythVariant(defaultHeroVariant);
@@ -872,16 +887,16 @@ const heroVariantsPayload = JSON.stringify(heroStoryVariants);
                         data-hero-event-link
                         href={defaultHeroIsQuote ? (defaultHeroVariant.eventHref ?? programHref) : defaultHeroVariant.eventHref}
                       >
-                        {defaultHeroIsQuote ? 'К лекции' : 'К событию'}
+                        {defaultHeroVariant.ctaLabel ?? (defaultHeroIsQuote ? 'К лекции' : 'К событию')}
                       </a>
                       <a
                         class="hero-showcase__theme-link"
                         data-hero-theme-link
                         data-hero-theme-cta
                         href={defaultHeroIsMyth ? defaultHeroVariant.themeHref : undefined}
-                        hidden={!defaultHeroIsMyth}
+                        hidden={!(defaultHeroIsMyth && defaultHeroVariant.themeHref)}
                       >
-                        {defaultHeroIsMyth ? 'Больше мифов по теме' : ''}
+                        {defaultHeroIsMyth && defaultHeroVariant.themeHref ? 'Больше мифов по теме' : ''}
                       </a>
                       {heroStoryVariants.length > 1 && (
                         <button class="hero-showcase__next" type="button" data-hero-next aria-label="Показать другую историю первого экрана">
@@ -1040,15 +1055,18 @@ const heroVariantsPayload = JSON.stringify(heroStoryVariants);
         return deck;
       };
 
+      const fixedIndexes = variants
+        .map((variant, index) => ({ ...variant, index }))
+        .filter((variant) => variant.fixedFirst)
+        .map((variant) => variant.index);
+      const flexibleVariants = variants
+        .map((variant, index) => ({ ...variant, index }))
+        .filter((variant) => !variant.fixedFirst);
       const quotes = weightedShuffle(
-        variants
-          .map((variant, index) => ({ ...variant, index }))
-          .filter((variant) => variant.kind === 'quote'),
+        flexibleVariants.filter((variant) => variant.kind === 'quote'),
       );
       const myths = weightedShuffle(
-        variants
-          .map((variant, index) => ({ ...variant, index }))
-          .filter((variant) => variant.kind === 'myth'),
+        flexibleVariants.filter((variant) => variant.kind === 'myth'),
       );
       const deck = [];
       let expectsQuote = quotes.length > 0;
@@ -1067,7 +1085,7 @@ const heroVariantsPayload = JSON.stringify(heroStoryVariants);
         expectsQuote = !expectsQuote;
       }
 
-      return deck;
+      return [...fixedIndexes, ...deck];
     };
 
     let heroSwitchTimer = 0;
@@ -1215,12 +1233,12 @@ const heroVariantsPayload = JSON.stringify(heroStoryVariants);
           ? (variant.quoteType === 'lecture' && variant.eventHref ? variant.eventHref : '#program')
           : variant.eventHref;
         eventLink.href = eventHref;
-        eventLink.textContent = isQuoteVariant ? 'К лекции' : 'К событию';
+        eventLink.textContent = variant.ctaLabel || (isQuoteVariant ? 'К лекции' : 'К событию');
       }
 
       if (themeLink instanceof HTMLAnchorElement) {
-        themeLink.hidden = !isMythVariant;
-        if (isMythVariant) {
+        themeLink.hidden = !isMythVariant || !variant.themeHref;
+        if (isMythVariant && variant.themeHref) {
           themeLink.href = variant.themeHref;
           themeLink.textContent = 'Больше мифов по теме';
         } else {

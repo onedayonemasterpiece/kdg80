@@ -62,7 +62,8 @@
 - Registration production Fly app: `znanie-kgd80-fest`.
 - Eventsbot production Fly app: `events-bot-new-wngqia`.
 - Fly CLI is installed at `/home/dev/.fly/bin/flyctl`.
-- Plain `flyctl auth whoami` can report `no access token available` even when a usable token exists locally. First check `/home/dev/.fly/config.yml`.
+- Plain `flyctl auth whoami` can report `no access token available` even when a usable token exists locally. First check `/home/dev/.config/fly/release.env`; if it exists, source it with `set -a && . /home/dev/.config/fly/release.env && set +a` before running Fly commands.
+- If `/home/dev/.config/fly/release.env` is absent, then check `/home/dev/.fly/config.yml`.
 - The usable Fly token is the full `access_token:` YAML value from `/home/dev/.fly/config.yml`; it is a composite token and can contain commas plus `+`, `/`, and `=` characters. Do not extract it with a narrow regex that only captures `fm2_...` or `fo1_...` fragments.
 - Use it by exporting/passing `FLY_API_TOKEN` for each command, for example:
   `FLY_API_TOKEN="$(python3 -c 'from pathlib import Path; import re; print(re.search(r"^access_token:\\s*(.+)$", Path("/home/dev/.fly/config.yml").read_text(), re.M).group(1).strip())')" /home/dev/.fly/bin/flyctl secrets list -a znanie-kgd80-fest`

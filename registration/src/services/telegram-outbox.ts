@@ -50,6 +50,8 @@ type SpecialApplicationNotificationRow = {
   stamp_count: number;
   ordinary_registration_count: number;
   no_show_count: number;
+  volunteer_bonus_points: number;
+  volunteer_match_json: string;
   score: number;
 };
 
@@ -149,6 +151,8 @@ function loadSpecialApplicationNotification(
       a.stamp_count,
       a.ordinary_registration_count,
       a.no_show_count,
+      a.volunteer_bonus_points,
+      a.volunteer_match_json,
       a.score,
       e.title,
       e.format_label,
@@ -209,8 +213,31 @@ function loadSpecialApplicationNotification(
     stampCount: row.stamp_count,
     ordinaryRegistrationCount: row.ordinary_registration_count,
     noShowCount: row.no_show_count,
+    volunteerBonusPoints: row.volunteer_bonus_points,
+    volunteerMatch: parseVolunteerMatch(row.volunteer_match_json),
     score: row.score,
   };
+}
+
+function parseVolunteerMatch(value: string) {
+  try {
+    const parsed = JSON.parse(value) as {
+      matched?: boolean;
+      matchedName?: string | null;
+      matchType?: string;
+    };
+    return {
+      matched: parsed.matched === true,
+      matchedName: typeof parsed.matchedName === 'string' ? parsed.matchedName : null,
+      matchType: typeof parsed.matchType === 'string' ? parsed.matchType : 'none',
+    };
+  } catch {
+    return {
+      matched: false,
+      matchedName: null,
+      matchType: 'none',
+    };
+  }
 }
 
 function formatRegistrationCreatedMessage(payload: {
@@ -247,6 +274,12 @@ function formatSpecialApplicationCreatedMessage(payload: {
   stampCount: number;
   ordinaryRegistrationCount: number;
   noShowCount: number;
+  volunteerBonusPoints: number;
+  volunteerMatch: {
+    matched: boolean;
+    matchedName: string | null;
+    matchType: string;
+  };
   score: number;
 }) {
   const lines = [
@@ -258,6 +291,9 @@ function formatSpecialApplicationCreatedMessage(payload: {
     `Статус допуска: ${payload.status === 'accepted' ? 'допущена' : 'отклонена'}`,
     payload.rejectionReason ? `Причина: ${payload.rejectionReason}` : null,
     `Штампы: ${payload.stampCount}`,
+    payload.volunteerBonusPoints > 0
+      ? `Волонтерский бонус: +${payload.volunteerBonusPoints} (${payload.volunteerMatch.matchedName ?? 'совпадение по списку'}, ${payload.volunteerMatch.matchType})`
+      : 'Волонтерский бонус: нет',
     `Баллы: ${payload.score}`,
     `Обычных регистраций по ФИО: ${payload.ordinaryRegistrationCount}`,
     `Неявки к штрафу: ${payload.noShowCount}`,

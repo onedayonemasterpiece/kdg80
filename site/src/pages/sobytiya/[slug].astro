@@ -32,7 +32,7 @@ const temporalState = getEventTemporalState(event, now);
 const programHref = getSmartProgramHref(allEvents, false, now);
 const canonicalPath = getFestivalEventHref(event.slug);
 const siteOrigin = (import.meta.env.PUBLIC_SITE_ORIGIN || 'https://kgd80.ru').replace(/\/+$/u, '');
-const specialRegistrationHref = '/special/etudy-toy-vesny-debug-20260606/';
+const specialRegistrationHref = '/special/etudy-toy-vesny/';
 const specialApiBaseUrl = (import.meta.env.PUBLIC_REGISTRATION_API_BASE_URL || 'https://znanie-kgd80-fest.fly.dev').replace(/\/+$/u, '');
 const specialEventToken = 'etudy-toy-vesny-debug-20260606';
 const isEtudySpecialEvent = event.slug === 'etyudy-toy-vesny';

@@ -595,21 +595,15 @@ function computeScore(options: {
   noShowPenaltyPoints: number;
   volunteerBonusPoints: number;
 }) {
-  if (options.stampCount < options.minStampCount) {
-    return {
-      noShowCount: Math.max(options.ordinaryRegistrationCount - options.stampCount, 0),
-      score: 0,
-    };
-  }
-
   const noShowCount = Math.max(options.ordinaryRegistrationCount - options.stampCount, 0);
-  const extraStamps = Math.max(options.stampCount - options.minStampCount, 0);
-  const penaltyCount = Math.max(noShowCount - options.noShowGraceCount, 0);
+  const hasEnoughStamps = options.stampCount >= options.minStampCount;
+  const extraStamps = hasEnoughStamps ? Math.max(options.stampCount - options.minStampCount, 0) : 0;
+  const penaltyCount = hasEnoughStamps ? Math.max(noShowCount - options.noShowGraceCount, 0) : 0;
+  const stampScore = hasEnoughStamps
+    ? options.basePoints + extraStamps * options.extraStampPoints - penaltyCount * options.noShowPenaltyPoints
+    : 0;
   const score = Math.max(
-    options.basePoints
-      + extraStamps * options.extraStampPoints
-      + options.volunteerBonusPoints
-      - penaltyCount * options.noShowPenaltyPoints,
+    stampScore + options.volunteerBonusPoints,
     0,
   );
 

@@ -39,16 +39,20 @@ case "${PREVIEW_SLUG}" in
     ;;
 esac
 
-if ! command -v npm >/dev/null 2>&1; then
-  echo "npm is required to build the Astro preview."
-  exit 1
-fi
+if [[ "${SKIP_ASTRO_BUILD:-0}" == "1" ]]; then
+  echo "Using existing Astro build for preview: ${SITE_DIST_DIR}"
+else
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "npm is required to build the Astro preview. Set SKIP_ASTRO_BUILD=1 only after building ${SITE_DIST_DIR} separately."
+    exit 1
+  fi
 
-echo "Building Astro site for preview"
-(
-  cd "${SITE_DIR}"
-  npm run build
-)
+  echo "Building Astro site for preview"
+  (
+    cd "${SITE_DIR}"
+    npm run build
+  )
+fi
 
 if [[ ! -d "${SITE_DIST_DIR}" ]]; then
   echo "Missing Astro build output: ${SITE_DIST_DIR}"

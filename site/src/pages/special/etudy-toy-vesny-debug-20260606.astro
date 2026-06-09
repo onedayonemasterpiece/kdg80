@@ -198,21 +198,6 @@ const description = 'Секретная тестовая страница зая
       return btoa(binary);
     };
 
-    const base64ToBlob = (dataBase64, contentType) => {
-      const binary = atob(dataBase64);
-      const chunkSize = 0x8000;
-      const chunks = [];
-      for (let index = 0; index < binary.length; index += chunkSize) {
-        const slice = binary.slice(index, index + chunkSize);
-        const bytes = new Uint8Array(slice.length);
-        for (let byteIndex = 0; byteIndex < slice.length; byteIndex += 1) {
-          bytes[byteIndex] = slice.charCodeAt(byteIndex);
-        }
-        chunks.push(bytes);
-      }
-      return new Blob(chunks, { type: contentType || 'application/octet-stream' });
-    };
-
     const inferContentType = (file) => {
       const type = String(file.type || '').toLowerCase();
       if (type.indexOf('image/jpeg') === 0 || type.indexOf('image/png') === 0 || type.indexOf('image/webp') === 0) {
@@ -362,10 +347,14 @@ const description = 'Секретная тестовая страница зая
         const fileName = item.file.name || 'passport-photo';
         const contentType = item.contentType || inferContentType(item.file);
         if (item.dataBase64) {
-          payload.append('photos', base64ToBlob(item.dataBase64, contentType), fileName);
+          payload.append('photoData', JSON.stringify({
+            fileName,
+            contentType,
+            dataBase64: item.dataBase64,
+          }));
           return;
         }
-        payload.append('photos', item.uploadBlob || item.file, fileName);
+        payload.append('photos', item.file, fileName);
       });
       return payload;
     };
@@ -391,13 +380,32 @@ const description = 'Секретная тестовая страница зая
           return { ...item, kind: 'error', status: 'Нет результата проверки' };
         }
 
+        const contentType = photo.contentType || item.contentType || inferContentType(item.file);
+        const dataBase64 = photo.dataBase64 || item.dataBase64 || '';
+        const previewUrl = dataBase64
+          ? previewUrlForPhoto(contentType, dataBase64) || item.previewUrl
+          : item.previewUrl;
+        if (previewUrl !== item.previewUrl) {
+          releasePreviewUrl(item.previewUrl);
+        }
+
         if (photo.duplicateOfSha256) {
-          return { ...item, kind: 'duplicate', status: 'Дубль: не засчитывается повторно' };
+          return {
+            ...item,
+            contentType,
+            dataBase64,
+            previewUrl,
+            kind: 'duplicate',
+            status: 'Дубль: не засчитывается повторно',
+          };
         }
 
         if (!photo.accepted) {
           return {
             ...item,
+            contentType,
+            dataBase64,
+            previewUrl,
             kind: 'error',
             status: photo.rejectionReason || `Не зачтено: ${photo.stampCount} штампов`,
           };
@@ -405,6 +413,9 @@ const description = 'Секретная тестовая страница зая
 
         return {
           ...item,
+          contentType,
+          dataBase64,
+          previewUrl,
           kind: 'success',
           status: `Зачтено: ${photo.stampCount} штампов`,
         };
@@ -754,14 +765,6 @@ const description = 'Секретная тестовая страница зая
       return '';
     };
 
-    const createUploadBlob = (file) => {
-      const contentType = inferContentType(file);
-      if (typeof file.slice === 'function') {
-        return file.slice(0, file.size, contentType);
-      }
-      return file;
-    };
-
     const addFiles = (fileListToAdd) => {
       const files = Array.prototype.slice.call(fileListToAdd || []);
       const incoming = files.filter(looksLikeAcceptedImage);
@@ -784,7 +787,6 @@ const description = 'Секретная тестовая страница зая
           id: createFileId(),
           key,
           file,
-          uploadBlob: createUploadBlob(file),
           previewUrl: createPreviewUrl(file),
           kind: 'pending',
           status: 'Добавлено, ждёт проверки',
@@ -891,7 +893,7 @@ const description = 'Секретная тестовая страница зая
         }
 
         let response;
-        if (latestPrecheckTransport === 'multipart' || selectedFiles.some((item) => !item.dataBase64)) {
+        if (selectedFiles.some((item) => !item.dataBase64)) {
           response = await fetch(`${apiBaseUrl}/api/v1/special/applications-multipart`, {
             method: 'POST',
             body: buildSpecialMultipartData(formData, selectedShowingSlugs),

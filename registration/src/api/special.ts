@@ -8,6 +8,7 @@ import {
   SpecialApplicationError,
   type SpecialApplicationPayload,
   type SpecialPhotoCheckPayload,
+  type SpecialPhotoPayload,
 } from '../services/special-applications';
 
 type SpecialApiDeps = {
@@ -128,12 +129,31 @@ function multipartFields(parts: MultipartPart[], name: string) {
 
 function photosFromMultipart(parts: MultipartPart[]) {
   return parts
-    .filter((item) => item.name === 'photos' && item.fileName !== null && item.data.length > 0)
-    .map((item) => ({
-      fileName: item.fileName || 'passport-photo',
-      contentType: item.contentType || 'application/octet-stream',
-      dataBase64: item.data.toString('base64'),
-    }));
+    .map((item) => {
+      if (item.name === 'photos' && item.fileName !== null && item.data.length > 0) {
+        return {
+          fileName: item.fileName || 'passport-photo',
+          contentType: item.contentType || 'application/octet-stream',
+          dataBase64: item.data.toString('base64'),
+        };
+      }
+
+      if (item.name !== 'photoData' || item.fileName !== null) {
+        return null;
+      }
+
+      try {
+        const parsed = JSON.parse(item.data.toString('utf8')) as Partial<SpecialPhotoPayload>;
+        return {
+          fileName: String(parsed.fileName || 'passport-photo'),
+          contentType: String(parsed.contentType || 'application/octet-stream'),
+          dataBase64: String(parsed.dataBase64 || ''),
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter((item): item is SpecialPhotoPayload => Boolean(item?.dataBase64));
 }
 
 function multipartPhotoCheckPayload(contentType: string, body: Buffer): SpecialPhotoCheckPayload {
@@ -1200,6 +1220,7 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
         db: deps.db,
         fingerprintSecret: deps.fingerprintSecret,
         privateKeyPemBase64: deps.privateKeyPemBase64,
+        returnPhotoDataBase64: true,
       });
     } catch (error) {
       if (error instanceof SpecialApplicationError) {

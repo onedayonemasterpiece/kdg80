@@ -810,6 +810,7 @@ function tryNormalizeFullName(value: unknown) {
 function buildPhotoSummary(analysis: Awaited<ReturnType<typeof analyzePhotos>>) {
   return analysis.photoResults.map((photo) => ({
     fileName: photo.fileName,
+    contentType: photo.contentType,
     sha256: photo.sha256,
     duplicateOfSha256: photo.duplicateOfSha256,
     hasFullName: photo.ocr.hasFullName,
@@ -875,6 +876,7 @@ export async function checkSpecialApplicationPhotos(
     db: Database.Database;
     fingerprintSecret: string | null;
     privateKeyPemBase64: string | null;
+    returnPhotoDataBase64?: boolean;
   },
 ) {
   if (!payload || typeof payload !== 'object' || typeof payload.website === 'string' && payload.website.trim()) {
@@ -925,7 +927,10 @@ export async function checkSpecialApplicationPhotos(
   return {
     event: publicSpecialEventView(loaded.event, loaded.showings),
     duplicateApplication,
-    photos: buildPhotoSummary(analysis),
+    photos: buildPhotoSummary(analysis).map((photo, index) => ({
+      ...photo,
+      dataBase64: deps.returnPhotoDataBase64 ? analysis.photos[index]?.bytes.toString('base64') || null : undefined,
+    })),
     scoring: {
       stampCount: analysis.stampCount,
       minStampCount: loaded.event.min_stamp_count,

@@ -36,6 +36,10 @@ const allSpeakerShowcase = getSpeakerShowcase(events, Number.POSITIVE_INFINITY);
 const speakerShowcase = allSpeakerShowcase.slice(0, SPEAKER_SHOWCASE_LIMIT);
 const speakerLoadHref = '/data/speakers-more.json';
 const openDialogues = getOpenDialogues(events);
+const SPECIAL_HERO_IMAGE = '/generated/special/etudy-toy-vesny-immersive-hero.webp';
+const SPECIAL_API_BASE_URL = (import.meta.env.PUBLIC_REGISTRATION_API_BASE_URL || 'https://znanie-kgd80-fest.fly.dev').replace(/\/+$/u, '');
+const SPECIAL_EVENT_SLUG = 'etudy-toy-vesny';
+const SPECIAL_EVENT_TOKEN = 'etudy-toy-vesny-debug-20260606';
 type RelatedEventCard = NonNullable<(typeof events)[number]['relatedEvent']>;
 type HeroQuoteType = 'festival' | 'lecture';
 type HeroVariantBase = {
@@ -45,6 +49,7 @@ type HeroVariantBase = {
   priority: number;
   ctaLabel?: string;
   fixedFirst?: boolean;
+  className?: string;
 };
 type HeroQuoteVariantSpec = {
   id: string;
@@ -75,6 +80,14 @@ type HeroMythVariant = HeroVariantBase & {
   body: string;
   eventHref: string;
   themeHref?: string;
+  backdropImage?: string;
+  specialRegistration?: {
+    apiBaseUrl: string;
+    eventSlug: string;
+    token: string;
+    availableLabel: string;
+    closedLabel: string;
+  };
 };
 type HeroVariant = HeroQuoteVariant | HeroMythVariant;
 
@@ -736,12 +749,21 @@ const fallbackHeroVariant: HeroMythVariant = {
 const specialHeroVariant: HeroMythVariant = {
   id: 'special-etudy-toy-vesny',
   kind: 'myth',
+  className: 'hero-showcase--special-event',
   prompt: 'Заявка на розыгрыш',
   label: 'Заявка на розыгрыш',
   title: 'Этюды той весны',
-  body: 'Иммерсивный спектакль на площадке Южный Вокзал: 11 июня в 18:00, а также показы 23 и 25 июня. Заявка не является билетом — победители получат приглашение после розыгрыша.',
+  body: 'Иммерсивный спектакль на Южном вокзале: реальные истории первых переселенцев и встреча с подлинными музейными вещами.',
   eventHref: SPECIAL_REGISTRATION_HREF,
+  backdropImage: SPECIAL_HERO_IMAGE,
   ctaLabel: 'Подать заявку на розыгрыш',
+  specialRegistration: {
+    apiBaseUrl: SPECIAL_API_BASE_URL,
+    eventSlug: SPECIAL_EVENT_SLUG,
+    token: SPECIAL_EVENT_TOKEN,
+    availableLabel: 'Подать заявку на розыгрыш',
+    closedLabel: 'Места закончились',
+  },
   priority: 1000,
   fixedFirst: true,
 };
@@ -753,6 +775,7 @@ const defaultHeroShowsTitle = defaultHeroIsMyth;
 const defaultHeroShowsBody = defaultHeroIsMyth;
 const defaultHeroSceneStyle = defaultHeroIsQuote ? defaultHeroVariant.speakerSceneStyle ?? '' : '';
 const defaultHeroQuoteSize = defaultHeroIsQuote ? defaultHeroVariant.quoteSize : 'image';
+const defaultHeroBackdropImage = defaultHeroIsMyth ? defaultHeroVariant.backdropImage : undefined;
 const defaultHeroWordParts = defaultHeroIsMyth ? getWordParts(defaultHeroVariant.title) : [];
 const defaultHeroWordRevealStyle = defaultHeroIsMyth ? getWordRevealStyle(defaultHeroWordParts.length) : undefined;
 const defaultHeroMythContext = defaultHeroIsMyth ? getMythContextParts(defaultHeroVariant.body) : null;
@@ -803,15 +826,29 @@ const heroVariantsPayload = JSON.stringify(heroStoryVariants);
             <aside class="hero__aside" aria-label="Сильные истории фестиваля">
               <section
                 class="hero-showcase"
+                class:list={[defaultHeroVariant.className]}
                 data-hero-showcase
                 data-hero-kind={defaultHeroVariant.kind}
                 data-hero-quote-type={defaultHeroIsQuote ? defaultHeroVariant.quoteType : 'myth'}
                 data-hero-quote-size={defaultHeroQuoteSize}
+                data-hero-has-backdrop={defaultHeroBackdropImage ? 'true' : 'false'}
                 data-hero-variants={heroVariantsPayload}
                 data-hero-index="0"
                 style={defaultHeroSceneStyle}
               >
                 <div class="hero-showcase__media" aria-hidden="true">
+                  <img
+                    class="hero-showcase__backdrop"
+                    data-hero-backdrop
+                    src={defaultHeroBackdropImage ?? ''}
+                    alt=""
+                    width="1800"
+                    height="1800"
+                    loading="eager"
+                    fetchpriority={defaultHeroBackdropImage ? 'high' : undefined}
+                    decoding="async"
+                    hidden={!defaultHeroBackdropImage}
+                  />
                   <div class="hero-showcase__brandbadge" aria-hidden="true">
                     <span class="festival-lockup festival-lockup--badge">
                       <img src="/shared-assets/logo-80-istorii-hero.svg" alt="" width="431" height="373" decoding="async" loading="eager" />
@@ -885,6 +922,12 @@ const heroVariantsPayload = JSON.stringify(heroStoryVariants);
                       <a
                         class="hero-showcase__event-link"
                         data-hero-event-link
+                        data-special-registration-cta={defaultHeroIsMyth && defaultHeroVariant.specialRegistration ? 'true' : undefined}
+                        data-special-api-base-url={defaultHeroIsMyth && defaultHeroVariant.specialRegistration ? defaultHeroVariant.specialRegistration.apiBaseUrl : undefined}
+                        data-special-event-slug={defaultHeroIsMyth && defaultHeroVariant.specialRegistration ? defaultHeroVariant.specialRegistration.eventSlug : undefined}
+                        data-special-token={defaultHeroIsMyth && defaultHeroVariant.specialRegistration ? defaultHeroVariant.specialRegistration.token : undefined}
+                        data-special-available-label={defaultHeroIsMyth && defaultHeroVariant.specialRegistration ? defaultHeroVariant.specialRegistration.availableLabel : undefined}
+                        data-special-closed-label={defaultHeroIsMyth && defaultHeroVariant.specialRegistration ? defaultHeroVariant.specialRegistration.closedLabel : undefined}
                         href={defaultHeroIsQuote ? (defaultHeroVariant.eventHref ?? programHref) : defaultHeroVariant.eventHref}
                       >
                         {defaultHeroVariant.ctaLabel ?? (defaultHeroIsQuote ? 'К лекции' : 'К событию')}
@@ -1157,13 +1200,72 @@ const heroVariantsPayload = JSON.stringify(heroStoryVariants);
       element.append(document.createTextNode(value.slice(match.index + match[0].length)));
     };
 
+    const setHeroCtaDisabled = (link, disabled, label) => {
+      if (!(link instanceof HTMLAnchorElement)) {
+        return;
+      }
+
+      if (label) {
+        link.textContent = label;
+      }
+      link.classList.toggle('is-disabled', disabled);
+      link.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+      if (disabled) {
+        if (link.hasAttribute('href')) {
+          link.dataset.enabledHref = link.getAttribute('href') || '';
+        }
+        link.removeAttribute('href');
+      } else if (!link.hasAttribute('href') && link.dataset.enabledHref) {
+        link.href = link.dataset.enabledHref;
+      }
+    };
+
+    const hydrateSpecialHeroCta = async (link) => {
+      if (!(link instanceof HTMLAnchorElement) || link.dataset.specialRegistrationCta !== 'true') {
+        return;
+      }
+
+      const apiBaseUrl = (link.dataset.specialApiBaseUrl || '').replace(/\/+$/u, '');
+      const eventSlug = link.dataset.specialEventSlug || '';
+      const token = link.dataset.specialToken || '';
+      const availableLabel = link.dataset.specialAvailableLabel || 'Подать заявку';
+      const closedLabel = link.dataset.specialClosedLabel || 'Заявки закрыты';
+
+      if (!apiBaseUrl || !eventSlug || !token) {
+        setHeroCtaDisabled(link, true, 'Статус заявки недоступен');
+        return;
+      }
+
+      setHeroCtaDisabled(link, true, 'Проверяем места...');
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/v1/special/events/${eventSlug}?token=${encodeURIComponent(token)}`, {
+          cache: 'no-store',
+        });
+        if (!response.ok) {
+          throw new Error('special_event_unavailable');
+        }
+        const data = await response.json();
+        const available = Boolean(data && data.applicationAvailable);
+        setHeroCtaDisabled(
+          link,
+          !available,
+          available ? availableLabel : closedLabel,
+        );
+      } catch {
+        setHeroCtaDisabled(link, true, 'Статус заявки недоступен');
+      }
+    };
+
     const setHeroVariant = (root, variant, deckIndex, total) => {
       root.dataset.heroKind = variant.kind;
       root.dataset.heroQuoteType = variant.kind === 'quote' ? variant.quoteType : 'myth';
       root.dataset.heroQuoteSize = variant.kind === 'quote' ? variant.quoteSize : 'image';
+      root.dataset.heroHasBackdrop = variant.kind === 'myth' && variant.backdropImage ? 'true' : 'false';
       root.dataset.heroIndex = String(deckIndex);
+      root.classList.toggle('hero-showcase--special-event', variant.className === 'hero-showcase--special-event');
 
       const heroShell = root.closest('.hero__shell');
+      const backdrop = root.querySelector('[data-hero-backdrop]');
       const quoteMark = root.querySelector('[data-hero-quote-mark]');
       const portraitShell = heroShell?.querySelector('[data-hero-portrait-shell]');
       const portrait = heroShell?.querySelector('[data-hero-portrait]');
@@ -1185,6 +1287,18 @@ const heroVariantsPayload = JSON.stringify(heroStoryVariants);
       const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
       root.style.cssText = isQuoteVariant ? variant.speakerSceneStyle || '' : '';
+
+      if (backdrop instanceof HTMLImageElement) {
+        if (isMythVariant && variant.backdropImage) {
+          backdrop.hidden = false;
+          if (backdrop.getAttribute('src') !== variant.backdropImage) {
+            backdrop.src = variant.backdropImage;
+          }
+        } else {
+          backdrop.hidden = true;
+          backdrop.removeAttribute('src');
+        }
+      }
 
       if (prompt instanceof HTMLElement) {
         prompt.textContent = variant.prompt;
@@ -1233,7 +1347,26 @@ const heroVariantsPayload = JSON.stringify(heroStoryVariants);
           ? (variant.quoteType === 'lecture' && variant.eventHref ? variant.eventHref : '#program')
           : variant.eventHref;
         eventLink.href = eventHref;
+        eventLink.dataset.enabledHref = eventHref;
         eventLink.textContent = variant.ctaLabel || (isQuoteVariant ? 'К лекции' : 'К событию');
+        eventLink.classList.remove('is-disabled');
+        eventLink.setAttribute('aria-disabled', 'false');
+        if (isMythVariant && variant.specialRegistration) {
+          eventLink.dataset.specialRegistrationCta = 'true';
+          eventLink.dataset.specialApiBaseUrl = variant.specialRegistration.apiBaseUrl;
+          eventLink.dataset.specialEventSlug = variant.specialRegistration.eventSlug;
+          eventLink.dataset.specialToken = variant.specialRegistration.token;
+          eventLink.dataset.specialAvailableLabel = variant.specialRegistration.availableLabel;
+          eventLink.dataset.specialClosedLabel = variant.specialRegistration.closedLabel;
+          void hydrateSpecialHeroCta(eventLink);
+        } else {
+          delete eventLink.dataset.specialRegistrationCta;
+          delete eventLink.dataset.specialApiBaseUrl;
+          delete eventLink.dataset.specialEventSlug;
+          delete eventLink.dataset.specialToken;
+          delete eventLink.dataset.specialAvailableLabel;
+          delete eventLink.dataset.specialClosedLabel;
+        }
       }
 
       if (themeLink instanceof HTMLAnchorElement) {
@@ -1305,6 +1438,7 @@ const heroVariantsPayload = JSON.stringify(heroStoryVariants);
       }
 
       const nextButton = heroShowcase.querySelector('[data-hero-next]');
+      void hydrateSpecialHeroCta(heroShowcase.querySelector('[data-hero-event-link]'));
 
       try {
         const variants = JSON.parse(heroShowcase.dataset.heroVariants);

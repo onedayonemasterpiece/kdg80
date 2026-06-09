@@ -81,7 +81,11 @@ function getCardText(value: Pick<FestivalEvent, 'whyGo' | 'summary'>) {
   return value.summary || value.whyGo;
 }
 
-function getCardExtraText(value: Pick<FestivalEvent, 'whyGo' | 'summary'>) {
+function getCardExtraText(value: Pick<FestivalEvent, 'whyGo' | 'summary'> & Partial<Pick<FestivalEvent, 'kind'>>) {
+  if (value.kind === 'special') {
+    return '';
+  }
+
   if (!value.whyGo) {
     return '';
   }
@@ -242,6 +246,7 @@ const metaAddress = normalizeMetaValue(event.address);
 const metaDuration = isDurationPlaceholder(event.durationLabel) ? '' : normalizeMetaValue(event.durationLabel);
 const shouldShowMetaAddress = Boolean(metaAddress) && !isLocationPlaceholder(metaAddress) && metaAddress !== metaVenue;
 const shouldShowPublicTime = Boolean(normalizeMetaValue(event.timeLabel)) && !isTimePlaceholder(event.timeLabel);
+const accessClass = `event-card__access event-card__access--free${isSpecialEvent ? ' event-card__access--condition' : ''}`;
 const specialServiceLabels = isSpecialEvent
   ? [
       event.dateLabel === 'Дата будет объявлена' ? 'Дата будет объявлена дополнительно' : event.dateLabel,
@@ -256,7 +261,7 @@ const specialServiceLabels = isSpecialEvent
       .filter(Boolean)
   : [];
 const temporalState = getEventTemporalState(event, now);
-const hasActionRow = showActions && !isRangeEvent && !isSpecialEvent;
+const hasActionRow = showActions && !isRangeEvent;
 const eventHref = getFestivalEventHref(event.slug);
 const VisualTitleTag = headingLevel === 'page' ? 'h1' : 'p';
 const BodyTitleTag = headingLevel === 'page' ? 'h1' : 'h4';
@@ -391,7 +396,7 @@ const BodyTitleTag = headingLevel === 'page' ? 'h1' : 'h4';
       <div class="event-card__body-head">
         <div class="event-card__labels">
           <span class="event-card__format event-card__format--body">{event.formatLabel}</span>
-          {accessLabel && <span class="event-card__access event-card__access--free">{accessLabel}</span>}
+          {accessLabel && <span class={accessClass}>{accessLabel}</span>}
         </div>
         {!isLecture && (
           <BodyTitleTag class="event-card__title">
@@ -571,7 +576,9 @@ const BodyTitleTag = headingLevel === 'page' ? 'h1' : 'h4';
 
     {hasActionRow && (
       <aside class="event-card__actions">
-        {temporalState === 'past' ? (
+        {isSpecialEvent ? (
+          <a class="button button--primary event-card__special-details" href={eventHref}>Подробнее</a>
+        ) : temporalState === 'past' ? (
           <div class="button button--ghost button--disabled event-card__past-state" aria-disabled="true">Событие прошло</div>
         ) : (
           <div class="event-card__registration-control" data-registration-card data-event-slug={event.slug}>
@@ -595,7 +602,7 @@ const BodyTitleTag = headingLevel === 'page' ? 'h1' : 'h4';
           </div>
         )}
 
-        {temporalState !== 'past' && event.calendarReady ? (
+        {temporalState !== 'past' && !isSpecialEvent && event.calendarReady ? (
           <details class="calendar-menu">
             <summary class="button button--ghost">В календарь</summary>
             <div class="calendar-panel">
@@ -610,11 +617,11 @@ const BodyTitleTag = headingLevel === 'page' ? 'h1' : 'h4';
               </a>
             </div>
           </details>
-        ) : temporalState !== 'past' && event.calendarNote ? (
+        ) : temporalState !== 'past' && !isSpecialEvent && event.calendarNote ? (
           <div class="notice">{event.calendarNote}</div>
         ) : null}
 
-        <a class="event-card__details-link" href={eventHref}>Подробнее</a>
+        {!isSpecialEvent && <a class="event-card__details-link" href={eventHref}>Подробнее</a>}
       </aside>
     )}
   </div>

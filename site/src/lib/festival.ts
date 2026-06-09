@@ -1260,8 +1260,8 @@ function normalizeEventLocation(venue: string, address: string) {
 function applyEventLocationOverride(title: string, location: { venue: string; address: string }) {
   if (includesAnyNormalized(title, ['Этюды той весны'])) {
     return {
-      venue: 'Секретная локация',
-      address: 'Секретная локация',
+      venue: 'Южный вокзал',
+      address: 'ул. Железнодорожная, 13/23',
     };
   }
 
@@ -1504,6 +1504,9 @@ function parseSections() {
       speakerLabel: kind === 'special' ? '' : speakerData.speakerLabel,
       affiliation: kind === 'special' ? '' : speakerData.affiliation,
       heroRole: kind === 'special' ? '' : heroRole,
+      accessLabel: includesAnyNormalized(title, ['Этюды той весны'])
+        ? 'для тех кто посетил 5 и более событий фестиваля'
+        : undefined,
       showingsLabel,
       summary,
       whyGo,

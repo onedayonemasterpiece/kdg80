@@ -34,6 +34,16 @@ const PREVIEW_PATH = `/special/${PREVIEW_TOKEN}`;
 const PREVIEW_PUBLIC_URL = process.env.SPECIAL_PREVIEW_PUBLIC_URL?.trim()
   || 'https://kgd80.ru/preview-special-etudy-20260608/special/etudy-toy-vesny-debug-20260606/';
 
+function readPositiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const MAX_MULTIPART_PARTS = readPositiveInteger(process.env.SPECIAL_MAX_MULTIPART_PARTS, 24);
+const MAX_MULTIPART_PHOTO_PARTS = readPositiveInteger(process.env.SPECIAL_MAX_MULTIPART_PHOTO_PARTS, 5);
+const MAX_MULTIPART_FIELD_BYTES = readPositiveInteger(process.env.SPECIAL_MAX_MULTIPART_FIELD_BYTES, 32 * 1024);
+const SPECIAL_BODY_LIMIT_BYTES = readPositiveInteger(process.env.SPECIAL_BODY_LIMIT_BYTES, 90 * 1024 * 1024);
+
 function noIndex(reply: { header: (name: string, value: string) => unknown }) {
   reply.header('X-Robots-Tag', 'noindex, nofollow, noarchive');
   reply.header('Cache-Control', 'no-store');
@@ -101,6 +111,16 @@ function parseMultipartBody(contentType: string, body: Buffer): MultipartPart[] 
       const dispositionParams = parseHeaderParameters(disposition);
       const name = dispositionParams.name;
       if (name) {
+        if (parts.length >= MAX_MULTIPART_PARTS) {
+          throw new SpecialApplicationError(400, 'too_many_multipart_parts', 'Слишком много полей и файлов в запросе.');
+        }
+        if (
+          dispositionParams.filename === undefined
+          && name !== 'photoData'
+          && data.length > MAX_MULTIPART_FIELD_BYTES
+        ) {
+          throw new SpecialApplicationError(400, 'multipart_field_too_large', 'Одно из текстовых полей слишком большое.');
+        }
         parts.push({
           name,
           fileName: dispositionParams.filename || null,
@@ -146,6 +166,14 @@ function photoPayloadLogSummary(photos: SpecialPhotoPayload[]) {
 }
 
 function photosFromMultipart(parts: MultipartPart[]) {
+  const photoPartCount = parts.filter((item) => (
+    (item.name === 'photos' && item.fileName !== null && item.data.length > 0)
+    || (item.name === 'photoData' && item.fileName === null && item.data.length > 0)
+  )).length;
+  if (photoPartCount > MAX_MULTIPART_PHOTO_PARTS) {
+    throw new SpecialApplicationError(400, 'too_many_photos', `Можно загрузить не больше ${MAX_MULTIPART_PHOTO_PARTS} фото за одну проверку.`);
+  }
+
   return parts
     .map((item) => {
       if (item.name === 'photos' && item.fileName !== null && item.data.length > 0) {
@@ -1048,7 +1076,7 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
   if (!app.hasContentTypeParser(/^multipart\/form-data/u)) {
     app.addContentTypeParser(/^multipart\/form-data/u, {
       parseAs: 'buffer',
-      bodyLimit: 14 * 1024 * 1024,
+      bodyLimit: SPECIAL_BODY_LIMIT_BYTES,
     }, (_request, body, done) => {
       done(null, body);
     });
@@ -1082,10 +1110,10 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
   });
 
   app.post('/api/v1/special/applications', {
-    bodyLimit: 14 * 1024 * 1024,
+    bodyLimit: SPECIAL_BODY_LIMIT_BYTES,
     config: {
       rateLimit: {
-        max: 4,
+        max: 3,
         timeWindow: '1 minute',
       },
     },
@@ -1134,10 +1162,10 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
   });
 
   app.post('/api/v1/special/applications-multipart', {
-    bodyLimit: 14 * 1024 * 1024,
+    bodyLimit: SPECIAL_BODY_LIMIT_BYTES,
     config: {
       rateLimit: {
-        max: 4,
+        max: 3,
         timeWindow: '1 minute',
       },
     },
@@ -1217,10 +1245,10 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
   });
 
   app.post('/api/v1/special/photo-check', {
-    bodyLimit: 14 * 1024 * 1024,
+    bodyLimit: SPECIAL_BODY_LIMIT_BYTES,
     config: {
       rateLimit: {
-        max: 8,
+        max: 6,
         timeWindow: '1 minute',
       },
     },
@@ -1271,10 +1299,10 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
   });
 
   app.post('/api/v1/special/photo-check-multipart', {
-    bodyLimit: 14 * 1024 * 1024,
+    bodyLimit: SPECIAL_BODY_LIMIT_BYTES,
     config: {
       rateLimit: {
-        max: 8,
+        max: 6,
         timeWindow: '1 minute',
       },
     },

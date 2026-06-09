@@ -9,7 +9,7 @@ import { findSpecialVolunteerMatch } from './special-volunteers';
 
 const SPECIAL_PHOTO_PREFIX = (process.env.SPECIAL_PHOTO_PREFIX?.trim() || 'exports/special-passports')
   .replace(/^\/+|\/+$/gu, '');
-const MAX_PHOTO_BYTES = 6 * 1024 * 1024;
+const MAX_PHOTO_BYTES = readPositiveInteger(process.env.SPECIAL_MAX_PHOTO_BYTES, 15 * 1024 * 1024);
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 type SpecialEventRow = {
@@ -220,7 +220,7 @@ function parsePhoto(photo: SpecialPhotoPayload): PreparedPhoto {
   }
 
   if (!bytes.length || bytes.length > MAX_PHOTO_BYTES) {
-    throw new SpecialApplicationError(400, 'invalid_photo_size', 'Каждая фотография должна быть не больше 6 МБ.');
+    throw new SpecialApplicationError(400, 'invalid_photo_size', `Каждая фотография должна быть не больше ${Math.floor(MAX_PHOTO_BYTES / 1024 / 1024)} МБ.`);
   }
 
   const contentType = inferPhotoContentType(photo.contentType, fileName, bytes);
@@ -288,6 +288,14 @@ function safeNumber(value: unknown, fallback: number) {
 function readPositiveInteger(value: string | undefined, fallback: number) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function getMaxPhotoCount() {
+  return readPositiveInteger(process.env.SPECIAL_MAX_PHOTO_COUNT, 5);
+}
+
+function getMaxTotalPhotoBytes() {
+  return readPositiveInteger(process.env.SPECIAL_MAX_TOTAL_PHOTO_BYTES, 60 * 1024 * 1024);
 }
 
 function normalizeOcrBoolean(value: unknown) {
@@ -487,7 +495,7 @@ async function runOpenAiPassportOcr(photo: PreparedPhoto): Promise<OcrResult> {
       throw error;
     }
 
-    if (error instanceof LlmProviderError && error.statusCode === 429) {
+    if (error instanceof LlmProviderError && (error.statusCode === 429 || error.statusCode === 503)) {
       throw new SpecialApplicationError(503, 'ocr_rate_limited', 'Автоматическая проверка временно перегружена. Попробуйте ещё раз чуть позже.');
     }
 
@@ -504,9 +512,20 @@ async function runOpenAiPassportOcr(photo: PreparedPhoto): Promise<OcrResult> {
 }
 
 async function analyzePhotos(payloadPhotos: SpecialPhotoPayload[]) {
+  const maxPhotoCount = getMaxPhotoCount();
+  if (payloadPhotos.length > maxPhotoCount) {
+    throw new SpecialApplicationError(400, 'too_many_photos', `Можно загрузить не больше ${maxPhotoCount} фото за одну проверку.`);
+  }
+
   const photos = payloadPhotos.map(parsePhoto);
   if (!photos.length) {
     throw new SpecialApplicationError(400, 'photo_required', 'Приложите хотя бы одну фотографию паспорта участника фестиваля.');
+  }
+
+  const totalBytes = photos.reduce((sum, photo) => sum + photo.bytes.length, 0);
+  const maxTotalPhotoBytes = getMaxTotalPhotoBytes();
+  if (totalBytes > maxTotalPhotoBytes) {
+    throw new SpecialApplicationError(400, 'photos_total_too_large', `Суммарный размер фотографий должен быть не больше ${Math.floor(maxTotalPhotoBytes / 1024 / 1024)} МБ.`);
   }
 
   const seenSha = new Set<string>();

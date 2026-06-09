@@ -82,11 +82,11 @@ const previewOgImage = '/preview-special-etudy-20260608/generated/special/etudy-
             <span class="special-upload__plus" aria-hidden="true">+</span>
             <span>
               <strong data-special-upload-title>Добавьте фото паспорта участника фестиваля</strong>
-              <span data-special-upload-text>Можно выбрать несколько файлов или перетащить их сюда. ФИО должно быть заполнено и видно на каждом паспорте.</span>
+              <span data-special-upload-text>Можно выбрать до 5 файлов или перетащить их сюда. ФИО должно быть заполнено и видно на каждом паспорте.</span>
             </span>
           </label>
           <button class="special-upload-add" type="button" data-special-upload-add hidden><span aria-hidden="true">+</span>Добавить ещё фото</button>
-          <p class="special-hint">После добавления фото мы покажем предварительный расчет штампов и баллов. Для допуска нужно не менее 5 штампов; фото без видимого ФИО не засчитывается.</p>
+          <p class="special-hint">После добавления фото мы покажем предварительный расчет штампов и баллов. Для допуска нужно не менее 5 штампов; фото без видимого ФИО не засчитывается. Лимит: до 5 исходных фото, каждое до 35 МБ; крупные фото браузер подготовит перед отправкой.</p>
           <div class="special-upload-status" data-special-upload-status aria-live="polite"></div>
           <div class="special-files" data-special-files></div>
           <div class="special-precheck" data-special-precheck hidden></div>
@@ -128,6 +128,12 @@ const previewOgImage = '/preview-special-etudy-20260608/generated/special/etudy-
     let latestPhotoCheckKey = '';
     let photoCheckRun = 0;
     let submitted = false;
+    const maxPhotoCount = 5;
+    const maxOriginalPhotoBytes = 35 * 1024 * 1024;
+    const maxSubmittedPhotoBytes = 15 * 1024 * 1024;
+    const maxTotalOriginalPhotoBytes = maxOriginalPhotoBytes * maxPhotoCount;
+    const maxPreparedImageSide = 1800;
+    const preparedImageQuality = 0.84;
 
     const htmlEntities = {
       '&': '&amp;',
@@ -163,7 +169,7 @@ const previewOgImage = '/preview-special-etudy-20260608/generated/special/etudy-
       if (!count) {
         if (uploadIcon) uploadIcon.textContent = '+';
         uploadTitle.textContent = 'Добавьте фото паспорта участника фестиваля';
-        uploadText.textContent = 'Можно выбрать несколько файлов или перетащить их сюда. ФИО должно быть заполнено и видно на каждом паспорте.';
+        uploadText.textContent = `Можно выбрать до ${maxPhotoCount} файлов или перетащить их сюда. ФИО должно быть заполнено и видно на каждом паспорте.`;
         return;
       }
 
@@ -294,6 +300,102 @@ const previewOgImage = '/preview-special-etudy-20260608/generated/special/etudy-
       }
     };
 
+    const blobToBase64 = async (blob) => arrayBufferToBase64(await blob.arrayBuffer());
+
+    const canvasToBlob = (canvas, type, quality) => new Promise((resolve) => {
+      if (typeof canvas.toBlob !== 'function') {
+        resolve(null);
+        return;
+      }
+      canvas.toBlob((blob) => resolve(blob), type, quality);
+    });
+
+    const loadImageElement = (file) => new Promise((resolve, reject) => {
+      if (!window.URL || typeof window.URL.createObjectURL !== 'function') {
+        reject(new Error('object_url_unavailable'));
+        return;
+      }
+      const image = new Image();
+      const url = window.URL.createObjectURL(file);
+      image.onload = () => {
+        window.URL.revokeObjectURL(url);
+        resolve(image);
+      };
+      image.onerror = () => {
+        window.URL.revokeObjectURL(url);
+        reject(new Error('image_decode_failed'));
+      };
+      image.src = url;
+    });
+
+    const preparePhotoForUpload = async (file) => {
+      const rawContentType = inferContentType(file);
+      const fallbackOriginal = async () => {
+        const dataBase64 = await fileToBase64(file);
+        return {
+          dataBase64,
+          contentType: inferContentTypeFromBase64(rawContentType, dataBase64),
+          preparedSize: file.size,
+        };
+      };
+
+      if (!document.createElement || !rawContentType.startsWith('image/')) {
+        return fallbackOriginal();
+      }
+
+      try {
+        let source = null;
+        let closeSource = () => {};
+        if (typeof window.createImageBitmap === 'function') {
+          source = await window.createImageBitmap(file);
+          closeSource = () => {
+            if (source && typeof source.close === 'function') {
+              source.close();
+            }
+          };
+        } else {
+          source = await loadImageElement(file);
+        }
+
+        const sourceWidth = source.width || source.naturalWidth || 0;
+        const sourceHeight = source.height || source.naturalHeight || 0;
+        if (!sourceWidth || !sourceHeight) {
+          closeSource();
+          return fallbackOriginal();
+        }
+
+        const scale = Math.min(1, maxPreparedImageSide / Math.max(sourceWidth, sourceHeight));
+        const width = Math.max(1, Math.round(sourceWidth * scale));
+        const height = Math.max(1, Math.round(sourceHeight * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d', { alpha: false });
+        if (!context) {
+          closeSource();
+          return fallbackOriginal();
+        }
+
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, width, height);
+        context.drawImage(source, 0, 0, width, height);
+        closeSource();
+
+        const blob = await canvasToBlob(canvas, 'image/jpeg', preparedImageQuality);
+        if (!blob || blob.size <= 0 || blob.size >= file.size) {
+          return fallbackOriginal();
+        }
+
+        return {
+          dataBase64: await blobToBase64(blob),
+          contentType: 'image/jpeg',
+          preparedSize: blob.size,
+        };
+      } catch {
+        return fallbackOriginal();
+      }
+    };
+
     const inferContentTypeFromBase64 = (fallbackContentType, dataBase64) => {
       if (dataBase64.indexOf('/9j/') === 0) return 'image/jpeg';
       if (dataBase64.indexOf('iVBOR') === 0) return 'image/png';
@@ -328,9 +430,12 @@ const previewOgImage = '/preview-special-etudy-20260608/generated/special/etudy-
         : current);
       renderFiles();
 
-      const rawContentType = inferContentType(item.file);
-      const dataBase64 = await fileToBase64(item.file);
-      const contentType = inferContentTypeFromBase64(rawContentType, dataBase64);
+      const prepared = await preparePhotoForUpload(item.file);
+      if (prepared.preparedSize > maxSubmittedPhotoBytes) {
+        throw new Error('Фото слишком большое после подготовки. Попробуйте отправить скриншот или сжатую копию этого фото.');
+      }
+      const dataBase64 = prepared.dataBase64;
+      const contentType = prepared.contentType;
       const previewUrl = previewUrlForPhoto(contentType, dataBase64);
 
       selectedFiles = selectedFiles.map((current) => {
@@ -342,7 +447,7 @@ const previewOgImage = '/preview-special-etudy-20260608/generated/special/etudy-
           dataBase64,
           previewUrl: previewUrl || current.previewUrl,
           kind: 'checking',
-          status: 'Фото прочитано, отправляем на проверку',
+          status: prepared.preparedSize < item.file.size ? 'Фото подготовлено, отправляем на проверку' : 'Фото прочитано, отправляем на проверку',
         };
       });
       renderFiles();
@@ -878,8 +983,16 @@ const previewOgImage = '/preview-special-etudy-20260608/generated/special/etudy-
 
       const existingKeys = new Set(selectedFiles.map((item) => item.key));
       const duplicates = [];
+      const oversized = [];
       const added = [];
       for (const file of incoming) {
+        if (selectedFiles.length + added.length >= maxPhotoCount) {
+          break;
+        }
+        if (file.size > maxOriginalPhotoBytes) {
+          oversized.push(file.name);
+          continue;
+        }
         const key = fileKey(file);
         if (existingKeys.has(key)) {
           duplicates.push(file.name);
@@ -897,10 +1010,26 @@ const previewOgImage = '/preview-special-etudy-20260608/generated/special/etudy-
       }
 
       if (added.length) {
+        const totalBytes = selectedFiles.reduce((sum, item) => sum + item.file.size, 0)
+          + added.reduce((sum, item) => sum + item.file.size, 0);
+        if (totalBytes > maxTotalOriginalPhotoBytes) {
+          added.forEach((item) => releasePreviewUrl(item.previewUrl));
+          setUploadStatus('error', 'Суммарный размер исходных фото слишком большой. Удалите лишние файлы или загрузите сжатые копии.');
+          updateSubmitState();
+          return;
+        }
         selectedFiles = [...selectedFiles, ...added];
         setUploadStatus('progress', `Добавлено фото: ${added.length}. Запускаем проверку.`);
         renderFiles();
         void runPhotoCheck();
+      }
+
+      if (incoming.length > added.length + duplicates.length + oversized.length || selectedFiles.length + added.length >= maxPhotoCount) {
+        setUploadStatus('error', `Можно загрузить не больше ${maxPhotoCount} фото в одной заявке.`);
+      }
+
+      if (oversized.length) {
+        setUploadStatus('error', `Файл больше 35 МБ: ${oversized.slice(0, 2).join(', ')}${oversized.length > 2 ? '…' : ''}`);
       }
 
       if (duplicates.length) {

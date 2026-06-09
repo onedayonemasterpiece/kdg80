@@ -32,6 +32,10 @@ const temporalState = getEventTemporalState(event, now);
 const programHref = getSmartProgramHref(allEvents, false, now);
 const canonicalPath = getFestivalEventHref(event.slug);
 const siteOrigin = (import.meta.env.PUBLIC_SITE_ORIGIN || 'https://kgd80.ru').replace(/\/+$/u, '');
+const specialRegistrationHref = '/special/etudy-toy-vesny-debug-20260606/';
+const specialApiBaseUrl = (import.meta.env.PUBLIC_REGISTRATION_API_BASE_URL || 'https://znanie-kgd80-fest.fly.dev').replace(/\/+$/u, '');
+const specialEventToken = 'etudy-toy-vesny-debug-20260606';
+const isEtudySpecialEvent = event.slug === 'etyudy-toy-vesny';
 const absoluteEventUrl = new URL(canonicalPath, `${siteOrigin}/`).toString();
 const programMonthHref = `/programma/#month-${event.monthAnchor}`;
 const descriptionBase = event.summary || event.whyGo || `Событие фестиваля «80 историй о главном»: ${event.title}.`;
@@ -47,7 +51,23 @@ const metadataParts = [event.dateLabel, event.timeLabel, event.venue].filter(Boo
 const robots = temporalState === 'past' ? 'noindex, follow, noarchive' : undefined;
 const jsonLdStartDate = event.timeLabel ? event.isoStart : event.isoStart?.slice(0, 10);
 const jsonLdEndDate = event.timeLabel ? getEventEndIso(event) : event.isoStart?.slice(0, 10);
-const structuredData = {
+const jsonLdImage = event.image ? [new URL(event.image, `${siteOrigin}/`).toString()] : undefined;
+const jsonLdLocation = event.venue ? {
+  '@type': 'Place',
+  name: event.venue,
+  address: {
+    '@type': 'PostalAddress',
+    streetAddress: event.address,
+    addressLocality: 'Калининград',
+    addressCountry: 'RU',
+  },
+} : undefined;
+const jsonLdOrganizer = {
+  '@type': 'Organization',
+  name: 'Российское общество Знание',
+  url: 'https://znanierussia.ru/',
+};
+const baseStructuredData = {
   '@context': 'https://schema.org',
   '@type': 'Event',
   name: event.title,
@@ -60,23 +80,52 @@ const structuredData = {
     : 'https://schema.org/EventScheduled',
   isAccessibleForFree: true,
   url: absoluteEventUrl,
-  image: event.image ? [event.image] : undefined,
-  location: event.venue ? {
-    '@type': 'Place',
-    name: event.venue,
-    address: {
-      '@type': 'PostalAddress',
-      streetAddress: event.address,
-      addressLocality: 'Калининград',
-      addressCountry: 'RU',
-    },
-  } : undefined,
-  organizer: {
-    '@type': 'Organization',
-    name: 'Российское общество Знание',
-    url: 'https://znanierussia.ru/',
-  },
+  image: jsonLdImage,
+  location: jsonLdLocation,
+  organizer: jsonLdOrganizer,
 };
+const etudyStructuredData = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'EventSeries',
+    name: event.title,
+    description: descriptionBase,
+    url: absoluteEventUrl,
+    image: jsonLdImage,
+    location: jsonLdLocation,
+    organizer: jsonLdOrganizer,
+    subEvent: [
+      ['11 июня 2026, 18:00', '2026-06-11T18:00:00+02:00'],
+      ['23 июня 2026, 18:30', '2026-06-23T18:30:00+02:00'],
+      ['25 июня 2026, 18:30', '2026-06-25T18:30:00+02:00'],
+    ].map(([label, startDate]) => ({
+      '@type': 'Event',
+      name: `${event.title}: ${label}`,
+      description: descriptionBase,
+      startDate,
+      eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
+      eventStatus: 'https://schema.org/EventScheduled',
+      isAccessibleForFree: true,
+      url: absoluteEventUrl,
+      image: jsonLdImage,
+      location: jsonLdLocation,
+      organizer: jsonLdOrganizer,
+    })),
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    name: title,
+    description,
+    url: absoluteEventUrl,
+    mainEntity: {
+      '@type': 'EventSeries',
+      name: event.title,
+      url: absoluteEventUrl,
+    },
+  },
+];
+const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructuredData;
 ---
 
 <Layout
@@ -122,7 +171,20 @@ const structuredData = {
                 {event.speakerLabel && <p class="event-leaf__speaker">Спикер: {event.speakerLabel}</p>}
 
                 <div class="event-leaf__actions">
-                  {temporalState === 'past' ? (
+                  {isEtudySpecialEvent ? (
+                    <div class="event-leaf__registration event-leaf__registration--special" data-special-event-cta-card>
+                      <a
+                        class="button button--primary button--disabled"
+                        href={specialRegistrationHref}
+                        data-special-event-cta
+                        data-enabled-href={specialRegistrationHref}
+                        aria-disabled="true"
+                      >
+                        Проверяем места…
+                      </a>
+                      <div class="notice" data-special-event-notice hidden></div>
+                    </div>
+                  ) : temporalState === 'past' ? (
                     <div class="button button--ghost button--disabled" aria-disabled="true">Событие прошло</div>
                   ) : (
                     <div class="event-leaf__registration" data-registration-card data-event-slug={event.slug} data-registration-autoload>
@@ -185,7 +247,7 @@ const structuredData = {
                       Google
                     </a>
                   </div>
-                ) : temporalState !== 'past' && event.calendarNote ? (
+                ) : temporalState !== 'past' && !isEtudySpecialEvent && event.calendarNote ? (
                   <p class="event-leaf__notice">{event.calendarNote}</p>
                 ) : null}
               </div>
@@ -244,4 +306,63 @@ const structuredData = {
     <SiteFooter routeItems={routeItems} programHref={programHref} />
     <RegistrationClient />
   </div>
+
+  {isEtudySpecialEvent && (
+    <script define:vars={{ specialApiBaseUrl, specialEventToken }} is:inline>
+      const specialCta = document.querySelector('[data-special-event-cta]');
+      const specialNotice = document.querySelector('[data-special-event-notice]');
+
+      const setSpecialCta = (disabled, label, noticeText) => {
+        if (!(specialCta instanceof HTMLAnchorElement)) {
+          return;
+        }
+        specialCta.textContent = label;
+        specialCta.classList.toggle('button--disabled', disabled);
+        specialCta.classList.toggle('button--ghost', disabled);
+        specialCta.classList.toggle('button--primary', !disabled);
+        specialCta.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+        if (disabled) {
+          if (specialCta.hasAttribute('href')) {
+            specialCta.dataset.enabledHref = specialCta.getAttribute('href') || specialCta.dataset.enabledHref || '';
+          }
+          specialCta.removeAttribute('href');
+        } else if (!specialCta.hasAttribute('href') && specialCta.dataset.enabledHref) {
+          specialCta.href = specialCta.dataset.enabledHref;
+        }
+
+        if (specialNotice instanceof HTMLElement) {
+          specialNotice.hidden = !noticeText;
+          specialNotice.textContent = noticeText || '';
+        }
+      };
+
+      const hydrateSpecialEventCta = async () => {
+        if (!(specialCta instanceof HTMLAnchorElement)) {
+          return;
+        }
+
+        setSpecialCta(true, 'Проверяем места…', '');
+        try {
+          const response = await fetch(`${specialApiBaseUrl}/api/v1/special/events/etudy-toy-vesny?token=${encodeURIComponent(specialEventToken)}`, {
+            cache: 'no-store',
+          });
+          if (!response.ok) {
+            throw new Error('special_event_unavailable');
+          }
+          const data = await response.json();
+          const showings = Array.isArray(data?.showings) ? data.showings : [];
+          const availableShowings = showings.filter((showing) => showing?.applicationAvailable);
+          if (data?.applicationAvailable && availableShowings.length) {
+            setSpecialCta(false, 'Подать заявку на розыгрыш', `Доступно дат для заявки: ${availableShowings.length}. Заявка не является билетом.`);
+          } else {
+            setSpecialCta(true, 'Места закончились', 'Заявки на все даты спектакля сейчас недоступны.');
+          }
+        } catch {
+          setSpecialCta(true, 'Статус заявки недоступен', 'Не удалось проверить доступность заявки. Обновите страницу чуть позже.');
+        }
+      };
+
+      void hydrateSpecialEventCta();
+    </script>
+  )}
 </Layout>

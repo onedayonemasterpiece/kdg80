@@ -108,6 +108,10 @@ export async function runLlmLimited<T>(
   task: () => Promise<T>,
   options: LlmLimitedRunOptions,
 ) {
+  const maxQueueSize = readPositiveInteger(
+    process.env.SPECIAL_OCR_LLM_MAX_QUEUE,
+    12,
+  );
   const minIntervalMs = options.minIntervalMs ?? readPositiveInteger(
     process.env.SPECIAL_OCR_LLM_MIN_INTERVAL_MS,
     1_200,
@@ -116,6 +120,13 @@ export async function runLlmLimited<T>(
     process.env.SPECIAL_OCR_LLM_MAX_RETRIES,
     3,
   );
+  if (maxQueueSize > 0 && queuedCount + activeCount >= maxQueueSize) {
+    const error = new LlmProviderError('OCR queue is temporarily overloaded', 503, 30_000);
+    lastFailedAt = new Date().toISOString();
+    lastError = error.message;
+    throw error;
+  }
+
   const enqueuedAt = Date.now();
   lastEnqueuedAt = new Date(enqueuedAt).toISOString();
   queuedCount += 1;

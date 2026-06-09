@@ -3769,7 +3769,7 @@ summary {
 
 @media (max-width: 759px) {
   .hero-showcase--special-event[data-hero-kind="myth"][data-hero-has-backdrop="true"] {
-    min-height: 36.5rem;
+    min-height: 34.2rem;
     background: #171310;
   }
 
@@ -3786,21 +3786,30 @@ summary {
 
   .hero-showcase--special-event .hero-showcase__backdrop {
     inset: auto 0 0;
-    height: 52%;
-    object-position: 50% 52%;
+    height: 59%;
+    object-position: 50% 44%;
   }
 
   .hero-showcase--special-event[data-hero-kind="myth"][data-hero-has-backdrop="true"] .hero-showcase__card {
     padding-top: 1.5rem;
-    padding-bottom: 13.8rem;
+    padding-bottom: 9.8rem;
   }
 
   .hero-showcase--special-event[data-hero-kind="myth"][data-hero-has-backdrop="true"] .hero-showcase__content {
-    max-width: min(76%, 17rem);
+    max-width: 100%;
   }
 
   .hero-showcase--special-event[data-hero-kind="myth"][data-hero-has-backdrop="true"] .hero-showcase__body {
     max-width: 15.5rem;
+  }
+
+  .hero-showcase--special-event[data-hero-kind="myth"][data-hero-has-backdrop="true"] .hero-showcase__actions {
+    align-self: flex-end;
+    align-items: flex-end;
+    width: min(62%, 15rem);
+    margin-top: 0.75rem;
+    padding-top: 0;
+    text-align: right;
   }
 }
 

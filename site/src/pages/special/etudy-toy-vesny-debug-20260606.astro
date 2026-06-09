@@ -71,6 +71,7 @@ const description = 'Секретная тестовая страница зая
               <span data-special-upload-text>Можно выбрать несколько файлов или перетащить их сюда. Если у вас несколько экземпляров паспорта, добавьте все фотографии сразу или по одной.</span>
             </span>
           </label>
+          <button class="special-upload-add" type="button" data-special-upload-add hidden>Добавить ещё фото</button>
           <p class="special-hint">После добавления фото мы покажем предварительный расчет штампов и баллов. Для допуска нужно не менее 5 штампов.</p>
           <div class="special-upload-status" data-special-upload-status aria-live="polite"></div>
           <div class="special-files" data-special-files></div>
@@ -96,6 +97,7 @@ const description = 'Секретная тестовая страница зая
     const uploadIcon = upload ? upload.querySelector('.special-upload__plus') : null;
     const uploadTitle = document.querySelector('[data-special-upload-title]');
     const uploadText = document.querySelector('[data-special-upload-text]');
+    const uploadAdd = document.querySelector('[data-special-upload-add]');
     const photosInput = document.querySelector('[data-special-photos]');
     const fileList = document.querySelector('[data-special-files]');
     const uploadStatus = document.querySelector('[data-special-upload-status]');
@@ -108,6 +110,7 @@ const description = 'Секретная тестовая страница зая
     let selectedFiles = [];
     let precheckState = 'idle';
     let latestPrecheck = null;
+    let latestPrecheckTransport = 'json';
     let photoCheckRun = 0;
     let submitted = false;
 
@@ -138,6 +141,11 @@ const description = 'Секретная тестовая страница зая
       upload.classList.toggle('is-has-files', count > 0);
       upload.dataset.state = count ? precheckState : 'idle';
       photosInput.disabled = precheckState === 'checking';
+      uploadAdd.hidden = count === 0;
+      uploadAdd.disabled = precheckState === 'checking';
+      uploadAdd.textContent = precheckState === 'checking'
+        ? 'Добавить ещё фото после проверки'
+        : 'Добавить ещё фото';
 
       if (!count) {
         if (uploadIcon) uploadIcon.textContent = '+';
@@ -320,6 +328,95 @@ const description = 'Секретная тестовая страница зая
       };
     };
 
+    const buildSpecialMultipartData = (formData, selectedShowingSlugs) => {
+      const payload = new FormData();
+      payload.append('token', token);
+      payload.append('eventSlug', specialEvent ? specialEvent.slug : eventSlug);
+      payload.append('fullName', String(formData.get('fullName') || ''));
+      payload.append('email', String(formData.get('email') || ''));
+      payload.append('phone', String(formData.get('phone') || ''));
+      payload.append('website', String(formData.get('website') || ''));
+      if (formData.get('consentAccepted') === 'on') {
+        payload.append('consentAccepted', 'on');
+      }
+      if (selectedShowingSlugs) {
+        selectedShowingSlugs.forEach((slug) => payload.append('selectedShowingSlugs', String(slug)));
+      }
+      selectedFiles.forEach((item) => {
+        payload.append('photos', item.file, item.file.name || 'passport-photo');
+      });
+      return payload;
+    };
+
+    const readJsonResponse = async (response, fallbackMessage) => {
+      let data = null;
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
+      }
+      if (!response.ok) {
+        throw new Error((data && data.message) || fallbackMessage);
+      }
+      return data;
+    };
+
+    const applyPhotoCheckResult = (data) => {
+      latestPrecheck = data;
+      selectedFiles = selectedFiles.map((item, index) => {
+        const photo = data.photos[index];
+        if (!photo) {
+          return { ...item, kind: 'error', status: 'Нет результата проверки' };
+        }
+
+        if (photo.duplicateOfSha256) {
+          return { ...item, kind: 'duplicate', status: 'Дубль: не засчитывается повторно' };
+        }
+
+        if (!photo.accepted) {
+          return {
+            ...item,
+            kind: 'error',
+            status: photo.rejectionReason || `Не зачтено: ${photo.stampCount} штампов`,
+          };
+        }
+
+        return {
+          ...item,
+          kind: 'success',
+          status: `Зачтено: ${photo.stampCount} штампов`,
+        };
+      });
+      precheckState = 'ready';
+      setUploadStatus('success', `Предварительная проверка готова: ${data.scoring.stampCount} штампов, ${data.scoring.score} баллов.`);
+    };
+
+    const runMultipartPhotoCheck = async (formData) => {
+      selectedFiles = selectedFiles.map((item) => ({
+        ...item,
+        kind: 'checking',
+        status: 'Отправляем фото напрямую на проверку',
+        previewUrl: item.dataBase64 ? item.previewUrl : '',
+      }));
+      renderFiles();
+      setUploadStatus('progress', 'Телефон не дал прочитать файл на странице. Отправляем фото напрямую на сервер для проверки.');
+
+      const response = await fetch(`${apiBaseUrl}/api/v1/special/photo-check-multipart`, {
+        method: 'POST',
+        body: buildSpecialMultipartData(formData),
+      });
+      return await readJsonResponse(response, 'Не удалось проверить фотографии.');
+    };
+
+    const shouldUseMultipartPhotoFallback = (errorMessage) => (
+      selectedFiles.some((item) => !item.dataBase64)
+      || errorMessage.indexOf('прочитать') >= 0
+      || errorMessage.indexOf('FileReader') >= 0
+      || errorMessage.indexOf('arrayBuffer') >= 0
+      || errorMessage.indexOf('file') >= 0
+      || errorMessage.indexOf('blob') >= 0
+    );
+
     const fileKey = (file) => `${file.name}:${file.size}:${file.lastModified}`;
 
     const updateSubmitState = () => {
@@ -440,7 +537,9 @@ const description = 'Секретная тестовая страница зая
       fileList.innerHTML = selectedFiles.map((item) => `
         <article class="special-file" data-file-id="${item.id}">
           <span class="special-file__preview">
-            <img src="${item.previewUrl}" alt="">
+            ${item.previewUrl
+              ? `<img src="${item.previewUrl}" alt="">`
+              : '<span class="special-file__placeholder">Фото добавлено</span>'}
             ${item.kind === 'success' ? '<span class="special-file__check" aria-label="Фото зачтено">✓</span>' : ''}
           </span>
           <div class="special-file__body">
@@ -496,6 +595,7 @@ const description = 'Секретная тестовая страница зая
       const runId = photoCheckRun + 1;
       photoCheckRun = runId;
       latestPrecheck = null;
+      latestPrecheckTransport = 'json';
       if (!selectedFiles.length) {
         precheckState = 'idle';
         setUploadStatus('', '');
@@ -548,45 +648,37 @@ const description = 'Секретная тестовая страница зая
             photos,
           }),
         });
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.message || 'Не удалось проверить фотографии.');
-        }
+        const data = await readJsonResponse(response, 'Не удалось проверить фотографии.');
         if (runId !== photoCheckRun) {
           return;
         }
-        latestPrecheck = data;
-        selectedFiles = selectedFiles.map((item, index) => {
-          const photo = data.photos[index];
-          if (!photo) {
-            return { ...item, kind: 'error', status: 'Нет результата проверки' };
-          }
-
-          if (photo.duplicateOfSha256) {
-            return { ...item, kind: 'duplicate', status: 'Дубль: не засчитывается повторно' };
-          }
-
-          if (!photo.accepted) {
-            return {
-              ...item,
-              kind: 'error',
-              status: photo.rejectionReason || `Не зачтено: ${photo.stampCount} штампов`,
-            };
-          }
-
-          return {
-            ...item,
-            kind: 'success',
-            status: `Зачтено: ${photo.stampCount} штампов`,
-          };
-        });
-        precheckState = 'ready';
-        setUploadStatus('success', `Предварительная проверка готова: ${data.scoring.stampCount} штампов, ${data.scoring.score} баллов.`);
+        applyPhotoCheckResult(data);
       } catch (error) {
         if (runId !== photoCheckRun) {
           return;
         }
         const errorMessage = error instanceof Error ? error.message : 'Не удалось проверить фотографии.';
+        if (shouldUseMultipartPhotoFallback(errorMessage)) {
+          try {
+            const data = await runMultipartPhotoCheck(new FormData(form));
+            if (runId !== photoCheckRun) {
+              return;
+            }
+            latestPrecheckTransport = 'multipart';
+            applyPhotoCheckResult(data);
+            return;
+          } catch (fallbackError) {
+            const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : 'Не удалось проверить фотографии.';
+            precheckState = 'error';
+            selectedFiles = selectedFiles.map((item) => ({
+              ...item,
+              kind: 'error',
+              status: 'Не удалось проверить',
+            }));
+            setUploadStatus('error', fallbackMessage);
+            return;
+          }
+        }
         const fileStatus = errorMessage.indexOf('прочитать') >= 0
           ? 'Не удалось прочитать файл'
           : 'Не удалось проверить';
@@ -670,6 +762,13 @@ const description = 'Секретная тестовая страница зая
       addFiles(photosInput.files || []);
     });
 
+    uploadAdd.addEventListener('click', () => {
+      if (photosInput.disabled) {
+        return;
+      }
+      photosInput.click();
+    });
+
     fileList.addEventListener('click', (event) => {
       const button = event.target instanceof Element ? event.target.closest('[data-remove-file]') : null;
       if (!(button instanceof HTMLButtonElement)) {
@@ -744,31 +843,36 @@ const description = 'Секретная тестовая страница зая
           throw new Error(latestPrecheck.duplicateApplication.message);
         }
 
-        const photos = [];
-        for (let index = 0; index < selectedFiles.length; index += 1) {
-          const item = selectedFiles[index];
-          photos.push(await photoPayloadFromItem(item, index, selectedFiles.length));
-        }
+        let response;
+        if (latestPrecheckTransport === 'multipart' || selectedFiles.some((item) => !item.dataBase64)) {
+          response = await fetch(`${apiBaseUrl}/api/v1/special/applications-multipart`, {
+            method: 'POST',
+            body: buildSpecialMultipartData(formData, selectedShowingSlugs),
+          });
+        } else {
+          const photos = [];
+          for (let index = 0; index < selectedFiles.length; index += 1) {
+            const item = selectedFiles[index];
+            photos.push(await photoPayloadFromItem(item, index, selectedFiles.length));
+          }
 
-        const response = await fetch(`${apiBaseUrl}/api/v1/special/applications`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            token,
-            eventSlug: specialEvent.slug,
-            selectedShowingSlugs,
-            fullName: String(formData.get('fullName') || ''),
-            email: String(formData.get('email') || ''),
-            phone: String(formData.get('phone') || ''),
-            consentAccepted: formData.get('consentAccepted') === 'on',
-            website: String(formData.get('website') || ''),
-            photos,
-          }),
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.message || 'Не удалось отправить заявку.');
+          response = await fetch(`${apiBaseUrl}/api/v1/special/applications`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              token,
+              eventSlug: specialEvent.slug,
+              selectedShowingSlugs,
+              fullName: String(formData.get('fullName') || ''),
+              email: String(formData.get('email') || ''),
+              phone: String(formData.get('phone') || ''),
+              consentAccepted: formData.get('consentAccepted') === 'on',
+              website: String(formData.get('website') || ''),
+              photos,
+            }),
+          });
         }
+        const data = await readJsonResponse(response, 'Не удалось отправить заявку.');
         submitted = data.status === 'accepted';
 
         setStatus(
@@ -1083,6 +1187,34 @@ const description = 'Секретная тестовая страница зая
     color: rgba(21, 17, 15, 0.62);
   }
 
+  .special-upload-add {
+    min-height: 3rem;
+    border: 1px solid rgba(216, 72, 47, 0.26);
+    border-radius: 0.8rem;
+    background: rgba(255, 253, 249, 0.9);
+    color: #9b2f20;
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
+  }
+
+  .special-upload-add:hover,
+  .special-upload-add:focus-visible {
+    border-color: rgba(216, 72, 47, 0.52);
+    background: rgba(216, 72, 47, 0.08);
+  }
+
+  .special-upload-add:active {
+    transform: translateY(1px);
+  }
+
+  .special-upload-add:disabled {
+    cursor: progress;
+    opacity: 0.62;
+  }
+
   .special-upload-status {
     min-height: 1.35rem;
     padding: 0.55rem 0.72rem;
@@ -1148,6 +1280,20 @@ const description = 'Секретная тестовая страница зая
     aspect-ratio: 1;
     object-fit: cover;
     border-radius: 0.65rem;
+  }
+
+  .special-files :global(.special-file__placeholder) {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    aspect-ratio: 1;
+    padding: 0.35rem;
+    border-radius: 0.65rem;
+    background: rgba(35, 97, 68, 0.08);
+    color: #236144;
+    font-size: 0.7rem;
+    line-height: 1.2;
+    text-align: center;
   }
 
   .special-files :global(.special-file__check) {

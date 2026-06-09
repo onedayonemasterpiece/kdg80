@@ -20,6 +20,13 @@ type SpecialApiDeps = {
   storagePublisher: StoragePublisher;
 };
 
+type MultipartPart = {
+  name: string;
+  fileName: string | null;
+  contentType: string;
+  data: Buffer;
+};
+
 const PREVIEW_SLUG = 'etudy-toy-vesny';
 const PREVIEW_TOKEN = 'etudy-toy-vesny-debug-20260606';
 const PREVIEW_PATH = `/special/${PREVIEW_TOKEN}`;
@@ -29,6 +36,132 @@ const PREVIEW_PUBLIC_URL = process.env.SPECIAL_PREVIEW_PUBLIC_URL?.trim()
 function noIndex(reply: { header: (name: string, value: string) => unknown }) {
   reply.header('X-Robots-Tag', 'noindex, nofollow, noarchive');
   reply.header('Cache-Control', 'no-store');
+}
+
+function parseHeaderParameters(value: string) {
+  const params: Record<string, string> = {};
+  for (const segment of value.split(';').slice(1)) {
+    const [rawKey, ...rawValueParts] = segment.trim().split('=');
+    if (!rawKey || !rawValueParts.length) {
+      continue;
+    }
+    const rawValue = rawValueParts.join('=').trim();
+    params[rawKey.toLowerCase()] = rawValue.replace(/^"|"$/gu, '');
+  }
+  return params;
+}
+
+function parseMultipartBody(contentType: string, body: Buffer): MultipartPart[] {
+  const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/iu);
+  const boundary = boundaryMatch?.[1] || boundaryMatch?.[2];
+  if (!boundary) {
+    throw new SpecialApplicationError(400, 'invalid_multipart', 'Не удалось прочитать загруженные файлы.');
+  }
+
+  const delimiter = Buffer.from(`--${boundary}`);
+  const parts: MultipartPart[] = [];
+  let cursor = body.indexOf(delimiter);
+  if (cursor < 0) {
+    throw new SpecialApplicationError(400, 'invalid_multipart', 'Не удалось прочитать загруженные файлы.');
+  }
+
+  while (cursor >= 0) {
+    let partStart = cursor + delimiter.length;
+    if (body.subarray(partStart, partStart + 2).toString('ascii') === '--') {
+      break;
+    }
+    if (body.subarray(partStart, partStart + 2).toString('ascii') === '\r\n') {
+      partStart += 2;
+    }
+
+    const nextCursor = body.indexOf(delimiter, partStart);
+    if (nextCursor < 0) {
+      break;
+    }
+
+    let part = body.subarray(partStart, nextCursor);
+    if (part.length >= 2 && part.subarray(part.length - 2).toString('ascii') === '\r\n') {
+      part = part.subarray(0, part.length - 2);
+    }
+
+    const headerEnd = part.indexOf(Buffer.from('\r\n\r\n'));
+    if (headerEnd >= 0) {
+      const headerText = part.subarray(0, headerEnd).toString('utf8');
+      const data = part.subarray(headerEnd + 4);
+      const headers: Record<string, string> = {};
+      for (const line of headerText.split('\r\n')) {
+        const colon = line.indexOf(':');
+        if (colon > 0) {
+          headers[line.slice(0, colon).trim().toLowerCase()] = line.slice(colon + 1).trim();
+        }
+      }
+
+      const disposition = headers['content-disposition'] || '';
+      const dispositionParams = parseHeaderParameters(disposition);
+      const name = dispositionParams.name;
+      if (name) {
+        parts.push({
+          name,
+          fileName: dispositionParams.filename || null,
+          contentType: headers['content-type'] || 'application/octet-stream',
+          data,
+        });
+      }
+    }
+
+    cursor = nextCursor;
+  }
+
+  return parts;
+}
+
+function multipartField(parts: MultipartPart[], name: string) {
+  const part = parts.find((item) => item.name === name && item.fileName === null);
+  return part ? part.data.toString('utf8') : '';
+}
+
+function multipartFields(parts: MultipartPart[], name: string) {
+  return parts
+    .filter((item) => item.name === name && item.fileName === null)
+    .map((item) => item.data.toString('utf8'));
+}
+
+function photosFromMultipart(parts: MultipartPart[]) {
+  return parts
+    .filter((item) => item.name === 'photos' && item.fileName !== null && item.data.length > 0)
+    .map((item) => ({
+      fileName: item.fileName || 'passport-photo',
+      contentType: item.contentType || 'application/octet-stream',
+      dataBase64: item.data.toString('base64'),
+    }));
+}
+
+function multipartPhotoCheckPayload(contentType: string, body: Buffer): SpecialPhotoCheckPayload {
+  const parts = parseMultipartBody(contentType, body);
+  return {
+    token: multipartField(parts, 'token'),
+    eventSlug: multipartField(parts, 'eventSlug'),
+    fullName: multipartField(parts, 'fullName'),
+    email: multipartField(parts, 'email'),
+    phone: multipartField(parts, 'phone'),
+    website: multipartField(parts, 'website'),
+    photos: photosFromMultipart(parts),
+  };
+}
+
+function multipartApplicationPayload(contentType: string, body: Buffer): SpecialApplicationPayload {
+  const parts = parseMultipartBody(contentType, body);
+  return {
+    token: multipartField(parts, 'token'),
+    eventSlug: multipartField(parts, 'eventSlug'),
+    selectedShowingSlugs: multipartFields(parts, 'selectedShowingSlugs'),
+    fullName: multipartField(parts, 'fullName'),
+    email: multipartField(parts, 'email'),
+    phone: multipartField(parts, 'phone'),
+    consentAccepted: multipartField(parts, 'consentAccepted') === 'on' || multipartField(parts, 'consentAccepted') === 'true',
+    website: multipartField(parts, 'website'),
+    photos: photosFromMultipart(parts),
+  };
 }
 
 function renderPreviewPage(eventJson: string) {
@@ -868,6 +1001,15 @@ function renderPreviewPage(eventJson: string) {
 }
 
 export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiDeps) {
+  if (!app.hasContentTypeParser(/^multipart\/form-data/u)) {
+    app.addContentTypeParser(/^multipart\/form-data/u, {
+      parseAs: 'buffer',
+      bodyLimit: 14 * 1024 * 1024,
+    }, (_request, body, done) => {
+      done(null, body);
+    });
+  }
+
   app.get(PREVIEW_PATH, async (_request, reply) => {
     const event = getSpecialEventPreview(deps.db, PREVIEW_SLUG, PREVIEW_TOKEN);
     if (!event) {
@@ -947,6 +1089,62 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
     }
   });
 
+  app.post('/api/v1/special/applications-multipart', {
+    bodyLimit: 14 * 1024 * 1024,
+    config: {
+      rateLimit: {
+        max: 4,
+        timeWindow: '1 minute',
+      },
+    },
+  }, async (request, reply) => {
+    noIndex(reply);
+
+    if (!deps.fingerprintSecret || !deps.publicKeyPemBase64) {
+      reply.code(503);
+      return {
+        error: 'special_registration_not_ready',
+        message: 'Заявка на розыгрыш пока не настроена на сервере.',
+      };
+    }
+
+    try {
+      const payload = multipartApplicationPayload(
+        String(request.headers['content-type'] || ''),
+        request.body as Buffer,
+      );
+      const created = await createSpecialApplication(payload, {
+        db: deps.db,
+        consentVersion: deps.consentVersion,
+        consentTextHash: deps.consentTextHash,
+        fingerprintSecret: deps.fingerprintSecret,
+        publicKeyPemBase64: deps.publicKeyPemBase64,
+        privateKeyPemBase64: deps.privateKeyPemBase64,
+        storagePublisher: deps.storagePublisher,
+        sourceIp: request.ip,
+        userAgent: request.headers['user-agent'],
+      });
+
+      reply.code(201);
+      return created;
+    } catch (error) {
+      if (error instanceof SpecialApplicationError) {
+        reply.code(error.statusCode);
+        return {
+          error: error.code,
+          message: error.message,
+        };
+      }
+
+      request.log.error({ err: error }, 'special_application_multipart_failed');
+      reply.code(500);
+      return {
+        error: 'server_error',
+        message: 'Не удалось отправить заявку. Попробуйте ещё раз чуть позже.',
+      };
+    }
+  });
+
   app.post('/api/v1/special/photo-check', {
     bodyLimit: 14 * 1024 * 1024,
     config: {
@@ -974,6 +1172,45 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
       }
 
       request.log.error({ err: error }, 'special_photo_check_failed');
+      reply.code(500);
+      return {
+        error: 'server_error',
+        message: 'Не удалось проверить фотографии. Попробуйте ещё раз чуть позже.',
+      };
+    }
+  });
+
+  app.post('/api/v1/special/photo-check-multipart', {
+    bodyLimit: 14 * 1024 * 1024,
+    config: {
+      rateLimit: {
+        max: 8,
+        timeWindow: '1 minute',
+      },
+    },
+  }, async (request, reply) => {
+    noIndex(reply);
+
+    try {
+      const payload = multipartPhotoCheckPayload(
+        String(request.headers['content-type'] || ''),
+        request.body as Buffer,
+      );
+      return await checkSpecialApplicationPhotos(payload, {
+        db: deps.db,
+        fingerprintSecret: deps.fingerprintSecret,
+        privateKeyPemBase64: deps.privateKeyPemBase64,
+      });
+    } catch (error) {
+      if (error instanceof SpecialApplicationError) {
+        reply.code(error.statusCode);
+        return {
+          error: error.code,
+          message: error.message,
+        };
+      }
+
+      request.log.error({ err: error }, 'special_photo_check_multipart_failed');
       reply.code(500);
       return {
         error: 'server_error',

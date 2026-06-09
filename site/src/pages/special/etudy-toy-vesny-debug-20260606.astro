@@ -10,6 +10,8 @@ const routeItems = getRouteNavItems();
 const canonicalPath = `/special/${token}/`;
 const title = 'Заявка на розыгрыш — Этюды той весны';
 const description = 'Секретная тестовая страница заявки на розыгрыш приглашений на иммерсивный спектакль «Этюды той весны».';
+const heroImage = '/generated/special/etudy-toy-vesny-immersive-hero.webp';
+const previewOgImage = '/preview-special-etudy-20260608/generated/special/etudy-toy-vesny-immersive-hero.webp';
 ---
 
 <Layout
@@ -17,6 +19,7 @@ const description = 'Секретная тестовая страница зая
   description={description}
   canonicalPath={canonicalPath}
   robots="noindex, nofollow, noarchive"
+  ogImage={previewOgImage}
 >
   <div class="special-page">
     <SiteHeader programHref="/programma/" routeItems={routeItems} />
@@ -25,6 +28,17 @@ const description = 'Секретная тестовая страница зая
         <p class="special-kicker">Заявка на розыгрыш</p>
         <h1 id="special-title">Этюды той весны</h1>
         <p class="special-lead">Иммерсивный спектакль фестиваля «80 историй о главном». После проверки паспорта участника фестиваля заявка попадает в розыгрыш выбранных дат.</p>
+        <figure class="special-hero-art">
+          <img
+            src={heroImage}
+            width="1800"
+            height="1800"
+            alt="Герои иммерсивного спектакля «Этюды той весны» на Южном вокзале"
+            loading="eager"
+            decoding="async"
+            fetchpriority="high"
+          />
+        </figure>
         <ul class="special-meta" aria-label="Показы спектакля">
           <li><strong>11 июня</strong><span>18:00 · Южный Вокзал</span></li>
           <li><strong>23 июня</strong><span>18:30 · Южный Вокзал</span></li>
@@ -1045,8 +1059,8 @@ const description = 'Секретная тестовая страница зая
   .special-page {
     min-height: 100dvh;
     background:
-      linear-gradient(115deg, rgba(255, 251, 244, 0.96), rgba(248, 239, 228, 0.9)),
-      url('/shared-assets/hero-added-05.webp') center / cover fixed;
+      linear-gradient(105deg, rgba(255, 251, 244, 0.98) 0%, rgba(255, 251, 244, 0.94) 39%, rgba(248, 239, 228, 0.72) 100%),
+      url('/generated/special/etudy-toy-vesny-immersive-hero.webp') center 38% / cover fixed;
     color: #15110f;
   }
 
@@ -1063,6 +1077,7 @@ const description = 'Секретная тестовая страница зая
   .special-intro {
     display: grid;
     gap: 1.4rem;
+    align-content: start;
   }
 
   .special-kicker,
@@ -1085,7 +1100,7 @@ const description = 'Секретная тестовая страница зая
     font-family: var(--font-display);
     font-size: clamp(3.2rem, 8vw, 6.8rem);
     line-height: 0.9;
-    letter-spacing: -0.04em;
+    letter-spacing: 0;
   }
 
   .special-lead,
@@ -1095,6 +1110,25 @@ const description = 'Секретная тестовая страница зая
     font-size: 1.08rem;
     line-height: 1.55;
     color: rgba(21, 17, 15, 0.72);
+  }
+
+  .special-hero-art {
+    width: min(100%, 34rem);
+    margin: 0;
+    aspect-ratio: 1;
+    border: 1px solid rgba(21, 17, 15, 0.12);
+    border-radius: 1.2rem;
+    overflow: hidden;
+    background: rgba(255, 253, 249, 0.82);
+    box-shadow: 0 20px 64px rgba(21, 17, 15, 0.16);
+  }
+
+  .special-hero-art img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 42%;
   }
 
   .special-meta {
@@ -1756,6 +1790,12 @@ const description = 'Секретная тестовая страница зая
   }
 
   @media (max-width: 900px) {
+    .special-page {
+      background:
+        linear-gradient(180deg, rgba(255, 251, 244, 0.98) 0%, rgba(255, 251, 244, 0.9) 46%, rgba(248, 239, 228, 0.78) 100%),
+        url('/generated/special/etudy-toy-vesny-immersive-hero.webp') center top / 150% auto no-repeat;
+    }
+
     .special-page__main,
     .special-meta,
     .special-files,
@@ -1765,6 +1805,11 @@ const description = 'Секретная тестовая страница зая
 
     .special-precheck :global(.special-precheck__grid) {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .special-hero-art {
+      width: 100%;
+      max-width: 34rem;
     }
   }
 

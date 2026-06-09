@@ -619,6 +619,7 @@ summary {
 
 .hero-showcase--special-event .hero-showcase__backdrop {
   object-position: 82% 50%;
+  filter: brightness(1.08) saturate(1.04);
 }
 
 .hero-showcase__brandbadge {
@@ -3779,8 +3780,8 @@ summary {
 
 .hero-showcase--special-event[data-hero-kind="myth"][data-hero-has-backdrop="true"]::before {
   background:
-    linear-gradient(90deg, rgba(18, 14, 12, 0.8) 0%, rgba(18, 14, 12, 0.58) 30%, rgba(18, 14, 12, 0.22) 52%, rgba(18, 14, 12, 0.04) 78%),
-    linear-gradient(180deg, rgba(18, 14, 12, 0.06) 0%, rgba(18, 14, 12, 0.28) 100%);
+    linear-gradient(90deg, rgba(18, 14, 12, 0.7) 0%, rgba(18, 14, 12, 0.42) 30%, rgba(18, 14, 12, 0.12) 52%, rgba(18, 14, 12, 0.02) 78%),
+    linear-gradient(180deg, rgba(18, 14, 12, 0.04) 0%, rgba(18, 14, 12, 0.12) 100%);
 }
 
 @media (max-width: 759px) {
@@ -3791,13 +3792,13 @@ summary {
 
   .hero-showcase--special-event[data-hero-kind="myth"][data-hero-has-backdrop="true"]::before {
     background:
-      linear-gradient(180deg, rgba(18, 14, 12, 0.95) 0%, rgba(18, 14, 12, 0.92) 20%, rgba(18, 14, 12, 0.84) 38%, rgba(18, 14, 12, 0.66) 56%, rgba(18, 14, 12, 0.46) 69%, rgba(18, 14, 12, 0.25) 82%, rgba(18, 14, 12, 0.1) 94%, rgba(18, 14, 12, 0.03) 100%);
+      linear-gradient(180deg, rgba(18, 14, 12, 0.94) 0%, rgba(18, 14, 12, 0.88) 18%, rgba(18, 14, 12, 0.62) 29%, rgba(18, 14, 12, 0.28) 38%, rgba(18, 14, 12, 0.11) 45%, rgba(18, 14, 12, 0.04) 51%, rgba(18, 14, 12, 0) 57%);
   }
 
   .hero-showcase--special-event[data-hero-kind="myth"][data-hero-has-backdrop="true"]::after {
     background:
       radial-gradient(circle at 18% 14%, rgba(255, 248, 239, 0.12), transparent 13rem),
-      linear-gradient(180deg, rgba(18, 13, 11, 0), rgba(18, 13, 11, 0.18));
+      linear-gradient(180deg, rgba(18, 13, 11, 0), rgba(18, 13, 11, 0.05));
   }
 
   .hero-showcase--special-event .hero-showcase__backdrop {

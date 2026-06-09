@@ -3767,6 +3767,12 @@ summary {
   max-width: 15.5rem;
 }
 
+.hero-showcase--special-event[data-hero-kind="myth"][data-hero-has-backdrop="true"]::before {
+  background:
+    linear-gradient(90deg, rgba(18, 14, 12, 0.8) 0%, rgba(18, 14, 12, 0.58) 30%, rgba(18, 14, 12, 0.22) 52%, rgba(18, 14, 12, 0.04) 78%),
+    linear-gradient(180deg, rgba(18, 14, 12, 0.06) 0%, rgba(18, 14, 12, 0.28) 100%);
+}
+
 @media (max-width: 759px) {
   .hero-showcase--special-event[data-hero-kind="myth"][data-hero-has-backdrop="true"] {
     min-height: 34.2rem;
@@ -3775,7 +3781,7 @@ summary {
 
   .hero-showcase--special-event[data-hero-kind="myth"][data-hero-has-backdrop="true"]::before {
     background:
-      linear-gradient(180deg, rgba(18, 14, 12, 0.98) 0%, rgba(18, 14, 12, 0.96) 55%, rgba(18, 14, 12, 0.18) 74%, rgba(18, 14, 12, 0.04) 100%);
+      linear-gradient(180deg, rgba(18, 14, 12, 0.98) 0%, rgba(18, 14, 12, 0.94) 28%, rgba(18, 14, 12, 0.4) 35%, rgba(18, 14, 12, 0.12) 47%, rgba(18, 14, 12, 0.02) 100%);
   }
 
   .hero-showcase--special-event[data-hero-kind="myth"][data-hero-has-backdrop="true"]::after {
@@ -3786,13 +3792,13 @@ summary {
 
   .hero-showcase--special-event .hero-showcase__backdrop {
     inset: auto 0 0;
-    height: 59%;
-    object-position: 50% 44%;
+    height: 66%;
+    object-position: 50% 18%;
   }
 
   .hero-showcase--special-event[data-hero-kind="myth"][data-hero-has-backdrop="true"] .hero-showcase__card {
     padding-top: 1.5rem;
-    padding-bottom: 9.8rem;
+    padding-bottom: 8.7rem;
   }
 
   .hero-showcase--special-event[data-hero-kind="myth"][data-hero-has-backdrop="true"] .hero-showcase__content {
@@ -3800,15 +3806,27 @@ summary {
   }
 
   .hero-showcase--special-event[data-hero-kind="myth"][data-hero-has-backdrop="true"] .hero-showcase__body {
-    max-width: 15.5rem;
+    max-width: 17.2rem;
+    font-size: 0.92rem;
+    line-height: 1.34;
   }
 
   .hero-showcase--special-event[data-hero-kind="myth"][data-hero-has-backdrop="true"] .hero-showcase__actions {
     align-self: flex-end;
+    flex-direction: column;
+    flex-wrap: nowrap;
     align-items: flex-end;
-    width: min(62%, 15rem);
-    margin-top: 0.75rem;
+    width: min(66%, 15.4rem);
+    margin-top: 0.62rem;
+    margin-left: auto;
     padding-top: 0;
+    text-align: right;
+  }
+
+  .hero-showcase--special-event[data-hero-kind="myth"] .hero-showcase__event-link,
+  .hero-showcase--special-event[data-hero-kind="myth"] .hero-showcase__next {
+    width: 100%;
+    justify-content: flex-end;
     text-align: right;
   }
 }

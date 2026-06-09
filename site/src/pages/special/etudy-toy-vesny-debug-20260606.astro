@@ -27,12 +27,13 @@ const previewOgImage = '/preview-special-etudy-20260608/generated/special/etudy-
       <section class="special-intro" aria-labelledby="special-title">
         <p class="special-kicker">Заявка на розыгрыш</p>
         <h1 id="special-title">Этюды той весны</h1>
-        <p class="special-lead">Иммерсивный спектакль на Южном вокзале для тех, кто активно ходит на события фестиваля. После проверки паспорта участника фестиваля заявка попадает в розыгрыш выбранных дат.</p>
+        <p class="special-lead">«Этюды той весны» — иммерсивный спектакль на Южном вокзале, основанный на реальных историях первых переселенцев в Калининградскую область.</p>
+        <p class="special-story-copy">Вокзал становится местом, где особенно ясно вспоминается начало пути: дорога, первые годы на новой земле, тревога неизвестности и вера в мирную жизнь. В маршруте зрители не просто наблюдают за действием, а соприкасаются с настоящими музейными вещами — не реквизитом, а подлинными предметами времени.</p>
         <figure class="special-hero-art">
           <img
             src={heroImage}
             width="1800"
-            height="1800"
+            height="1719"
             alt="Герои иммерсивного спектакля «Этюды той весны» на Южном вокзале"
             loading="eager"
             decoding="async"
@@ -1239,6 +1240,7 @@ const previewOgImage = '/preview-special-etudy-20260608/generated/special/etudy-
   }
 
   .special-lead,
+  .special-story-copy,
   .special-note {
     max-width: 34rem;
     margin: 0;
@@ -1250,7 +1252,7 @@ const previewOgImage = '/preview-special-etudy-20260608/generated/special/etudy-
   .special-hero-art {
     width: min(100%, 34rem);
     margin: 0;
-    aspect-ratio: 1;
+    aspect-ratio: 1800 / 1719;
     border: 1px solid rgba(21, 17, 15, 0.12);
     border-radius: 1.2rem;
     overflow: hidden;

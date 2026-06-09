@@ -68,11 +68,11 @@ const description = 'Секретная тестовая страница зая
             <span class="special-upload__plus" aria-hidden="true">+</span>
             <span>
               <strong data-special-upload-title>Добавьте фото паспорта участника фестиваля</strong>
-              <span data-special-upload-text>Можно выбрать несколько файлов или перетащить их сюда. Если у вас несколько экземпляров паспорта, добавьте все фотографии сразу или по одной.</span>
+              <span data-special-upload-text>Можно выбрать несколько файлов или перетащить их сюда. ФИО должно быть заполнено и видно на каждом паспорте.</span>
             </span>
           </label>
-          <button class="special-upload-add" type="button" data-special-upload-add hidden>Добавить ещё фото</button>
-          <p class="special-hint">После добавления фото мы покажем предварительный расчет штампов и баллов. Для допуска нужно не менее 5 штампов.</p>
+          <button class="special-upload-add" type="button" data-special-upload-add hidden><span aria-hidden="true">+</span>Добавить ещё фото</button>
+          <p class="special-hint">После добавления фото мы покажем предварительный расчет штампов и баллов. Для допуска нужно не менее 5 штампов; фото без видимого ФИО не засчитывается.</p>
           <div class="special-upload-status" data-special-upload-status aria-live="polite"></div>
           <div class="special-files" data-special-files></div>
           <div class="special-precheck" data-special-precheck hidden></div>
@@ -144,12 +144,12 @@ const description = 'Секретная тестовая страница зая
       photosInput.disabled = precheckState === 'checking';
       uploadAdd.hidden = count === 0;
       uploadAdd.disabled = precheckState === 'checking';
-      uploadAdd.textContent = 'Добавить ещё фото';
+      uploadAdd.innerHTML = '<span aria-hidden="true">+</span>Добавить ещё фото';
 
       if (!count) {
         if (uploadIcon) uploadIcon.textContent = '+';
         uploadTitle.textContent = 'Добавьте фото паспорта участника фестиваля';
-        uploadText.textContent = 'Можно выбрать несколько файлов или перетащить их сюда. Если у вас несколько экземпляров паспорта, добавьте все фотографии сразу или по одной.';
+        uploadText.textContent = 'Можно выбрать несколько файлов или перетащить их сюда. ФИО должно быть заполнено и видно на каждом паспорте.';
         return;
       }
 
@@ -478,7 +478,13 @@ const description = 'Секретная тестовая страница зая
         };
       });
       precheckState = 'ready';
-      setUploadStatus('success', `Предварительная проверка готова: ${formatStamps(data.scoring.stampCount)}, ${formatPoints(data.scoring.score)}.`);
+      const enoughStamps = !specialEvent || data.scoring.stampCount >= specialEvent.minStampCount;
+      setUploadStatus(
+        enoughStamps ? 'success' : 'progress',
+        enoughStamps
+          ? `Предварительная проверка готова: ${formatStamps(data.scoring.stampCount)}, ${formatPoints(data.scoring.score)}.`
+          : `Фото зачтены: ${formatStamps(data.scoring.stampCount)}. Для заявки нужно ${formatStamps(specialEvent.minStampCount)}.`,
+      );
     };
 
     const runMultipartPhotoCheck = async (formData) => {
@@ -488,7 +494,7 @@ const description = 'Секретная тестовая страница зая
         status: 'Отправляем фото напрямую на проверку',
       }));
       renderFiles();
-      setUploadStatus('progress', 'Фото уже в списке. Отправляем оригиналы напрямую на сервер и ждём распознавание штампов.');
+      setUploadStatus('progress', 'Фото добавлены. Проверяем их и скоро покажем штампы и баллы.');
 
       const response = await fetch(`${apiBaseUrl}/api/v1/special/photo-check-multipart`, {
         method: 'POST',
@@ -557,6 +563,12 @@ const description = 'Секретная тестовая страница зая
       if (!latestPrecheck.scoring.acceptedPhotoCount) {
         submit.disabled = true;
         submit.textContent = 'Фото не зачтено';
+        return;
+      }
+
+      if (specialEvent && latestPrecheck.scoring.stampCount < specialEvent.minStampCount) {
+        submit.disabled = true;
+        submit.textContent = `Нужно ${formatStamps(specialEvent.minStampCount)}`;
         return;
       }
 
@@ -636,7 +648,7 @@ const description = 'Секретная тестовая страница зая
         <article class="special-file" data-file-id="${item.id}">
           <span class="special-file__preview">
             ${item.previewUrl
-              ? `<img src="${item.previewUrl}" alt="">`
+              ? `<img src="${item.previewUrl}" alt="" data-special-file-preview>`
               : '<span class="special-file__placeholder">Фото добавлено</span>'}
             ${item.kind === 'checking' ? '<span class="special-file__spinner" aria-label="Фото проверяется"></span>' : ''}
             ${item.kind === 'success' ? '<span class="special-file__check" aria-label="Фото зачтено">✓</span>' : ''}
@@ -649,6 +661,19 @@ const description = 'Секретная тестовая страница зая
           <button type="button" data-remove-file="${item.id}" aria-label="Удалить ${escapeHtml(item.file.name)}">Удалить</button>
         </article>
       `).join('');
+
+      fileList.querySelectorAll('[data-special-file-preview]').forEach((image) => {
+        image.addEventListener('error', () => {
+          const preview = image.closest('.special-file__preview');
+          if (!(preview instanceof HTMLElement)) {
+            return;
+          }
+          image.remove();
+          if (!preview.querySelector('.special-file__placeholder')) {
+            preview.insertAdjacentHTML('afterbegin', '<span class="special-file__placeholder">Фото добавлено</span>');
+          }
+        }, { once: true });
+      });
     };
 
     const renderPrecheck = () => {
@@ -1328,6 +1353,10 @@ const description = 'Секретная тестовая страница зая
 
   .special-upload-add {
     min-height: 3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
     border: 1px solid rgba(216, 72, 47, 0.26);
     border-radius: 0.8rem;
     background: rgba(255, 253, 249, 0.9);
@@ -1339,6 +1368,19 @@ const description = 'Секретная тестовая страница зая
     transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
     white-space: normal;
     overflow-wrap: anywhere;
+  }
+
+  .special-upload-add span {
+    width: 1.35rem;
+    height: 1.35rem;
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: rgba(216, 72, 47, 0.12);
+    color: #d8482f;
+    font-size: 1.1rem;
+    line-height: 1;
   }
 
   .special-upload-add:hover,

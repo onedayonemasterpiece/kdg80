@@ -298,12 +298,27 @@ function mapOcrJson(parsed: Record<string, unknown>, provider: string, model: st
   const hasFullName = normalizeOcrBoolean(parsed.has_full_name ?? parsed.hasFullName);
   const stampCount = Math.max(0, Math.trunc(safeNumber(parsed.stamp_count ?? parsed.stampCount, 0)));
   const confidence = Math.max(0, Math.min(1, safeNumber(parsed.confidence, 0)));
-  const accepted = normalizeOcrBoolean(parsed.accepted) && hasFullName && stampCount >= 5 && confidence >= 0.75;
-  const rejectionReason = typeof parsed.rejection_reason === 'string'
+  const parsedRejectionReason = typeof parsed.rejection_reason === 'string'
     ? parsed.rejection_reason
     : typeof parsed.rejectionReason === 'string'
       ? parsed.rejectionReason
       : null;
+  const rejectionLower = (parsedRejectionReason || '').toLowerCase();
+  const rejectedOnlyByStampMinimum = rejectionLower.includes('штамп')
+    && (rejectionLower.includes('меньше') || rejectionLower.includes('менее') || rejectionLower.includes('5'));
+  const accepted = hasFullName
+    && confidence >= 0.75
+    && (
+      normalizeOcrBoolean(parsed.accepted)
+      || parsedRejectionReason === null
+      || rejectedOnlyByStampMinimum
+    );
+  let rejectionReason: string | null = null;
+  if (!accepted) {
+    rejectionReason = hasFullName
+      ? parsedRejectionReason || 'Фото получилось нечетким. Попробуйте загрузить его еще раз.'
+      : 'На фото не видно заполненное поле ФИО. Впишите ФИО в этот паспорт участника фестиваля и загрузите фото заново.';
+  }
 
   return {
     hasFullName,
@@ -323,7 +338,7 @@ function knownDebugOcr(sha256: string): OcrResult | null {
       has_full_name: false,
       stamp_count: 1,
       accepted: false,
-      rejection_reason: 'На фото не распознано заполненное поле ФИО и меньше 5 штампов.',
+      rejection_reason: 'На фото не видно заполненное поле ФИО. Впишите ФИО в паспорт участника фестиваля и загрузите фото заново.',
       confidence: 0.9,
       debug_fixture: true,
     },
@@ -410,7 +425,10 @@ async function runOpenAiPassportOcr(photo: PreparedPhoto): Promise<OcrResult> {
                 type: 'text',
                 text: [
                   'Определи, есть ли заполненное поле ФИО, и посчитай видимые штампы посещений.',
-                  'Минимум допуска: заполненное ФИО и 5 штампов.',
+                  'ФИО должно быть заполнено и видно на каждой отдельной фотографии: фото без ФИО может быть чужим паспортом участника.',
+                  'Для отдельной фотографии достаточно заполненного ФИО: если ФИО есть, засчитывай любое найденное количество штампов, даже меньше 5.',
+                  'Если ФИО не заполнено или не видно, accepted=false и штампы этой фотографии не засчитываются.',
+                  'Минимум 5 штампов применяется только к сумме всех фотографий заявки.',
                   'Верни JSON с полями has_full_name, stamp_count, accepted, rejection_reason, confidence, notes.',
                 ].join(' '),
               },

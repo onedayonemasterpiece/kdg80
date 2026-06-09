@@ -295,7 +295,7 @@ function normalizeOcrBoolean(value: unknown) {
 }
 
 function mapOcrJson(parsed: Record<string, unknown>, provider: string, model: string | null): OcrResult {
-  const hasFullName = normalizeOcrBoolean(parsed.has_full_name ?? parsed.hasFullName);
+  const parsedHasFullName = normalizeOcrBoolean(parsed.has_full_name ?? parsed.hasFullName);
   const stampCount = Math.max(0, Math.trunc(safeNumber(parsed.stamp_count ?? parsed.stampCount, 0)));
   const confidence = Math.max(0, Math.min(1, safeNumber(parsed.confidence, 0)));
   const parsedRejectionReason = typeof parsed.rejection_reason === 'string'
@@ -304,6 +304,15 @@ function mapOcrJson(parsed: Record<string, unknown>, provider: string, model: st
       ? parsed.rejectionReason
       : null;
   const rejectionLower = (parsedRejectionReason || '').toLowerCase();
+  const rejectedBecauseMissingFullName = rejectionLower.includes('фио')
+    && (
+      rejectionLower.includes('не видно')
+      || rejectionLower.includes('не заполн')
+      || rejectionLower.includes('отсутств')
+      || rejectionLower.includes('нет')
+      || rejectionLower.includes('не распознан')
+    );
+  const hasFullName = parsedHasFullName && !rejectedBecauseMissingFullName;
   const rejectedOnlyByStampMinimum = rejectionLower.includes('штамп')
     && (rejectionLower.includes('меньше') || rejectionLower.includes('менее') || rejectionLower.includes('5'));
   const accepted = hasFullName

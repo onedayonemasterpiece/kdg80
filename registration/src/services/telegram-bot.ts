@@ -27,12 +27,14 @@ import {
   listRegistrationsForEvent,
 } from './registration-exports';
 import { cleanupTestRun, createSqliteBackup } from './admin-maintenance';
+import { formatAdminDiagnostics } from './admin-diagnostics';
 import { searchRegistrationsByFullName } from './registration-search';
 import {
   buildSpecialDrawXlsxBuffer,
   formatSpecialDrawResult,
   formatSpecialEventPanel,
   formatSpecialEventsPanel,
+  formatSpecialShowingApplicants,
   formatSpecialShowingPanel,
   getLatestSpecialDrawResult,
   getSpecialEventForTelegram,
@@ -81,6 +83,7 @@ function buildMainKeyboard(role: TelegramAdminRole) {
 
   if (role === 'superadmin') {
     keyboard.text('Открыть регистрацию').text('Закрыть регистрацию').text('Операторы').row();
+    keyboard.text('Диагностика').row();
   }
 
   keyboard.text('Помощь').resized();
@@ -105,6 +108,7 @@ function formatHelp(role: TelegramAdminRole) {
     lines.push('/registration_close <slug> — закрыть регистрацию на событие.');
     lines.push('/export_all — общий XLSX по всем событиям.');
     lines.push('/spec — спецмероприятия, черновой и опубликованный розыгрыш.');
+    lines.push('/health — диагностика очередей OCR/LLM и Telegram outbox.');
     lines.push('/backup_sqlite — резервная копия SQLite.');
     lines.push('/cleanup_test_run <run_id> — удалить тестовые регистрации конкретного прогона.');
     lines.push('');
@@ -327,6 +331,7 @@ function buildSpecialEventsKeyboard(items: ReturnType<typeof listSpecialEventsFo
   for (const item of items) {
     keyboard.text(truncateLabel(item.event.title), `spe:${item.event.id}`).row();
   }
+  keyboard.text('Диагностика', 'sphl').row();
   return keyboard;
 }
 
@@ -351,6 +356,8 @@ function buildSpecialShowingKeyboard(
     keyboard.text('Черновой розыгрыш', `spd:${showingId}`);
     keyboard.text('Опубликовать розыгрыш', `spp:${showingId}`).row();
   }
+
+  keyboard.text('Заявители', `spa:${showingId}`).row();
 
   if (latestPublished) {
     keyboard.text('XLSX победителей', `spx:${showingId}`).row();
@@ -620,6 +627,18 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
     await sendSpecialEventsPanel(ctx, deps.db);
   });
 
+  bot.command('health', async (ctx) => {
+    const admin = requireAdminRole(String(ctx.from?.id ?? ''));
+    if (!admin || admin.role !== 'superadmin') {
+      await ctx.reply('Диагностика доступна только суперадмину.');
+      return;
+    }
+
+    await ctx.reply(formatAdminDiagnostics(deps.db), {
+      reply_markup: buildMainKeyboard(admin.role),
+    });
+  });
+
   bot.command('registration_open', async (ctx) => {
     await applyRegistrationStateFromCommand(
       ctx,
@@ -799,6 +818,17 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
     await sendSpecialEventsPanel(ctx, deps.db);
   });
 
+  bot.hears('Диагностика', async (ctx) => {
+    const admin = requireAdminRole(String(ctx.from?.id ?? ''));
+    if (!admin || admin.role !== 'superadmin') {
+      return;
+    }
+
+    await ctx.reply(formatAdminDiagnostics(deps.db), {
+      reply_markup: buildMainKeyboard(admin.role),
+    });
+  });
+
   bot.hears('Открыть регистрацию', async (ctx) => {
     const admin = requireAdminRole(String(ctx.from?.id ?? ''));
     if (!admin || admin.role !== 'superadmin') {
@@ -927,6 +957,24 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
     await sendSpecialEventsPanel(ctx, deps.db, true);
   });
 
+  bot.callbackQuery(/^sphl$/u, async (ctx) => {
+    const admin = requireAdminRole(String(ctx.from?.id ?? ''));
+    if (!admin || admin.role !== 'superadmin') {
+      await ctx.answerCallbackQuery({
+        text: 'Недостаточно прав.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    await ctx.answerCallbackQuery({
+      text: 'Проверяю очереди.',
+    });
+    await ctx.reply(formatAdminDiagnostics(deps.db), {
+      reply_markup: buildMainKeyboard(admin.role),
+    });
+  });
+
   bot.callbackQuery(/^spe:(\d+)$/u, async (ctx) => {
     const admin = requireAdminRole(String(ctx.from?.id ?? ''));
     if (!admin) {
@@ -955,6 +1003,41 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
     const [, showingIdRaw] = ctx.match;
     await ctx.answerCallbackQuery();
     await sendSpecialShowingPanel(ctx, deps.db, admin.role, Number(showingIdRaw), deps.privateKeyPemBase64, true);
+  });
+
+  bot.callbackQuery(/^spa:(\d+)$/u, async (ctx) => {
+    const admin = requireAdminRole(String(ctx.from?.id ?? ''));
+    if (!admin) {
+      await ctx.answerCallbackQuery({
+        text: 'Недостаточно прав.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    if (!deps.privateKeyPemBase64) {
+      await ctx.answerCallbackQuery({
+        text: 'Нужен приватный ключ, чтобы показать ФИО заявителей.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    const [, showingIdRaw] = ctx.match;
+    const showingId = Number(showingIdRaw);
+    const item = getSpecialShowingForTelegram(deps.db, showingId, deps.privateKeyPemBase64);
+    if (!item) {
+      await ctx.answerCallbackQuery({
+        text: 'Показ не найден.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    await ctx.answerCallbackQuery({
+      text: 'Показываю заявителей.',
+    });
+    await ctx.reply(formatSpecialShowingApplicants(item));
   });
 
   bot.callbackQuery(/^(spd|spp):(\d+)$/u, async (ctx) => {
@@ -1319,6 +1402,7 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
       'Открыть регистрацию',
       'Закрыть регистрацию',
       'Операторы',
+      'Диагностика',
       'Помощь',
     ]);
 

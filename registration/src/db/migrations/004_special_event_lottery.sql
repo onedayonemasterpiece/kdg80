@@ -168,7 +168,7 @@ INSERT OR IGNORE INTO special_event_showings(
   reserved_seats,
   lottery_quota
 )
-SELECT id, '2026-06-23', '2026-06-23T18:00:00+02:00', '23 июня Южный Вокзал', 0, 30, 0, 30
+SELECT id, '2026-06-23', '2026-06-23T18:30:00+02:00', '23 июня 18:30 Южный Вокзал', 1, 30, 0, 30
 FROM special_events
 WHERE slug = 'etudy-toy-vesny';
 
@@ -182,6 +182,6 @@ INSERT OR IGNORE INTO special_event_showings(
   reserved_seats,
   lottery_quota
 )
-SELECT id, '2026-06-25', '2026-06-25T18:00:00+02:00', '25 июня Южный Вокзал', 0, 30, 0, 30
+SELECT id, '2026-06-25', '2026-06-25T18:30:00+02:00', '25 июня 18:30 Южный Вокзал', 1, 30, 0, 30
 FROM special_events
 WHERE slug = 'etudy-toy-vesny';

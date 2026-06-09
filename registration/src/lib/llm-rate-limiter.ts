@@ -30,6 +30,26 @@ export class LlmProviderError extends Error {
 
 let queueTail: Promise<void> = Promise.resolve();
 let lastStartedAt = 0;
+let queuedCount = 0;
+let activeCount = 0;
+let lastEnqueuedAt: string | null = null;
+let lastRunStartedAt: string | null = null;
+let lastSucceededAt: string | null = null;
+let lastFailedAt: string | null = null;
+let lastError: string | null = null;
+
+export function getLlmLimiterSnapshot() {
+  return {
+    queuedCount,
+    activeCount,
+    lastEnqueuedAt,
+    lastRunStartedAt,
+    lastSucceededAt,
+    lastFailedAt,
+    lastError,
+    lastStartedAt,
+  };
+}
 
 function sleep(ms: number) {
   return new Promise((resolve) => {
@@ -97,6 +117,8 @@ export async function runLlmLimited<T>(
     3,
   );
   const enqueuedAt = Date.now();
+  lastEnqueuedAt = new Date(enqueuedAt).toISOString();
+  queuedCount += 1;
 
   const previous = queueTail;
   let releaseCurrent: () => void;
@@ -105,6 +127,8 @@ export async function runLlmLimited<T>(
   });
 
   await previous.catch(() => undefined);
+  queuedCount = Math.max(0, queuedCount - 1);
+  activeCount += 1;
 
   try {
     const waitMs = Math.max(0, lastStartedAt + minIntervalMs - Date.now());
@@ -113,7 +137,10 @@ export async function runLlmLimited<T>(
     }
 
     lastStartedAt = Date.now();
+    lastRunStartedAt = new Date(lastStartedAt).toISOString();
     const result = await runWithRetries(task, maxRetries);
+    lastSucceededAt = new Date().toISOString();
+    lastError = null;
     return {
       value: result.value,
       trace: {
@@ -127,7 +154,12 @@ export async function runLlmLimited<T>(
         maxRetries,
       } satisfies LlmLimiterTrace,
     };
+  } catch (error) {
+    lastFailedAt = new Date().toISOString();
+    lastError = error instanceof Error ? error.message : String(error);
+    throw error;
   } finally {
+    activeCount = Math.max(0, activeCount - 1);
     releaseCurrent!();
   }
 }

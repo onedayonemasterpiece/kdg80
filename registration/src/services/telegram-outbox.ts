@@ -83,6 +83,31 @@ function getSuperadminIds(db: Database.Database) {
   return rows.map((row) => row.telegram_user_id);
 }
 
+function recordMaintenanceJob(
+  db: Database.Database,
+  jobName: string,
+  options: {
+    runKey?: string | null;
+    error?: string | null;
+  } = {},
+) {
+  db.prepare(`
+    INSERT INTO maintenance_jobs(job_name, last_run_key, last_run_at, last_error, updated_at)
+    VALUES (@jobName, @lastRunKey, @lastRunAt, @lastError, @updatedAt)
+    ON CONFLICT(job_name) DO UPDATE SET
+      last_run_key = excluded.last_run_key,
+      last_run_at = excluded.last_run_at,
+      last_error = excluded.last_error,
+      updated_at = excluded.updated_at
+  `).run({
+    jobName,
+    lastRunKey: options.runKey ?? null,
+    lastRunAt: new Date().toISOString(),
+    lastError: options.error ?? null,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 function loadRegistrationNotification(
   db: Database.Database,
   registrationId: number,
@@ -438,16 +463,35 @@ export function startTelegramOutboxWorker(options: {
             await options.bot.api.sendMessage(telegramUserId, text);
           }
 
+          recordMaintenanceJob(options.db, 'telegram_outbox_success', {
+            runKey: `${row.type}:${row.id}`,
+          });
           deleteRow.run(row.id);
         } catch (error) {
           const delaySeconds = computeBackoffSeconds(error, row.attempt_count + 1);
           const notBefore = new Date(Date.now() + delaySeconds * 1000).toISOString();
-          updateFailure.run(error instanceof Error ? error.message : String(error), notBefore, row.id);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          recordMaintenanceJob(options.db, 'telegram_outbox_error', {
+            runKey: `${row.type}:${row.id}`,
+            error: errorMessage,
+          });
+          updateFailure.run(errorMessage, notBefore, row.id);
         }
       }
     } catch (error) {
+      recordMaintenanceJob(options.db, 'telegram_outbox_error', {
+        runKey: 'tick',
+        error: error instanceof Error ? error.message : String(error),
+      });
       options.logger.error({ err: error }, 'telegram_outbox_tick_failed');
     } finally {
+      try {
+        recordMaintenanceJob(options.db, 'telegram_outbox_tick', {
+          runKey: 'heartbeat',
+        });
+      } catch {
+        // The health command is best-effort and must not stop notification delivery.
+      }
       running = false;
     }
   };

@@ -40,7 +40,7 @@ type SpecialShowingRow = {
   draw_status: string;
 };
 
-type SpecialPhotoPayload = {
+export type SpecialPhotoPayload = {
   fileName: string;
   contentType: string;
   dataBase64: string;
@@ -54,6 +54,16 @@ export type SpecialApplicationPayload = {
   email: string;
   phone: string;
   consentAccepted: boolean;
+  photos: SpecialPhotoPayload[];
+  website?: string;
+};
+
+export type SpecialPhotoCheckPayload = {
+  token: string;
+  eventSlug: string;
+  fullName?: string;
+  email?: string;
+  phone?: string;
   photos: SpecialPhotoPayload[];
   website?: string;
 };
@@ -86,6 +96,11 @@ type PreparedPhoto = {
   contentType: string;
   bytes: Buffer;
   sha256: string;
+};
+
+type AnalyzedPhoto = PreparedPhoto & {
+  duplicateOfSha256: string | null;
+  ocr: OcrResult;
 };
 
 class SpecialApplicationError extends Error {
@@ -309,13 +324,13 @@ function parseRetryAfterMs(value: string | null) {
 }
 
 async function runOpenAiPassportOcr(photo: PreparedPhoto): Promise<OcrResult> {
+  const debug = knownDebugOcr(photo.sha256);
+  if (debug) {
+    return debug;
+  }
+
   const token = process.env.FOUR_O_TOKEN?.trim() || process.env.OPENAI_API_KEY?.trim();
   if (!token) {
-    const debug = knownDebugOcr(photo.sha256);
-    if (debug) {
-      return debug;
-    }
-
     throw new SpecialApplicationError(503, 'ocr_not_configured', 'Автоматическая проверка фото пока не настроена.');
   }
 
@@ -417,6 +432,69 @@ async function runOpenAiPassportOcr(photo: PreparedPhoto): Promise<OcrResult> {
   };
 }
 
+async function analyzePhotos(payloadPhotos: SpecialPhotoPayload[]) {
+  const photos = payloadPhotos.map(parsePhoto);
+  if (!photos.length) {
+    throw new SpecialApplicationError(400, 'photo_required', 'Приложите хотя бы одну фотографию паспорта участника фестиваля.');
+  }
+
+  const seenSha = new Set<string>();
+  const photoResults: AnalyzedPhoto[] = [];
+  let uniquePhotoCount = 0;
+  let acceptedPhotoCount = 0;
+  let stampCount = 0;
+  let hasFullName = false;
+  let ocrProvider = 'debug-fixture';
+  let ocrModel: string | null = null;
+
+  for (const photo of photos) {
+    let duplicateOfSha256: string | null = null;
+    let ocr: OcrResult;
+    if (seenSha.has(photo.sha256)) {
+      duplicateOfSha256 = photo.sha256;
+      ocr = {
+        hasFullName: false,
+        stampCount: 0,
+        accepted: false,
+        rejectionReason: 'Это точный дубль уже приложенной фотографии.',
+        confidence: 1,
+        provider: 'duplicate',
+        model: null,
+        raw: { duplicate: true },
+      };
+    } else {
+      seenSha.add(photo.sha256);
+      uniquePhotoCount += 1;
+      ocr = await runOpenAiPassportOcr(photo);
+      hasFullName = hasFullName || ocr.hasFullName;
+      if (ocr.accepted) {
+        acceptedPhotoCount += 1;
+        stampCount += ocr.stampCount;
+      }
+      ocrProvider = ocr.provider;
+      ocrModel = ocr.model;
+    }
+
+    photoResults.push({
+      ...photo,
+      duplicateOfSha256,
+      ocr,
+    });
+  }
+
+  return {
+    photos,
+    photoResults,
+    uploadedPhotoCount: photos.length,
+    uniquePhotoCount,
+    acceptedPhotoCount,
+    stampCount,
+    hasFullName,
+    ocrProvider,
+    ocrModel,
+  };
+}
+
 function computeScore(options: {
   stampCount: number;
   ordinaryRegistrationCount: number;
@@ -511,10 +589,12 @@ function isTokenPrefixNameMatch(targetTokens: string[], currentTokens: string[])
 
 function countOrdinaryRegistrationsByFullName(
   db: Database.Database,
+  fingerprintSecret: string | null,
   privateKeyPemBase64: string | null,
   normalizedFullName: string,
 ) {
-  if (!privateKeyPemBase64) {
+  const matchFullName = stripInternalTestPrefixForMatching(normalizedFullName);
+  if (matchFullName !== normalizedFullName.trim()) {
     return {
       totalCount: 0,
       exactCount: 0,
@@ -522,15 +602,41 @@ function countOrdinaryRegistrationsByFullName(
     } satisfies OrdinaryRegistrationNameMatchSummary;
   }
 
-  const matchFullName = stripInternalTestPrefixForMatching(normalizedFullName);
+  if (!fingerprintSecret && !privateKeyPemBase64) {
+    return {
+      totalCount: 0,
+      exactCount: 0,
+      tokenPrefixCount: 0,
+    } satisfies OrdinaryRegistrationNameMatchSummary;
+  }
+
   const target = normalizeNameForMatching(matchFullName);
   const targetTokens = nameTokens(matchFullName);
+  let exactCount = 0;
+
+  if (fingerprintSecret) {
+    const row = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM registrations
+      WHERE full_name_fingerprint = ?
+    `).get(computeFingerprint(fingerprintSecret, target)) as { count: number } | undefined;
+    exactCount = Math.max(0, Number(row?.count ?? 0));
+  }
+
+  if (!privateKeyPemBase64 || exactCount > 0 || process.env.SPECIAL_ENABLE_FUZZY_ORDINARY_MATCH !== '1') {
+    return {
+      totalCount: exactCount,
+      exactCount,
+      tokenPrefixCount: 0,
+    } satisfies OrdinaryRegistrationNameMatchSummary;
+  }
+
   const rows = db.prepare(`
     SELECT pii_ciphertext, pii_wrapped_key, pii_iv, pii_alg
     FROM registrations
     ORDER BY created_at DESC
-    LIMIT 5000
-  `).all() as Array<{
+    LIMIT ?
+  `).all(readPositiveInteger(process.env.SPECIAL_FUZZY_ORDINARY_MATCH_LIMIT, 500)) as Array<{
     pii_ciphertext: Buffer;
     pii_wrapped_key: Buffer;
     pii_iv: Buffer;
@@ -538,8 +644,8 @@ function countOrdinaryRegistrationsByFullName(
   }>;
 
   const summary: OrdinaryRegistrationNameMatchSummary = {
-    totalCount: 0,
-    exactCount: 0,
+    totalCount: exactCount,
+    exactCount,
     tokenPrefixCount: 0,
   };
 
@@ -584,6 +690,213 @@ function duplicateMessage(error: unknown) {
   }
 
   return null;
+}
+
+function duplicateMessageByField(field: 'full_name' | 'email' | 'phone') {
+  if (field === 'full_name') {
+    return 'Заявка с таким ФИО уже участвует в розыгрыше этого спецмероприятия.';
+  }
+
+  if (field === 'email') {
+    return 'Заявка с таким email уже участвует в розыгрыше этого спецмероприятия.';
+  }
+
+  return 'Заявка с таким телефоном уже участвует в розыгрыше этого спецмероприятия.';
+}
+
+function findDuplicateSpecialApplication(
+  db: Database.Database,
+  specialEventId: number,
+  fullNameFingerprint: string,
+  emailFingerprint: string,
+  phoneFingerprint: string,
+) {
+  const row = db.prepare(`
+    SELECT
+      CASE
+        WHEN full_name_fingerprint = ? THEN 'full_name'
+        WHEN email_fingerprint = ? THEN 'email'
+        WHEN phone_fingerprint = ? THEN 'phone'
+        ELSE NULL
+      END AS field,
+      application_code
+    FROM special_applications
+    WHERE special_event_id = ?
+      AND (
+        full_name_fingerprint = ?
+        OR email_fingerprint = ?
+        OR phone_fingerprint = ?
+      )
+    ORDER BY id ASC
+    LIMIT 1
+  `).get(
+    fullNameFingerprint,
+    emailFingerprint,
+    phoneFingerprint,
+    specialEventId,
+    fullNameFingerprint,
+    emailFingerprint,
+    phoneFingerprint,
+  ) as { field: 'full_name' | 'email' | 'phone' | null; application_code: string } | undefined;
+
+  if (!row?.field) {
+    return null;
+  }
+
+  return {
+    field: row.field,
+    applicationCode: row.application_code,
+    message: duplicateMessageByField(row.field),
+  };
+}
+
+function tryNormalizeFullName(value: unknown) {
+  const text = String(value ?? '').trim();
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return normalizeFullName(text);
+  } catch {
+    return null;
+  }
+}
+
+function buildPhotoSummary(analysis: Awaited<ReturnType<typeof analyzePhotos>>) {
+  return analysis.photoResults.map((photo) => ({
+    fileName: photo.fileName,
+    sha256: photo.sha256,
+    duplicateOfSha256: photo.duplicateOfSha256,
+    hasFullName: photo.ocr.hasFullName,
+    stampCount: photo.ocr.stampCount,
+    accepted: photo.ocr.accepted,
+    confidence: photo.ocr.confidence,
+    provider: photo.ocr.provider,
+    model: photo.ocr.model,
+    rejectionReason: photo.ocr.rejectionReason,
+  }));
+}
+
+function scoreAnalyzedPhotos(options: {
+  db: Database.Database;
+  fingerprintSecret: string | null;
+  privateKeyPemBase64: string | null;
+  event: SpecialEventRow;
+  fullName: string | null;
+  stampCount: number;
+}) {
+  const ordinaryRegistrationMatchSummary = options.fullName
+    ? countOrdinaryRegistrationsByFullName(
+      options.db,
+      options.fingerprintSecret,
+      options.privateKeyPemBase64,
+      options.fullName,
+    )
+    : {
+      totalCount: 0,
+      exactCount: 0,
+      tokenPrefixCount: 0,
+    } satisfies OrdinaryRegistrationNameMatchSummary;
+  const volunteerMatch = options.fullName
+    ? findSpecialVolunteerMatch(stripInternalTestPrefixForMatching(options.fullName))
+    : {
+      matched: false,
+      bonusPoints: 0,
+      matchedName: null,
+      matchType: 'none' as const,
+      distance: null,
+    };
+  const scoreResult = computeScore({
+    stampCount: options.stampCount,
+    ordinaryRegistrationCount: ordinaryRegistrationMatchSummary.totalCount,
+    minStampCount: options.event.min_stamp_count,
+    basePoints: options.event.base_points,
+    extraStampPoints: options.event.extra_stamp_points,
+    noShowGraceCount: options.event.no_show_grace_count,
+    noShowPenaltyPoints: options.event.no_show_penalty_points,
+    volunteerBonusPoints: volunteerMatch.bonusPoints,
+  });
+
+  return {
+    ordinaryRegistrationMatchSummary,
+    volunteerMatch,
+    scoreResult,
+  };
+}
+
+export async function checkSpecialApplicationPhotos(
+  payload: SpecialPhotoCheckPayload,
+  deps: {
+    db: Database.Database;
+    fingerprintSecret: string | null;
+    privateKeyPemBase64: string | null;
+  },
+) {
+  if (!payload || typeof payload !== 'object' || typeof payload.website === 'string' && payload.website.trim()) {
+    throw new SpecialApplicationError(400, 'validation_error', 'Проверьте данные формы и попробуйте ещё раз.');
+  }
+
+  const loaded = readSpecialEvent(deps.db, String(payload.eventSlug ?? ''), String(payload.token ?? ''));
+  if (!loaded) {
+    throw new SpecialApplicationError(404, 'special_event_not_found', 'Спецмероприятие не найдено или preview-ссылка неверна.');
+  }
+
+  if (loaded.event.public_state === 'closed') {
+    throw new SpecialApplicationError(410, 'special_event_closed', 'Заявки на это спецмероприятие закрыты.');
+  }
+
+  const fullName = tryNormalizeFullName(payload.fullName);
+  const analysis = await analyzePhotos(Array.isArray(payload.photos) ? payload.photos : []);
+  const {
+    ordinaryRegistrationMatchSummary,
+    volunteerMatch,
+    scoreResult,
+  } = scoreAnalyzedPhotos({
+    db: deps.db,
+    fingerprintSecret: deps.fingerprintSecret,
+    privateKeyPemBase64: deps.privateKeyPemBase64,
+    event: loaded.event,
+    fullName,
+    stampCount: analysis.stampCount,
+  });
+
+  let duplicateApplication: ReturnType<typeof findDuplicateSpecialApplication> = null;
+  if (deps.fingerprintSecret && fullName) {
+    try {
+      const email = normalizeEmail(String(payload.email ?? ''));
+      const phone = normalizePhone(String(payload.phone ?? ''));
+      duplicateApplication = findDuplicateSpecialApplication(
+        deps.db,
+        loaded.event.id,
+        computeFingerprint(deps.fingerprintSecret, fullName.toLowerCase()),
+        computeFingerprint(deps.fingerprintSecret, email),
+        computeFingerprint(deps.fingerprintSecret, phone),
+      );
+    } catch {
+      duplicateApplication = null;
+    }
+  }
+
+  return {
+    event: publicSpecialEventView(loaded.event, loaded.showings),
+    duplicateApplication,
+    photos: buildPhotoSummary(analysis),
+    scoring: {
+      stampCount: analysis.stampCount,
+      minStampCount: loaded.event.min_stamp_count,
+      hasFullName: analysis.hasFullName,
+      uploadedPhotoCount: analysis.uploadedPhotoCount,
+      uniquePhotoCount: analysis.uniquePhotoCount,
+      acceptedPhotoCount: analysis.acceptedPhotoCount,
+      ordinaryRegistrationCount: ordinaryRegistrationMatchSummary.totalCount,
+      ordinaryRegistrationMatch: ordinaryRegistrationMatchSummary,
+      noShowCount: scoreResult.noShowCount,
+      volunteerBonusPoints: volunteerMatch.bonusPoints,
+      volunteerMatch,
+      score: scoreResult.score,
+    },
+  };
 }
 
 export async function createSpecialApplication(payload: SpecialApplicationPayload, deps: SpecialApplicationDeps) {
@@ -641,53 +954,27 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     );
   }
 
-  const photos = Array.isArray(payload.photos) ? payload.photos.map(parsePhoto) : [];
-  if (!photos.length) {
-    throw new SpecialApplicationError(400, 'photo_required', 'Приложите хотя бы одну фотографию паспорта участника фестиваля.');
+  const fullNameFingerprint = computeFingerprint(deps.fingerprintSecret, fullName.toLowerCase());
+  const emailFingerprint = computeFingerprint(deps.fingerprintSecret, email);
+  const phoneFingerprint = computeFingerprint(deps.fingerprintSecret, phone);
+  const duplicate = findDuplicateSpecialApplication(
+    deps.db,
+    loaded.event.id,
+    fullNameFingerprint,
+    emailFingerprint,
+    phoneFingerprint,
+  );
+  if (duplicate) {
+    throw new SpecialApplicationError(409, 'duplicate_application', duplicate.message);
   }
 
   const applicationCode = crypto.randomUUID();
-  const seenSha = new Set<string>();
-  const photoResults: Array<PreparedPhoto & {
+  const analysis = await analyzePhotos(Array.isArray(payload.photos) ? payload.photos : []);
+  const photoResults: Array<AnalyzedPhoto & {
     storageKey: string;
-    duplicateOfSha256: string | null;
-    ocr: OcrResult;
   }> = [];
-  let uniquePhotoCount = 0;
-  let acceptedPhotoCount = 0;
-  let stampCount = 0;
-  let hasFullName = false;
-  let ocrProvider = 'debug-fixture';
-  let ocrModel: string | null = null;
 
-  for (const [index, photo] of photos.entries()) {
-    let duplicateOfSha256: string | null = null;
-    let ocr: OcrResult;
-    if (seenSha.has(photo.sha256)) {
-      duplicateOfSha256 = photo.sha256;
-      ocr = {
-        hasFullName: false,
-        stampCount: 0,
-        accepted: false,
-        rejectionReason: 'Это точный дубль уже приложенной фотографии.',
-        confidence: 1,
-        provider: 'duplicate',
-        model: null,
-        raw: { duplicate: true },
-      };
-    } else {
-      seenSha.add(photo.sha256);
-      uniquePhotoCount += 1;
-      ocr = await runOpenAiPassportOcr(photo);
-      hasFullName = hasFullName || ocr.hasFullName;
-      if (ocr.accepted) {
-        acceptedPhotoCount += 1;
-        stampCount += ocr.stampCount;
-      }
-      ocrProvider = ocr.provider;
-      ocrModel = ocr.model;
-    }
-
+  for (const [index, photo] of analysis.photoResults.entries()) {
     const extension = photo.contentType === 'image/png'
       ? 'png'
       : photo.contentType === 'image/webp'
@@ -703,60 +990,40 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     photoResults.push({
       ...photo,
       storageKey,
-      duplicateOfSha256,
-      ocr,
     });
   }
 
-  const ordinaryRegistrationMatchSummary = countOrdinaryRegistrationsByFullName(
-    deps.db,
-    deps.privateKeyPemBase64,
+  const {
+    ordinaryRegistrationMatchSummary,
+    volunteerMatch,
+    scoreResult,
+  } = scoreAnalyzedPhotos({
+    db: deps.db,
+    fingerprintSecret: deps.fingerprintSecret,
+    privateKeyPemBase64: deps.privateKeyPemBase64,
+    event: loaded.event,
     fullName,
-  );
-  const volunteerMatch = findSpecialVolunteerMatch(stripInternalTestPrefixForMatching(fullName));
-  const scoreResult = computeScore({
-    stampCount,
-    ordinaryRegistrationCount: ordinaryRegistrationMatchSummary.totalCount,
-    minStampCount: loaded.event.min_stamp_count,
-    basePoints: loaded.event.base_points,
-    extraStampPoints: loaded.event.extra_stamp_points,
-    noShowGraceCount: loaded.event.no_show_grace_count,
-    noShowPenaltyPoints: loaded.event.no_show_penalty_points,
-    volunteerBonusPoints: volunteerMatch.bonusPoints,
+    stampCount: analysis.stampCount,
   });
   const rejectionReasons = [
-    hasFullName ? null : 'На фото не распознано заполненное поле ФИО.',
-    stampCount >= loaded.event.min_stamp_count ? null : `Нужно не менее ${loaded.event.min_stamp_count} штампов, распознано ${stampCount}.`,
+    analysis.hasFullName ? null : 'На фото не распознано заполненное поле ФИО.',
+    analysis.stampCount >= loaded.event.min_stamp_count ? null : `Нужно не менее ${loaded.event.min_stamp_count} штампов, распознано ${analysis.stampCount}.`,
     scoreResult.score > 0 ? null : 'Итоговые баллы равны 0, заявка не участвует в розыгрыше.',
   ].filter((item): item is string => Boolean(item));
   const status: 'accepted' | 'rejected' = rejectionReasons.length ? 'rejected' : 'accepted';
   const rejectionReason = rejectionReasons.join(' ');
 
-  const fullNameFingerprint = computeFingerprint(deps.fingerprintSecret, fullName.toLowerCase());
-  const emailFingerprint = computeFingerprint(deps.fingerprintSecret, email);
-  const phoneFingerprint = computeFingerprint(deps.fingerprintSecret, phone);
   const encrypted = encryptPii(deps.publicKeyPemBase64, { fullName, email, phone });
   const selectedShowingIds = selectedShowings.map((showing) => showing.id);
   const ocrSummary = {
-    hasFullName,
-    stampCount,
+    hasFullName: analysis.hasFullName,
+    stampCount: analysis.stampCount,
     minStampCount: loaded.event.min_stamp_count,
-    acceptedPhotoCount,
-    uniquePhotoCount,
+    acceptedPhotoCount: analysis.acceptedPhotoCount,
+    uniquePhotoCount: analysis.uniquePhotoCount,
     ordinaryRegistrationMatch: ordinaryRegistrationMatchSummary,
     volunteerMatch,
-    photos: photoResults.map((photo) => ({
-      fileName: photo.fileName,
-      sha256: photo.sha256,
-      duplicateOfSha256: photo.duplicateOfSha256,
-      hasFullName: photo.ocr.hasFullName,
-      stampCount: photo.ocr.stampCount,
-      accepted: photo.ocr.accepted,
-      confidence: photo.ocr.confidence,
-      provider: photo.ocr.provider,
-      model: photo.ocr.model,
-      rejectionReason: photo.ocr.rejectionReason,
-    })),
+    photos: buildPhotoSummary(analysis),
   };
 
   const insert = deps.db.transaction(() => {
@@ -778,7 +1045,7 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
       fullNameFingerprint,
       emailFingerprint,
       phoneFingerprint,
-      stampCount,
+      analysis.stampCount,
       new Date().toISOString(),
     ) as { id: number };
 
@@ -857,17 +1124,17 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
       selectedShowingIdsJson: JSON.stringify(selectedShowingIds),
       status,
       rejectionReason: rejectionReason || null,
-      uploadedPhotoCount: photos.length,
-      uniquePhotoCount,
-      acceptedPhotoCount,
-      stampCount,
+      uploadedPhotoCount: analysis.uploadedPhotoCount,
+      uniquePhotoCount: analysis.uniquePhotoCount,
+      acceptedPhotoCount: analysis.acceptedPhotoCount,
+      stampCount: analysis.stampCount,
       ordinaryRegistrationCount: ordinaryRegistrationMatchSummary.totalCount,
       noShowCount: scoreResult.noShowCount,
       volunteerBonusPoints: volunteerMatch.bonusPoints,
       volunteerMatchJson: JSON.stringify(volunteerMatch),
       score: scoreResult.score,
-      ocrProvider,
-      ocrModel,
+      ocrProvider: analysis.ocrProvider,
+      ocrModel: analysis.ocrModel,
       ocrSummaryJson: JSON.stringify(ocrSummary),
       consentVersion: deps.consentVersion,
       consentTextHash: deps.consentTextHash,
@@ -949,15 +1216,15 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
       startsAt: showing.starts_at,
     })),
     scoring: {
-      stampCount,
+      stampCount: analysis.stampCount,
       ordinaryRegistrationCount: ordinaryRegistrationMatchSummary.totalCount,
       noShowCount: scoreResult.noShowCount,
       volunteerBonusPoints: volunteerMatch.bonusPoints,
       volunteerMatch,
       score: scoreResult.score,
-      uploadedPhotoCount: photos.length,
-      uniquePhotoCount,
-      acceptedPhotoCount,
+      uploadedPhotoCount: analysis.uploadedPhotoCount,
+      uniquePhotoCount: analysis.uniquePhotoCount,
+      acceptedPhotoCount: analysis.acceptedPhotoCount,
     },
   };
 }

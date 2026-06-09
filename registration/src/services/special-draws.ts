@@ -32,6 +32,7 @@ type SpecialApplicationRow = {
   pii_wrapped_key: Buffer;
   pii_iv: Buffer;
   pii_alg: string;
+  selected_showing_ids_json: string;
   status: string;
   uploaded_photo_count: number;
   unique_photo_count: number;
@@ -84,6 +85,7 @@ export type SpecialParticipant = {
   uploadedPhotoCount: number;
   uniquePhotoCount: number;
   acceptedPhotoCount: number;
+  selectedShowingCount: number;
   createdAt: string;
 };
 
@@ -202,6 +204,15 @@ function parseResultWinners(row: SpecialDrawRunRow | undefined) {
   }
 }
 
+function countSelectedShowings(value: string) {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
 function getLatestDrawRow(db: Database.Database, showingId: number, runType?: SpecialDrawRunType) {
   const whereRunType = runType ? 'AND run_type = ?' : '';
   const params = runType ? [showingId, runType] : [showingId];
@@ -285,6 +296,7 @@ function mapParticipants(rows: SpecialApplicationRow[], privateKeyPemBase64: str
         uploadedPhotoCount: row.uploaded_photo_count,
         uniquePhotoCount: row.unique_photo_count,
         acceptedPhotoCount: row.accepted_photo_count,
+        selectedShowingCount: countSelectedShowings(row.selected_showing_ids_json),
         createdAt: row.created_at,
       } satisfies SpecialParticipant];
     } catch {
@@ -657,6 +669,34 @@ export function formatSpecialShowingPanel(item: NonNullable<ReturnType<typeof ge
       ? `Опубликовано: ${formatKaliningradDateTime(item.latestPublished.created_at)}, победителей: ${item.latestPublishedWinners.length}`
       : 'Опубликовано: нет',
   ].join('\n');
+}
+
+export function formatSpecialShowingApplicants(item: NonNullable<ReturnType<typeof getSpecialShowingForTelegram>>) {
+  const header = [
+    'Заявители до розыгрыша',
+    item.event.title,
+    item.showing.display_label,
+    '',
+    `Допущенных заявок: ${item.candidates.length}`,
+  ];
+
+  if (!item.candidates.length) {
+    return [...header, '', 'Пока нет допущенных заявок для этого показа.'].join('\n');
+  }
+
+  const lines = item.candidates.slice(0, 40).map((candidate, index) => [
+    `${index + 1}. ФИО: ${candidate.fullName}`,
+    `   Баллы: ${candidate.score}, штампы: ${candidate.stampCount}, неявки: ${candidate.noShowCount}`,
+    `   Фото: ${candidate.acceptedPhotoCount}/${candidate.uniquePhotoCount}/${candidate.uploadedPhotoCount}`,
+    `   Выбрано дат: ${candidate.selectedShowingCount}`,
+    `   Код заявки: ${candidate.applicationCode}`,
+  ].join('\n'));
+
+  if (item.candidates.length > 40) {
+    lines.push(`… и ещё ${item.candidates.length - 40} заявителей.`);
+  }
+
+  return [...header, '', ...lines].join('\n');
 }
 
 export function formatSpecialDrawResult(result: SpecialDrawResult) {

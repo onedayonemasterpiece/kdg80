@@ -2,10 +2,12 @@ import type Database from 'better-sqlite3';
 import type { FastifyInstance } from 'fastify';
 import type { StoragePublisher } from '../lib/storage';
 import {
+  checkSpecialApplicationPhotos,
   createSpecialApplication,
   getSpecialEventPreview,
   SpecialApplicationError,
   type SpecialApplicationPayload,
+  type SpecialPhotoCheckPayload,
 } from '../services/special-applications';
 
 type SpecialApiDeps = {
@@ -21,6 +23,8 @@ type SpecialApiDeps = {
 const PREVIEW_SLUG = 'etudy-toy-vesny';
 const PREVIEW_TOKEN = 'etudy-toy-vesny-debug-20260606';
 const PREVIEW_PATH = `/special/${PREVIEW_TOKEN}`;
+const PREVIEW_PUBLIC_URL = process.env.SPECIAL_PREVIEW_PUBLIC_URL?.trim()
+  || 'https://kgd80.ru/preview-special-etudy-20260608/special/etudy-toy-vesny-debug-20260606/';
 
 function noIndex(reply: { header: (name: string, value: string) => unknown }) {
   reply.header('X-Robots-Tag', 'noindex, nofollow, noarchive');
@@ -644,8 +648,8 @@ function renderPreviewPage(eventJson: string) {
         </div>
         <ul class="event-meta">
           <li><strong>11 июня</strong><span>18:00<br>Южный Вокзал</span></li>
-          <li><strong>23 июня</strong><span>Южный Вокзал<br>время уточняется</span></li>
-          <li><strong>25 июня</strong><span>Южный Вокзал<br>время уточняется</span></li>
+          <li><strong>23 июня</strong><span>18:30<br>Южный Вокзал</span></li>
+          <li><strong>25 июня</strong><span>18:30<br>Южный Вокзал</span></li>
         </ul>
         <p class="note-panel"><strong>Важно:</strong> заявка не является билетом и не гарантирует проход. Победители получат место на конкретный показ после розыгрыша.</p>
       </section>
@@ -872,8 +876,7 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
     }
 
     noIndex(reply);
-    reply.type('text/html; charset=utf-8');
-    return renderPreviewPage(JSON.stringify(event).replace(/</gu, '\\u003c'));
+    return reply.redirect(PREVIEW_PUBLIC_URL, 302);
   });
 
   app.get('/api/v1/special/events/:slug', async (request, reply) => {
@@ -940,6 +943,41 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
       return {
         error: 'server_error',
         message: 'Не удалось отправить заявку. Попробуйте ещё раз чуть позже.',
+      };
+    }
+  });
+
+  app.post('/api/v1/special/photo-check', {
+    bodyLimit: 14 * 1024 * 1024,
+    config: {
+      rateLimit: {
+        max: 8,
+        timeWindow: '1 minute',
+      },
+    },
+  }, async (request, reply) => {
+    noIndex(reply);
+
+    try {
+      return await checkSpecialApplicationPhotos(request.body as SpecialPhotoCheckPayload, {
+        db: deps.db,
+        fingerprintSecret: deps.fingerprintSecret,
+        privateKeyPemBase64: deps.privateKeyPemBase64,
+      });
+    } catch (error) {
+      if (error instanceof SpecialApplicationError) {
+        reply.code(error.statusCode);
+        return {
+          error: error.code,
+          message: error.message,
+        };
+      }
+
+      request.log.error({ err: error }, 'special_photo_check_failed');
+      reply.code(500);
+      return {
+        error: 'server_error',
+        message: 'Не удалось проверить фотографии. Попробуйте ещё раз чуть позже.',
       };
     }
   });

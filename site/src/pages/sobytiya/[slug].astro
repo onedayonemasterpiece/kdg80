@@ -266,7 +266,15 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
                   <p class="event-leaf__section-copy">На розыгрыш приглашений могут подать заявку участники, которые посетили не меньше 5 событий фестиваля и собрали штампы в паспорте участника. Если пяти посещений пока нет, ещё не поздно выбрать события в программе, прийти на них и вернуться к заявке после пятого штампа.</p>
                   <p class="event-leaf__section-copy">Заявку на розыгрыш спектакля «Этюды той весны» можно подать до 24 июня 2026. Заявка не является билетом: победители получат приглашение на конкретный показ после розыгрыша.</p>
                   <div class="event-leaf__actions">
-                    <a class="button button--primary" href={specialRegistrationHref}>Подать заявку</a>
+                    <a
+                      class="button button--primary button--disabled"
+                      href={specialRegistrationHref}
+                      data-special-event-cta
+                      data-enabled-href={specialRegistrationHref}
+                      aria-disabled="true"
+                    >
+                      Проверяем заявку…
+                    </a>
                     <a class="button button--ghost" href="/programma/">Выбрать события фестиваля</a>
                   </div>
                 </section>
@@ -321,26 +329,28 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
 
   {isEtudySpecialEvent && (
     <script define:vars={{ specialApiBaseUrl, specialEventToken }} is:inline>
-      const specialCta = document.querySelector('[data-special-event-cta]');
+      const specialCtas = Array.from(document.querySelectorAll('[data-special-event-cta]'));
       const specialNotice = document.querySelector('[data-special-event-notice]');
 
       const setSpecialCta = (disabled, label, noticeText) => {
-        if (!(specialCta instanceof HTMLAnchorElement)) {
-          return;
-        }
-        specialCta.textContent = label;
-        specialCta.classList.toggle('button--disabled', disabled);
-        specialCta.classList.toggle('button--ghost', disabled);
-        specialCta.classList.toggle('button--primary', !disabled);
-        specialCta.setAttribute('aria-disabled', disabled ? 'true' : 'false');
-        if (disabled) {
-          if (specialCta.hasAttribute('href')) {
-            specialCta.dataset.enabledHref = specialCta.getAttribute('href') || specialCta.dataset.enabledHref || '';
+        specialCtas.forEach((specialCta) => {
+          if (!(specialCta instanceof HTMLAnchorElement)) {
+            return;
           }
-          specialCta.removeAttribute('href');
-        } else if (!specialCta.hasAttribute('href') && specialCta.dataset.enabledHref) {
-          specialCta.href = specialCta.dataset.enabledHref;
-        }
+          specialCta.textContent = label;
+          specialCta.classList.toggle('button--disabled', disabled);
+          specialCta.classList.toggle('button--ghost', disabled);
+          specialCta.classList.toggle('button--primary', !disabled);
+          specialCta.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+          if (disabled) {
+            if (specialCta.hasAttribute('href')) {
+              specialCta.dataset.enabledHref = specialCta.getAttribute('href') || specialCta.dataset.enabledHref || '';
+            }
+            specialCta.removeAttribute('href');
+          } else if (!specialCta.hasAttribute('href') && specialCta.dataset.enabledHref) {
+            specialCta.href = specialCta.dataset.enabledHref;
+          }
+        });
 
         if (specialNotice instanceof HTMLElement) {
           specialNotice.hidden = !noticeText;
@@ -349,7 +359,7 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
       };
 
       const hydrateSpecialEventCta = async () => {
-        if (!(specialCta instanceof HTMLAnchorElement)) {
+        if (!specialCtas.some((specialCta) => specialCta instanceof HTMLAnchorElement)) {
           return;
         }
 

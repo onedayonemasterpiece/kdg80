@@ -127,6 +127,24 @@ function multipartFields(parts: MultipartPart[], name: string) {
     .map((item) => item.data.toString('utf8'));
 }
 
+function multipartPartLogSummary(parts: MultipartPart[]) {
+  return parts.map((part) => ({
+    name: part.name,
+    hasFile: part.fileName !== null,
+    fileName: part.fileName,
+    contentType: part.contentType,
+    bytes: part.data.length,
+  }));
+}
+
+function photoPayloadLogSummary(photos: SpecialPhotoPayload[]) {
+  return photos.map((photo) => ({
+    fileName: photo.fileName,
+    contentType: photo.contentType,
+    base64Chars: photo.dataBase64.length,
+  }));
+}
+
 function photosFromMultipart(parts: MultipartPart[]) {
   return parts
     .map((item) => {
@@ -157,7 +175,10 @@ function photosFromMultipart(parts: MultipartPart[]) {
 }
 
 function multipartPhotoCheckPayload(contentType: string, body: Buffer): SpecialPhotoCheckPayload {
-  const parts = parseMultipartBody(contentType, body);
+  return multipartPhotoCheckPayloadFromParts(parseMultipartBody(contentType, body));
+}
+
+function multipartPhotoCheckPayloadFromParts(parts: MultipartPart[]): SpecialPhotoCheckPayload {
   return {
     token: multipartField(parts, 'token'),
     eventSlug: multipartField(parts, 'eventSlug'),
@@ -170,7 +191,10 @@ function multipartPhotoCheckPayload(contentType: string, body: Buffer): SpecialP
 }
 
 function multipartApplicationPayload(contentType: string, body: Buffer): SpecialApplicationPayload {
-  const parts = parseMultipartBody(contentType, body);
+  return multipartApplicationPayloadFromParts(parseMultipartBody(contentType, body));
+}
+
+function multipartApplicationPayloadFromParts(parts: MultipartPart[]): SpecialApplicationPayload {
   return {
     token: multipartField(parts, 'token'),
     eventSlug: multipartField(parts, 'eventSlug'),
@@ -1129,10 +1153,23 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
     }
 
     try {
-      const payload = multipartApplicationPayload(
-        String(request.headers['content-type'] || ''),
-        request.body as Buffer,
-      );
+      const contentType = String(request.headers['content-type'] || '');
+      const rawBody = request.body as Buffer;
+      const parts = parseMultipartBody(contentType, rawBody);
+      request.log.info({
+        route: 'applications-multipart',
+        contentType,
+        bodyBytes: rawBody.length,
+        partCount: parts.length,
+        parts: multipartPartLogSummary(parts),
+      }, 'special_application_multipart_received');
+      const payload = multipartApplicationPayloadFromParts(parts);
+      request.log.info({
+        route: 'applications-multipart',
+        selectedShowingCount: payload.selectedShowingSlugs.length,
+        photoCount: payload.photos.length,
+        photos: photoPayloadLogSummary(payload.photos),
+      }, 'special_application_multipart_parsed');
       const created = await createSpecialApplication(payload, {
         db: deps.db,
         consentVersion: deps.consentVersion,
@@ -1146,9 +1183,23 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
       });
 
       reply.code(201);
+      request.log.info({
+        route: 'applications-multipart',
+        status: created.status,
+        selectedShowingCount: created.selectedShowings.length,
+        stampCount: created.scoring.stampCount,
+        score: created.scoring.score,
+      }, 'special_application_multipart_created');
       return created;
     } catch (error) {
       if (error instanceof SpecialApplicationError) {
+        request.log.warn({
+          route: 'applications-multipart',
+          code: error.code,
+          statusCode: error.statusCode,
+          contentType: String(request.headers['content-type'] || ''),
+          bodyBytes: Buffer.isBuffer(request.body) ? request.body.length : null,
+        }, 'special_application_multipart_rejected');
         reply.code(error.statusCode);
         return {
           error: error.code,
@@ -1177,13 +1228,32 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
     noIndex(reply);
 
     try {
-      return await checkSpecialApplicationPhotos(request.body as SpecialPhotoCheckPayload, {
+      const payload = request.body as SpecialPhotoCheckPayload;
+      request.log.info({
+        route: 'photo-check',
+        photoCount: payload.photos?.length || 0,
+        photos: photoPayloadLogSummary(payload.photos || []),
+      }, 'special_photo_check_received');
+      const result = await checkSpecialApplicationPhotos(payload, {
         db: deps.db,
         fingerprintSecret: deps.fingerprintSecret,
         privateKeyPemBase64: deps.privateKeyPemBase64,
       });
+      request.log.info({
+        route: 'photo-check',
+        photoCount: result.photos.length,
+        acceptedPhotoCount: result.scoring.acceptedPhotoCount,
+        stampCount: result.scoring.stampCount,
+        score: result.scoring.score,
+      }, 'special_photo_check_completed');
+      return result;
     } catch (error) {
       if (error instanceof SpecialApplicationError) {
+        request.log.warn({
+          route: 'photo-check',
+          code: error.code,
+          statusCode: error.statusCode,
+        }, 'special_photo_check_rejected');
         reply.code(error.statusCode);
         return {
           error: error.code,
@@ -1212,18 +1282,45 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
     noIndex(reply);
 
     try {
-      const payload = multipartPhotoCheckPayload(
-        String(request.headers['content-type'] || ''),
-        request.body as Buffer,
-      );
-      return await checkSpecialApplicationPhotos(payload, {
+      const contentType = String(request.headers['content-type'] || '');
+      const rawBody = request.body as Buffer;
+      const parts = parseMultipartBody(contentType, rawBody);
+      request.log.info({
+        route: 'photo-check-multipart',
+        contentType,
+        bodyBytes: rawBody.length,
+        partCount: parts.length,
+        parts: multipartPartLogSummary(parts),
+      }, 'special_photo_check_multipart_received');
+      const payload = multipartPhotoCheckPayloadFromParts(parts);
+      request.log.info({
+        route: 'photo-check-multipart',
+        photoCount: payload.photos.length,
+        photos: photoPayloadLogSummary(payload.photos),
+      }, 'special_photo_check_multipart_parsed');
+      const result = await checkSpecialApplicationPhotos(payload, {
         db: deps.db,
         fingerprintSecret: deps.fingerprintSecret,
         privateKeyPemBase64: deps.privateKeyPemBase64,
         returnPhotoDataBase64: true,
       });
+      request.log.info({
+        route: 'photo-check-multipart',
+        photoCount: result.photos.length,
+        acceptedPhotoCount: result.scoring.acceptedPhotoCount,
+        stampCount: result.scoring.stampCount,
+        score: result.scoring.score,
+      }, 'special_photo_check_multipart_completed');
+      return result;
     } catch (error) {
       if (error instanceof SpecialApplicationError) {
+        request.log.warn({
+          route: 'photo-check-multipart',
+          code: error.code,
+          statusCode: error.statusCode,
+          contentType: String(request.headers['content-type'] || ''),
+          bodyBytes: Buffer.isBuffer(request.body) ? request.body.length : null,
+        }, 'special_photo_check_multipart_rejected');
         reply.code(error.statusCode);
         return {
           error: error.code,

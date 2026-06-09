@@ -80,7 +80,7 @@ const description = 'Секретная тестовая страница зая
 
         <label class="special-consent">
           <input name="consentAccepted" type="checkbox" required />
-          <span>Согласен на обработку персональных данных, загрузку фотографий паспорта участника фестиваля и автоматическую OCR/LLM-проверку изображений для участия в розыгрыше.</span>
+          <span>Согласен на обработку персональных данных, загрузку фотографий паспорта участника фестиваля, распознавание текста и автоматический AI-анализ изображений для участия в розыгрыше.</span>
         </label>
 
         <button class="special-submit" type="submit" data-special-submit>Отправить заявку</button>
@@ -144,9 +144,7 @@ const description = 'Секретная тестовая страница зая
       photosInput.disabled = precheckState === 'checking';
       uploadAdd.hidden = count === 0;
       uploadAdd.disabled = precheckState === 'checking';
-      uploadAdd.textContent = precheckState === 'checking'
-        ? 'Добавить ещё фото после проверки'
-        : 'Добавить ещё фото';
+      uploadAdd.textContent = 'Добавить ещё фото';
 
       if (!count) {
         if (uploadIcon) uploadIcon.textContent = '+';
@@ -156,16 +154,16 @@ const description = 'Секретная тестовая страница зая
       }
 
       if (precheckState === 'checking') {
-        if (uploadIcon) uploadIcon.textContent = '...';
+        if (uploadIcon) uploadIcon.textContent = '';
         uploadTitle.textContent = `${count} фото загружено. Идёт проверка`;
-        uploadText.textContent = 'Распознаём штампы через OCR. Ниже появятся результат и предварительные баллы. Можно добавить ещё фото после проверки.';
+        uploadText.textContent = 'Фотографии отправляются и распознаются. Пожалуйста, подождите. Ниже появятся штампы и предварительные баллы.';
         return;
       }
 
       if (precheckState === 'ready' && latestPrecheck) {
         if (uploadIcon) uploadIcon.textContent = '✓';
         uploadTitle.textContent = `${count} фото обработано`;
-        uploadText.textContent = `Засчитано: ${latestPrecheck.scoring.stampCount} штампов · ${latestPrecheck.scoring.score} баллов. Нажмите сюда, чтобы добавить ещё фото.`;
+        uploadText.textContent = `Засчитано: ${formatStamps(latestPrecheck.scoring.stampCount)} · ${formatPoints(latestPrecheck.scoring.score)}. Нажмите сюда, чтобы добавить ещё фото.`;
         return;
       }
 
@@ -187,6 +185,19 @@ const description = 'Секретная тестовая страница зая
       }
       return `${Math.max(1, Math.round(bytes / 1024))} КБ`;
     };
+
+    const formatCount = (value, one, few, many) => {
+      const number = Math.abs(Number(value) || 0);
+      const mod100 = number % 100;
+      const mod10 = number % 10;
+      if (mod100 >= 11 && mod100 <= 14) return `${value} ${many}`;
+      if (mod10 === 1) return `${value} ${one}`;
+      if (mod10 >= 2 && mod10 <= 4) return `${value} ${few}`;
+      return `${value} ${many}`;
+    };
+
+    const formatStamps = (value) => formatCount(value, 'штамп', 'штампа', 'штампов');
+    const formatPoints = (value) => formatCount(value, 'балл', 'балла', 'баллов');
 
     const arrayBufferToBase64 = (buffer) => {
       const bytes = new Uint8Array(buffer);
@@ -317,7 +328,7 @@ const description = 'Секретная тестовая страница зая
           dataBase64,
           previewUrl: previewUrl || current.previewUrl,
           kind: 'checking',
-          status: 'Фото прочитано, отправляем на OCR',
+          status: 'Фото прочитано, отправляем на проверку',
         };
       });
       renderFiles();
@@ -369,10 +380,56 @@ const description = 'Секретная тестовая страница зая
       if (!response.ok) {
         throw new Error((data && data.message) || fallbackMessage);
       }
+      if (!data || typeof data !== 'object') {
+        throw new Error('unexpected_empty_response');
+      }
       return data;
     };
 
+    const isPhotoCheckData = (data) => (
+      data
+      && typeof data === 'object'
+      && Array.isArray(data.photos)
+      && data.scoring
+      && typeof data.scoring === 'object'
+      && typeof data.scoring.stampCount !== 'undefined'
+      && typeof data.scoring.score !== 'undefined'
+    );
+
+    const ensurePhotoCheckData = (data) => {
+      if (!isPhotoCheckData(data)) {
+        throw new Error('invalid_photo_check_response');
+      }
+      return data;
+    };
+
+    const isTechnicalErrorText = (message) => {
+      const normalized = String(message || '').toLowerCase();
+      return (
+        normalized.indexOf('failed to fetch') >= 0
+        || normalized.indexOf('networkerror') >= 0
+        || normalized.indexOf('load failed') >= 0
+        || normalized.indexOf('cannot read') >= 0
+        || normalized.indexOf('undefined') >= 0
+        || normalized.indexOf('null') >= 0
+        || normalized.indexOf('unexpected_empty_response') >= 0
+        || normalized.indexOf('invalid_photo_check_response') >= 0
+      );
+    };
+
+    const userFacingCheckError = (message) => {
+      const text = String(message || '');
+      if (isTechnicalErrorText(text)) {
+        return 'Проверка не завершилась из-за сбоя связи с сервером. Фото остались в списке, попробуйте запустить проверку ещё раз или удалите проблемное фото.';
+      }
+      if (text.indexOf('прочитать') >= 0) {
+        return 'Не получилось прочитать одно из фото. Попробуйте сделать новое фото с камеры или выбрать файл ещё раз.';
+      }
+      return text || 'Не удалось проверить фотографии. Попробуйте ещё раз чуть позже.';
+    };
+
     const applyPhotoCheckResult = (data) => {
+      ensurePhotoCheckData(data);
       latestPrecheck = data;
       selectedFiles = selectedFiles.map((item, index) => {
         const photo = data.photos[index];
@@ -407,7 +464,7 @@ const description = 'Секретная тестовая страница зая
             dataBase64,
             previewUrl,
             kind: 'error',
-            status: photo.rejectionReason || `Не зачтено: ${photo.stampCount} штампов`,
+            status: photo.rejectionReason || `Не зачтено: ${formatStamps(photo.stampCount)}`,
           };
         }
 
@@ -417,11 +474,11 @@ const description = 'Секретная тестовая страница зая
           dataBase64,
           previewUrl,
           kind: 'success',
-          status: `Зачтено: ${photo.stampCount} штампов`,
+          status: `Зачтено: ${formatStamps(photo.stampCount)}`,
         };
       });
       precheckState = 'ready';
-      setUploadStatus('success', `Предварительная проверка готова: ${data.scoring.stampCount} штампов, ${data.scoring.score} баллов.`);
+      setUploadStatus('success', `Предварительная проверка готова: ${formatStamps(data.scoring.stampCount)}, ${formatPoints(data.scoring.score)}.`);
     };
 
     const runMultipartPhotoCheck = async (formData) => {
@@ -431,13 +488,13 @@ const description = 'Секретная тестовая страница зая
         status: 'Отправляем фото напрямую на проверку',
       }));
       renderFiles();
-      setUploadStatus('progress', 'Телефон не дал прочитать файл на странице. Отправляем фото напрямую на сервер для проверки.');
+      setUploadStatus('progress', 'Фото уже в списке. Отправляем оригиналы напрямую на сервер и ждём распознавание штампов.');
 
       const response = await fetch(`${apiBaseUrl}/api/v1/special/photo-check-multipart`, {
         method: 'POST',
         body: buildSpecialMultipartData(formData),
       });
-      return await readJsonResponse(response, 'Не удалось проверить фотографии.');
+      return ensurePhotoCheckData(await readJsonResponse(response, 'Не удалось проверить фотографии.'));
     };
 
     const shouldUseMultipartPhotoFallback = (errorMessage) => (
@@ -447,6 +504,8 @@ const description = 'Секретная тестовая страница зая
       || errorMessage.indexOf('arrayBuffer') >= 0
       || errorMessage.indexOf('file') >= 0
       || errorMessage.indexOf('blob') >= 0
+      || errorMessage.indexOf('unexpected_empty_response') >= 0
+      || errorMessage.indexOf('invalid_photo_check_response') >= 0
     );
 
     const fileKey = (file) => `${file.name}:${file.size}:${file.lastModified}`;
@@ -579,6 +638,7 @@ const description = 'Секретная тестовая страница зая
             ${item.previewUrl
               ? `<img src="${item.previewUrl}" alt="">`
               : '<span class="special-file__placeholder">Фото добавлено</span>'}
+            ${item.kind === 'checking' ? '<span class="special-file__spinner" aria-label="Фото проверяется"></span>' : ''}
             ${item.kind === 'success' ? '<span class="special-file__check" aria-label="Фото зачтено">✓</span>' : ''}
           </span>
           <div class="special-file__body">
@@ -594,9 +654,13 @@ const description = 'Секретная тестовая страница зая
     const renderPrecheck = () => {
       if (!latestPrecheck) {
         precheckEl.hidden = selectedFiles.length === 0;
-        precheckEl.innerHTML = selectedFiles.length
-          ? '<strong>Предварительный расчет по фото</strong><p>Загрузка файлов готовится к проверке.</p>'
-          : '';
+        if (!selectedFiles.length) {
+          precheckEl.innerHTML = '';
+          return;
+        }
+        precheckEl.innerHTML = precheckState === 'checking'
+          ? '<div class="special-precheck__loading"><span aria-hidden="true"></span><strong>Идёт проверка фото</strong><p>Фотографии загружены. Мы распознаём штампы и покажем результат здесь.</p></div>'
+          : '<strong>Предварительный расчет по фото</strong><p>Загрузка файлов готовится к проверке.</p>';
         return;
       }
 
@@ -663,7 +727,7 @@ const description = 'Секретная тестовая страница зая
       renderFiles();
       renderPrecheck();
       updateSubmitState();
-      setUploadStatus('progress', `Проверяем ${selectedFiles.length} фото через OCR. Это может занять немного времени.`);
+      setUploadStatus('progress', `Идёт распознавание ${selectedFiles.length} фото. Обычно это занимает до минуты.`);
 
       try {
         const formData = new FormData(form);
@@ -680,7 +744,7 @@ const description = 'Секретная тестовая страница зая
         selectedFiles = selectedFiles.map((item) => ({
           ...item,
           kind: 'checking',
-          status: 'Проверяем OCR',
+          status: 'Распознаём штампы',
         }));
         renderFiles();
 
@@ -697,7 +761,7 @@ const description = 'Секретная тестовая страница зая
             photos,
           }),
         });
-        const data = await readJsonResponse(response, 'Не удалось проверить фотографии.');
+        const data = ensurePhotoCheckData(await readJsonResponse(response, 'Не удалось проверить фотографии.'));
         if (runId !== photoCheckRun) {
           return;
         }
@@ -722,22 +786,22 @@ const description = 'Секретная тестовая страница зая
             selectedFiles = selectedFiles.map((item) => ({
               ...item,
               kind: 'error',
-              status: 'Не удалось проверить',
+              status: 'Проверка не завершилась',
             }));
-            setUploadStatus('error', fallbackMessage);
+            setUploadStatus('error', userFacingCheckError(fallbackMessage));
             return;
           }
         }
         const fileStatus = errorMessage.indexOf('прочитать') >= 0
-          ? 'Не удалось прочитать файл'
-          : 'Не удалось проверить';
+          ? 'Не получилось прочитать фото'
+          : 'Проверка не завершилась';
         precheckState = 'error';
         selectedFiles = selectedFiles.map((item) => ({
           ...item,
           kind: 'error',
           status: fileStatus,
         }));
-        setUploadStatus('error', errorMessage);
+        setUploadStatus('error', userFacingCheckError(errorMessage));
       } finally {
         if (runId === photoCheckRun) {
           photosInput.value = '';
@@ -1142,6 +1206,7 @@ const description = 'Секретная тестовая страница зая
 
   .special-upload {
     position: relative;
+    overflow: hidden;
     min-height: 12rem;
     display: grid;
     place-items: center;
@@ -1171,6 +1236,21 @@ const description = 'Секретная тестовая страница зая
   .special-upload[data-state="checking"] {
     border-color: rgba(173, 112, 28, 0.5);
     background: rgba(173, 112, 28, 0.08);
+  }
+
+  .special-upload[data-state="checking"]::after {
+    content: '';
+    position: absolute;
+    left: 1.1rem;
+    right: 1.1rem;
+    bottom: 0.8rem;
+    height: 0.22rem;
+    border-radius: 999px;
+    background:
+      linear-gradient(90deg, transparent, rgba(173, 112, 28, 0.82), transparent)
+      0 0 / 45% 100% no-repeat,
+      rgba(173, 112, 28, 0.14);
+    animation: special-progress 1.25s ease-in-out infinite;
   }
 
   .special-upload[data-state="ready"] {
@@ -1217,9 +1297,19 @@ const description = 'Секретная тестовая страница зая
   }
 
   .special-upload[data-state="checking"] .special-upload__plus {
+    position: relative;
     background: #ad701c;
-    font-size: 1rem;
-    letter-spacing: 0.06em;
+    color: transparent;
+  }
+
+  .special-upload[data-state="checking"] .special-upload__plus::before {
+    content: '';
+    width: 1.45rem;
+    height: 1.45rem;
+    border: 3px solid rgba(255, 255, 255, 0.42);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: special-spin 0.85s linear infinite;
   }
 
   .special-upload[data-state="ready"] .special-upload__plus {
@@ -1247,6 +1337,8 @@ const description = 'Секретная тестовая страница зая
     cursor: pointer;
     touch-action: manipulation;
     transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .special-upload-add:hover,
@@ -1275,9 +1367,23 @@ const description = 'Секретная тестовая страница зая
   }
 
   .special-upload-status[data-kind="progress"] {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
     border: 1px solid rgba(173, 112, 28, 0.18);
     background: rgba(173, 112, 28, 0.08);
     color: #7a4a14;
+  }
+
+  .special-upload-status[data-kind="progress"]::before {
+    content: '';
+    flex: 0 0 auto;
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid rgba(122, 74, 20, 0.24);
+    border-top-color: #7a4a14;
+    border-radius: 50%;
+    animation: special-spin 0.85s linear infinite;
   }
 
   .special-upload-status[data-kind="success"] {
@@ -1361,6 +1467,29 @@ const description = 'Секретная тестовая страница зая
     line-height: 1;
   }
 
+  .special-files :global(.special-file__spinner) {
+    position: absolute;
+    right: -0.28rem;
+    top: -0.28rem;
+    display: inline-grid;
+    place-items: center;
+    width: 1.55rem;
+    height: 1.55rem;
+    border: 2px solid rgba(255, 253, 249, 0.95);
+    border-radius: 50%;
+    background: #ad701c;
+  }
+
+  .special-files :global(.special-file__spinner)::before {
+    content: '';
+    width: 0.82rem;
+    height: 0.82rem;
+    border: 2px solid rgba(255, 255, 255, 0.42);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: special-spin 0.85s linear infinite;
+  }
+
   .special-files :global(.special-file__body) {
     min-width: 0;
     display: grid;
@@ -1390,6 +1519,10 @@ const description = 'Секретная тестовая страница зая
 
   .special-files :global(.special-file em[data-kind="success"]) {
     color: #236144;
+  }
+
+  .special-files :global(.special-file em[data-kind="checking"]) {
+    color: #7a4a14;
   }
 
   .special-files :global(.special-file em[data-kind="duplicate"]),
@@ -1474,6 +1607,47 @@ const description = 'Секретная тестовая страница зая
 
   .special-precheck :global(.special-precheck__success) {
     color: #236144;
+  }
+
+  .special-precheck :global(.special-precheck__loading) {
+    display: grid;
+    gap: 0.45rem;
+    justify-items: start;
+  }
+
+  .special-precheck :global(.special-precheck__loading span) {
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 3px solid rgba(35, 97, 68, 0.18);
+    border-top-color: #236144;
+    border-radius: 50%;
+    animation: special-spin 0.85s linear infinite;
+  }
+
+  @keyframes special-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes special-progress {
+    0% {
+      background-position: -45% 0, 0 0;
+    }
+    100% {
+      background-position: 145% 0, 0 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .special-upload[data-state="checking"]::after,
+    .special-upload[data-state="checking"] .special-upload__plus::before,
+    .special-upload-status[data-kind="progress"]::before,
+    .special-files :global(.special-file__spinner)::before,
+    .special-precheck :global(.special-precheck__loading span) {
+      animation-duration: 1ms;
+      animation-iteration-count: 1;
+    }
   }
 
   .special-consent {

@@ -209,11 +209,6 @@ export function getSpecialEventPreview(db: Database.Database, slug: string, toke
 }
 
 function parsePhoto(photo: SpecialPhotoPayload): PreparedPhoto {
-  const contentType = String(photo.contentType ?? '').trim().toLowerCase();
-  if (!ALLOWED_IMAGE_TYPES.has(contentType)) {
-    throw new SpecialApplicationError(400, 'unsupported_photo_type', 'Фотографии принимаются в форматах JPG, PNG или WebP.');
-  }
-
   const fileName = String(photo.fileName ?? '').trim() || 'passport-photo';
   const dataBase64 = String(photo.dataBase64 ?? '').replace(/^data:[^;]+;base64,/u, '').trim();
   let bytes: Buffer;
@@ -228,12 +223,61 @@ function parsePhoto(photo: SpecialPhotoPayload): PreparedPhoto {
     throw new SpecialApplicationError(400, 'invalid_photo_size', 'Каждая фотография должна быть не больше 6 МБ.');
   }
 
+  const contentType = inferPhotoContentType(photo.contentType, fileName, bytes);
+  if (!contentType) {
+    throw new SpecialApplicationError(400, 'unsupported_photo_type', 'Фотографии принимаются в форматах JPG, PNG или WebP.');
+  }
+
   return {
     fileName,
     contentType,
     bytes,
     sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
   };
+}
+
+function inferPhotoContentType(rawContentType: unknown, fileName: string, bytes: Buffer) {
+  const contentType = String(rawContentType ?? '').trim().toLowerCase().split(';')[0];
+  if (ALLOWED_IMAGE_TYPES.has(contentType)) {
+    return contentType;
+  }
+
+  const normalizedFileName = fileName.toLowerCase();
+  if (/\.(jpe?g|jfif)$/u.test(normalizedFileName)) {
+    return 'image/jpeg';
+  }
+  if (/\.png$/u.test(normalizedFileName)) {
+    return 'image/png';
+  }
+  if (/\.webp$/u.test(normalizedFileName)) {
+    return 'image/webp';
+  }
+
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return 'image/jpeg';
+  }
+  if (
+    bytes.length >= 8
+    && bytes[0] === 0x89
+    && bytes[1] === 0x50
+    && bytes[2] === 0x4e
+    && bytes[3] === 0x47
+    && bytes[4] === 0x0d
+    && bytes[5] === 0x0a
+    && bytes[6] === 0x1a
+    && bytes[7] === 0x0a
+  ) {
+    return 'image/png';
+  }
+  if (
+    bytes.length >= 12
+    && bytes.toString('ascii', 0, 4) === 'RIFF'
+    && bytes.toString('ascii', 8, 12) === 'WEBP'
+  ) {
+    return 'image/webp';
+  }
+
+  return null;
 }
 
 function safeNumber(value: unknown, fallback: number) {

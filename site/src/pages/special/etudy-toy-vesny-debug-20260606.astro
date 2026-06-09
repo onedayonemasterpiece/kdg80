@@ -93,7 +93,7 @@ const description = 'Секретная тестовая страница зая
     const form = document.querySelector('[data-special-form]');
     const dates = document.querySelector('[data-special-dates]');
     const upload = document.querySelector('[data-special-upload]');
-    const uploadIcon = upload?.querySelector('.special-upload__plus');
+    const uploadIcon = upload ? upload.querySelector('.special-upload__plus') : null;
     const uploadTitle = document.querySelector('[data-special-upload-title]');
     const uploadText = document.querySelector('[data-special-upload-text]');
     const photosInput = document.querySelector('[data-special-photos]');
@@ -188,23 +188,74 @@ const description = 'Секретная тестовая страница зая
       return btoa(binary);
     };
 
+    const inferContentType = (file) => {
+      const type = String(file.type || '').toLowerCase();
+      if (type.indexOf('image/jpeg') === 0 || type.indexOf('image/png') === 0 || type.indexOf('image/webp') === 0) {
+        return type.split(';')[0];
+      }
+
+      const name = String(file.name || '').toLowerCase();
+      if (/\.(jpe?g|jfif)$/u.test(name)) return 'image/jpeg';
+      if (/\.png$/u.test(name)) return 'image/png';
+      if (/\.webp$/u.test(name)) return 'image/webp';
+      return 'application/octet-stream';
+    };
+
+    const looksLikeAcceptedImage = (file) => {
+      const type = String(file.type || '').toLowerCase();
+      if (type.indexOf('image/') === 0) return true;
+      if (!type || type === 'application/octet-stream') {
+        return /\.(jpe?g|jfif|png|webp)$/iu.test(String(file.name || ''));
+      }
+      return false;
+    };
+
+    const readFileWithReader = (file) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      let settled = false;
+      const finish = (callback) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        callback();
+      };
+      const timer = setTimeout(() => {
+        try {
+          reader.abort();
+        } catch {
+          // Older Android WebView can throw on abort after picker cancellation.
+        }
+        finish(() => reject(new Error('Не удалось прочитать файл. Попробуйте выбрать фото ещё раз или сделать новое фото с камеры.')));
+      }, 25000);
+
+      reader.onerror = () => finish(() => reject(new Error('Не удалось прочитать файл. Попробуйте выбрать фото ещё раз или сделать новое фото с камеры.')));
+      reader.onload = () => finish(() => {
+        const text = String(reader.result || '');
+        if (!text) {
+          reject(new Error('Не удалось прочитать файл. Попробуйте выбрать фото ещё раз или сделать новое фото с камеры.'));
+          return;
+        }
+        resolve(text.indexOf(',') >= 0 ? text.split(',').pop() : text);
+      });
+      reader.readAsDataURL(file);
+    });
+
+    const readFileWithArrayBuffer = async (file) => {
+      if (typeof file.arrayBuffer !== 'function') {
+        throw new Error('array_buffer_unavailable');
+      }
+      return arrayBufferToBase64(await file.arrayBuffer());
+    };
+
     const fileToBase64 = async (file) => {
       try {
-        return arrayBufferToBase64(await file.arrayBuffer());
+        return await readFileWithReader(file);
       } catch {
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onerror = () => reject(new Error('Не удалось прочитать файл. Попробуйте выбрать фото ещё раз или сделать новое фото с камеры.'));
-          reader.onload = () => {
-            const text = String(reader.result || '');
-            if (!text) {
-              reject(new Error('Не удалось прочитать файл. Попробуйте выбрать фото ещё раз или сделать новое фото с камеры.'));
-              return;
-            }
-            resolve(text.includes(',') ? text.split(',').pop() : text);
-          };
-          reader.readAsDataURL(file);
-        });
+        try {
+          return await readFileWithArrayBuffer(file);
+        } catch {
+          throw new Error('Не удалось прочитать файл. Попробуйте выбрать фото ещё раз или сделать новое фото с камеры.');
+        }
       }
     };
 
@@ -258,7 +309,7 @@ const description = 'Секретная тестовая страница зая
     };
 
     const selectCascadeFrom = (index) => {
-      const checkboxes = [...dates.querySelectorAll('input[name="selectedShowingSlugs"]')];
+      const checkboxes = Array.prototype.slice.call(dates.querySelectorAll('input[name="selectedShowingSlugs"]'));
       checkboxes.forEach((checkbox, checkboxIndex) => {
         if (!checkbox.disabled) {
           checkbox.checked = checkboxIndex >= index;
@@ -406,11 +457,19 @@ const description = 'Секретная тестовая страница зая
 
       try {
         const formData = new FormData(form);
-        const photos = await Promise.all(selectedFiles.map(async (item) => ({
-          fileName: item.file.name,
-          contentType: item.file.type || 'application/octet-stream',
-          dataBase64: await fileToBase64(item.file),
-        })));
+        const photos = [];
+        for (let index = 0; index < selectedFiles.length; index += 1) {
+          const item = selectedFiles[index];
+          selectedFiles = selectedFiles.map((current) => current.id === item.id
+            ? { ...current, kind: 'checking', status: `Читаем фото ${index + 1} из ${selectedFiles.length}` }
+            : current);
+          renderFiles();
+          photos.push({
+            fileName: item.file.name,
+            contentType: inferContentType(item.file),
+            dataBase64: await fileToBase64(item.file),
+          });
+        }
 
         if (runId !== photoCheckRun) {
           return;
@@ -428,7 +487,7 @@ const description = 'Секретная тестовая страница зая
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             token,
-            eventSlug: specialEvent?.slug || eventSlug,
+            eventSlug: specialEvent ? specialEvent.slug : eventSlug,
             fullName: String(formData.get('fullName') || ''),
             email: String(formData.get('email') || ''),
             phone: String(formData.get('phone') || ''),
@@ -490,8 +549,26 @@ const description = 'Секретная тестовая страница зая
       }
     };
 
+    const createFileId = () => {
+      const cryptoApi = window.crypto || window.msCrypto;
+      if (cryptoApi && typeof cryptoApi.getRandomValues === 'function') {
+        const values = new Uint32Array(2);
+        cryptoApi.getRandomValues(values);
+        return `${Date.now()}-${values[0].toString(16)}${values[1].toString(16)}`;
+      }
+      return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    };
+
+    const createPreviewUrl = (file) => {
+      if (window.URL && typeof window.URL.createObjectURL === 'function') {
+        return window.URL.createObjectURL(file);
+      }
+      return '';
+    };
+
     const addFiles = (fileListToAdd) => {
-      const incoming = [...fileListToAdd].filter((file) => file.type.startsWith('image/'));
+      const files = Array.prototype.slice.call(fileListToAdd || []);
+      const incoming = files.filter(looksLikeAcceptedImage);
       if (!incoming.length) {
         setUploadStatus('error', 'Добавьте фото в формате JPG, PNG или WebP.');
         return;
@@ -508,10 +585,10 @@ const description = 'Секретная тестовая страница зая
         }
         existingKeys.add(key);
         added.push({
-          id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+          id: createFileId(),
           key,
           file,
-          previewUrl: URL.createObjectURL(file),
+          previewUrl: createPreviewUrl(file),
           kind: 'pending',
           status: 'Добавлено, ждёт проверки',
         });
@@ -543,8 +620,8 @@ const description = 'Секретная тестовая страница зая
       }
       const id = button.dataset.removeFile;
       const removed = selectedFiles.find((item) => item.id === id);
-      if (removed) {
-        URL.revokeObjectURL(removed.previewUrl);
+      if (removed && removed.previewUrl && window.URL && typeof window.URL.revokeObjectURL === 'function') {
+        window.URL.revokeObjectURL(removed.previewUrl);
       }
       selectedFiles = selectedFiles.filter((item) => item.id !== id);
       setUploadStatus('progress', selectedFiles.length ? 'Фото удалено, пересчитываем баллы.' : 'Фото удалено. Добавьте фото паспорта участника фестиваля.');
@@ -567,16 +644,18 @@ const description = 'Секретная тестовая страница зая
     });
 
     upload.addEventListener('drop', (event) => {
-      addFiles(event.dataTransfer?.files || []);
+      addFiles(event.dataTransfer ? event.dataTransfer.files : []);
     });
 
     ['fullName', 'email', 'phone'].forEach((name) => {
       const input = form.querySelector(`[name="${name}"]`);
-      input?.addEventListener('change', () => {
-        if (selectedFiles.length) {
-          void runPhotoCheck();
-        }
-      });
+      if (input) {
+        input.addEventListener('change', () => {
+          if (selectedFiles.length) {
+            void runPhotoCheck();
+          }
+        });
+      }
     });
 
     form.addEventListener('submit', async (event) => {
@@ -608,11 +687,15 @@ const description = 'Секретная тестовая страница зая
           throw new Error(latestPrecheck.duplicateApplication.message);
         }
 
-        const photos = await Promise.all(selectedFiles.map(async (item) => ({
-          fileName: item.file.name,
-          contentType: item.file.type || 'application/octet-stream',
-          dataBase64: await fileToBase64(item.file),
-        })));
+        const photos = [];
+        for (let index = 0; index < selectedFiles.length; index += 1) {
+          const item = selectedFiles[index];
+          photos.push({
+            fileName: item.file.name,
+            contentType: inferContentType(item.file),
+            dataBase64: await fileToBase64(item.file),
+          });
+        }
 
         const response = await fetch(`${apiBaseUrl}/api/v1/special/applications`, {
           method: 'POST',
@@ -852,6 +935,7 @@ const description = 'Секретная тестовая страница зая
   }
 
   .special-upload {
+    position: relative;
     min-height: 12rem;
     display: grid;
     place-items: center;
@@ -895,8 +979,11 @@ const description = 'Секретная тестовая страница зая
 
   .special-upload input {
     position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     opacity: 0;
-    pointer-events: none;
+    cursor: pointer;
   }
 
   .special-upload__plus {

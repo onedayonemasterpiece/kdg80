@@ -111,6 +111,7 @@ const description = 'Секретная тестовая страница зая
     let precheckState = 'idle';
     let latestPrecheck = null;
     let latestPrecheckTransport = 'json';
+    let latestPhotoCheckKey = '';
     let photoCheckRun = 0;
     let submitted = false;
 
@@ -195,6 +196,21 @@ const description = 'Секретная тестовая страница зая
         binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
       }
       return btoa(binary);
+    };
+
+    const base64ToBlob = (dataBase64, contentType) => {
+      const binary = atob(dataBase64);
+      const chunkSize = 0x8000;
+      const chunks = [];
+      for (let index = 0; index < binary.length; index += chunkSize) {
+        const slice = binary.slice(index, index + chunkSize);
+        const bytes = new Uint8Array(slice.length);
+        for (let byteIndex = 0; byteIndex < slice.length; byteIndex += 1) {
+          bytes[byteIndex] = slice.charCodeAt(byteIndex);
+        }
+        chunks.push(bytes);
+      }
+      return new Blob(chunks, { type: contentType || 'application/octet-stream' });
     };
 
     const inferContentType = (file) => {
@@ -343,7 +359,13 @@ const description = 'Секретная тестовая страница зая
         selectedShowingSlugs.forEach((slug) => payload.append('selectedShowingSlugs', String(slug)));
       }
       selectedFiles.forEach((item) => {
-        payload.append('photos', item.file, item.file.name || 'passport-photo');
+        const fileName = item.file.name || 'passport-photo';
+        const contentType = item.contentType || inferContentType(item.file);
+        if (item.dataBase64) {
+          payload.append('photos', base64ToBlob(item.dataBase64, contentType), fileName);
+          return;
+        }
+        payload.append('photos', item.uploadBlob || item.file, fileName);
       });
       return payload;
     };
@@ -396,7 +418,6 @@ const description = 'Секретная тестовая страница зая
         ...item,
         kind: 'checking',
         status: 'Отправляем фото напрямую на проверку',
-        previewUrl: item.dataBase64 ? item.previewUrl : '',
       }));
       renderFiles();
       setUploadStatus('progress', 'Телефон не дал прочитать файл на странице. Отправляем фото напрямую на сервер для проверки.');
@@ -418,6 +439,13 @@ const description = 'Секретная тестовая страница зая
     );
 
     const fileKey = (file) => `${file.name}:${file.size}:${file.lastModified}`;
+
+    const buildPhotoCheckKey = () => JSON.stringify({
+      fullName: String(form.elements.fullName ? form.elements.fullName.value : '').trim(),
+      email: String(form.elements.email ? form.elements.email.value : '').trim().toLowerCase(),
+      phone: String(form.elements.phone ? form.elements.phone.value : '').trim(),
+      files: selectedFiles.map((item) => item.key),
+    });
 
     const updateSubmitState = () => {
       if (submitted) {
@@ -598,12 +626,22 @@ const description = 'Секретная тестовая страница зая
       latestPrecheckTransport = 'json';
       if (!selectedFiles.length) {
         precheckState = 'idle';
+        latestPhotoCheckKey = '';
         setUploadStatus('', '');
         renderFiles();
         renderPrecheck();
         updateSubmitState();
         return;
       }
+
+      const currentPhotoCheckKey = buildPhotoCheckKey();
+      if (
+        currentPhotoCheckKey === latestPhotoCheckKey
+        && (precheckState === 'checking' || (precheckState === 'ready' && latestPrecheck))
+      ) {
+        return;
+      }
+      latestPhotoCheckKey = currentPhotoCheckKey;
 
       precheckState = 'checking';
       selectedFiles = selectedFiles.map((item) => ({
@@ -716,6 +754,14 @@ const description = 'Секретная тестовая страница зая
       return '';
     };
 
+    const createUploadBlob = (file) => {
+      const contentType = inferContentType(file);
+      if (typeof file.slice === 'function') {
+        return file.slice(0, file.size, contentType);
+      }
+      return file;
+    };
+
     const addFiles = (fileListToAdd) => {
       const files = Array.prototype.slice.call(fileListToAdd || []);
       const incoming = files.filter(looksLikeAcceptedImage);
@@ -738,6 +784,7 @@ const description = 'Секретная тестовая страница зая
           id: createFileId(),
           key,
           file,
+          uploadBlob: createUploadBlob(file),
           previewUrl: createPreviewUrl(file),
           kind: 'pending',
           status: 'Добавлено, ждёт проверки',

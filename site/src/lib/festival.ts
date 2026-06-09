@@ -1463,7 +1463,9 @@ function parseSections() {
 
     const exactDate = parseExactDate(dateLabel, timeLabel);
     const rangeDate = kind === 'range' ? parseRangeStart(heading) : null;
-    const monthInfo = exactDate || rangeDate || { monthLabel: 'Скоро', monthAnchor: 'soon' };
+    const monthInfo = kind === 'special'
+      ? { monthLabel: 'Скоро', monthAnchor: 'soon' }
+      : exactDate || rangeDate || { monthLabel: 'Скоро', monthAnchor: 'soon' };
     const durationMinutes = parseDurationMinutes(durationLabel);
     const isIcaePublicHoldback = kind === 'dated' && isIcaePublicHoldbackLocation(normalizedLocation);
     const publicVenue = isIcaePublicHoldback ? '' : normalizedLocation.venue;
@@ -1527,7 +1529,7 @@ function parseSections() {
       speakerImages: kind === 'special' ? [] : assignSpeakerImages(speakerData.speakerLabel),
       dialogueParticipants,
       kind,
-      isoStart: exactDate?.isoStart ?? rangeDate?.isoStart,
+      isoStart: kind === 'special' ? undefined : exactDate?.isoStart ?? rangeDate?.isoStart,
       speakerLectureLinks: [],
     });
   }

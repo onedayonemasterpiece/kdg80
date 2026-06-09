@@ -180,7 +180,7 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
                         data-enabled-href={specialRegistrationHref}
                         aria-disabled="true"
                       >
-                        Проверяем места…
+                        Проверяем заявку…
                       </a>
                       <div class="notice" data-special-event-notice hidden></div>
                     </div>
@@ -260,6 +260,18 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
             )}
 
             <div class="event-leaf__sections">
+              {isEtudySpecialEvent && (
+                <section class="event-leaf__section event-leaf__section--special-access" aria-labelledby="event-leaf-special-access">
+                  <h2 id="event-leaf-special-access">Как попасть на спектакль</h2>
+                  <p class="event-leaf__section-copy">На розыгрыш приглашений могут подать заявку участники, которые посетили не меньше 5 событий фестиваля и собрали штампы в паспорте участника. Если пяти посещений пока нет, ещё не поздно выбрать события в программе, прийти на них и вернуться к заявке после пятого штампа.</p>
+                  <p class="event-leaf__section-copy">Заявку на розыгрыш спектакля «Этюды той весны» можно подать до 24 июня 2026. Заявка не является билетом: победители получат приглашение на конкретный показ после розыгрыша.</p>
+                  <div class="event-leaf__actions">
+                    <a class="button button--primary" href={specialRegistrationHref}>Подать заявку</a>
+                    <a class="button button--ghost" href="/programma/">Выбрать события фестиваля</a>
+                  </div>
+                </section>
+              )}
+
               {whyGoCopy && (
                 <section class="event-leaf__section" aria-labelledby="event-leaf-why-go">
                   <h2 id="event-leaf-why-go">Почему стоит прийти</h2>
@@ -341,7 +353,7 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
           return;
         }
 
-        setSpecialCta(true, 'Проверяем места…', '');
+        setSpecialCta(true, 'Проверяем заявку…', '');
         try {
           const response = await fetch(`${specialApiBaseUrl}/api/v1/special/events/etudy-toy-vesny?token=${encodeURIComponent(specialEventToken)}`, {
             cache: 'no-store',
@@ -355,7 +367,7 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
           if (data?.applicationAvailable && availableShowings.length) {
             setSpecialCta(false, 'Подать заявку на розыгрыш', `Доступно дат для заявки: ${availableShowings.length}. Заявка не является билетом.`);
           } else {
-            setSpecialCta(true, 'Места закончились', 'Заявки на все даты спектакля сейчас недоступны.');
+            setSpecialCta(true, 'Заявки закрыты', 'Заявки на все даты спектакля сейчас недоступны.');
           }
         } catch {
           setSpecialCta(true, 'Статус заявки недоступен', 'Не удалось проверить доступность заявки. Обновите страницу чуть позже.');

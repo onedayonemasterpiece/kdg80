@@ -27,7 +27,7 @@ const previewOgImage = '/preview-special-etudy-20260608/generated/special/etudy-
       <section class="special-intro" aria-labelledby="special-title">
         <p class="special-kicker">Заявка на розыгрыш</p>
         <h1 id="special-title">Этюды той весны</h1>
-        <p class="special-lead">Иммерсивный спектакль фестиваля «80 историй о главном». После проверки паспорта участника фестиваля заявка попадает в розыгрыш выбранных дат.</p>
+        <p class="special-lead">Иммерсивный спектакль на Южном вокзале для тех, кто активно ходит на события фестиваля. После проверки паспорта участника фестиваля заявка попадает в розыгрыш выбранных дат.</p>
         <figure class="special-hero-art">
           <img
             src={heroImage}
@@ -45,6 +45,12 @@ const previewOgImage = '/preview-special-etudy-20260608/generated/special/etudy-
           <li><strong>25 июня</strong><span>18:30 · Южный Вокзал</span></li>
         </ul>
         <p class="special-note"><strong>Важно:</strong> заявка не является билетом. Победители получат приглашение на конкретный показ после розыгрыша.</p>
+        <div class="special-access-note" aria-label="Как попасть на спектакль">
+          <strong>Как попасть</strong>
+          <p>Нужно посетить не меньше 5 событий фестиваля и загрузить фото подписанного паспорта участника со штампами. Если штампов пока меньше, ещё не поздно выбрать события в программе, прийти на них и вернуться к заявке после пятого посещения.</p>
+          <a href="/programma/">Выбрать события фестиваля</a>
+          <span>Заявку на розыгрыш можно подать до 24 июня 2026.</span>
+        </div>
       </section>
 
       <form class="special-form" data-special-form>
@@ -1271,6 +1277,7 @@ const previewOgImage = '/preview-special-etudy-20260608/generated/special/etudy-
 
   .special-meta li,
   .special-note,
+  .special-access-note,
   .special-form,
   .special-dates :global(.special-date),
   .special-summary :global(div) {
@@ -1299,6 +1306,35 @@ const previewOgImage = '/preview-special-etudy-20260608/generated/special/etudy-
   .special-note {
     padding: 1rem 1.15rem;
     border-radius: 1rem;
+  }
+
+  .special-access-note {
+    display: grid;
+    gap: 0.7rem;
+    max-width: 38rem;
+    padding: 1rem 1.15rem;
+    border-radius: 1rem;
+  }
+
+  .special-access-note strong {
+    font-family: var(--font-display);
+    font-size: 1.55rem;
+    line-height: 0.95;
+  }
+
+  .special-access-note p,
+  .special-access-note span {
+    margin: 0;
+    color: rgba(21, 17, 15, 0.68);
+    line-height: 1.5;
+  }
+
+  .special-access-note a {
+    width: fit-content;
+    color: #a33324;
+    font-weight: 800;
+    text-decoration: underline;
+    text-underline-offset: 0.18em;
   }
 
   .special-form {

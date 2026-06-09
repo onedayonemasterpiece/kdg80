@@ -753,16 +753,16 @@ const specialHeroVariant: HeroMythVariant = {
   prompt: 'Заявка на розыгрыш',
   label: 'Заявка на розыгрыш',
   title: 'Этюды той весны',
-  body: 'Иммерсивный спектакль на Южном вокзале: реальные истории первых переселенцев и встреча с подлинными музейными вещами.',
+  body: 'Иммерсивный спектакль на Южном вокзале. Попасть можно через заявку на розыгрыш после 5 посещений фестиваля.',
   eventHref: SPECIAL_REGISTRATION_HREF,
   backdropImage: SPECIAL_HERO_IMAGE,
-  ctaLabel: 'Подать заявку на розыгрыш',
+  ctaLabel: 'Как попасть на спектакль',
   specialRegistration: {
     apiBaseUrl: SPECIAL_API_BASE_URL,
     eventSlug: SPECIAL_EVENT_SLUG,
     token: SPECIAL_EVENT_TOKEN,
-    availableLabel: 'Подать заявку на розыгрыш',
-    closedLabel: 'Места закончились',
+    availableLabel: 'Как попасть на спектакль',
+    closedLabel: 'Заявки закрыты',
   },
   priority: 1000,
   fixedFirst: true,
@@ -1236,7 +1236,7 @@ const heroVariantsPayload = JSON.stringify(heroStoryVariants);
         return;
       }
 
-      setHeroCtaDisabled(link, true, 'Проверяем места...');
+      setHeroCtaDisabled(link, true, 'Проверяем заявку...');
       try {
         const response = await fetch(`${apiBaseUrl}/api/v1/special/events/${eventSlug}?token=${encodeURIComponent(token)}`, {
           cache: 'no-store',

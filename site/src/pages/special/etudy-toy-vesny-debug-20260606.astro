@@ -137,6 +137,7 @@ const description = 'Секретная тестовая страница зая
       const count = selectedFiles.length;
       upload.classList.toggle('is-has-files', count > 0);
       upload.dataset.state = count ? precheckState : 'idle';
+      photosInput.disabled = precheckState === 'checking';
 
       if (!count) {
         if (uploadIcon) uploadIcon.textContent = '+';
@@ -257,6 +258,66 @@ const description = 'Секретная тестовая страница зая
           throw new Error('Не удалось прочитать файл. Попробуйте выбрать фото ещё раз или сделать новое фото с камеры.');
         }
       }
+    };
+
+    const inferContentTypeFromBase64 = (fallbackContentType, dataBase64) => {
+      if (dataBase64.indexOf('/9j/') === 0) return 'image/jpeg';
+      if (dataBase64.indexOf('iVBOR') === 0) return 'image/png';
+      if (dataBase64.indexOf('UklGR') === 0) return 'image/webp';
+      if (fallbackContentType.indexOf('image/') === 0) {
+        return fallbackContentType;
+      }
+      return fallbackContentType;
+    };
+
+    const previewUrlForPhoto = (contentType, dataBase64) => (
+      contentType.indexOf('image/') === 0 ? `data:${contentType};base64,${dataBase64}` : ''
+    );
+
+    const releasePreviewUrl = (previewUrl) => {
+      if (previewUrl && previewUrl.indexOf('blob:') === 0 && window.URL && typeof window.URL.revokeObjectURL === 'function') {
+        window.URL.revokeObjectURL(previewUrl);
+      }
+    };
+
+    const photoPayloadFromItem = async (item, index, total) => {
+      if (item.dataBase64) {
+        return {
+          fileName: item.file.name,
+          contentType: item.contentType || inferContentType(item.file),
+          dataBase64: item.dataBase64,
+        };
+      }
+
+      selectedFiles = selectedFiles.map((current) => current.id === item.id
+        ? { ...current, kind: 'checking', status: `Читаем фото ${index + 1} из ${total}` }
+        : current);
+      renderFiles();
+
+      const rawContentType = inferContentType(item.file);
+      const dataBase64 = await fileToBase64(item.file);
+      const contentType = inferContentTypeFromBase64(rawContentType, dataBase64);
+      const previewUrl = previewUrlForPhoto(contentType, dataBase64);
+
+      selectedFiles = selectedFiles.map((current) => {
+        if (current.id !== item.id) return current;
+        releasePreviewUrl(current.previewUrl);
+        return {
+          ...current,
+          contentType,
+          dataBase64,
+          previewUrl: previewUrl || current.previewUrl,
+          kind: 'checking',
+          status: 'Фото прочитано, отправляем на OCR',
+        };
+      });
+      renderFiles();
+
+      return {
+        fileName: item.file.name,
+        contentType,
+        dataBase64,
+      };
     };
 
     const fileKey = (file) => `${file.name}:${file.size}:${file.lastModified}`;
@@ -460,15 +521,7 @@ const description = 'Секретная тестовая страница зая
         const photos = [];
         for (let index = 0; index < selectedFiles.length; index += 1) {
           const item = selectedFiles[index];
-          selectedFiles = selectedFiles.map((current) => current.id === item.id
-            ? { ...current, kind: 'checking', status: `Читаем фото ${index + 1} из ${selectedFiles.length}` }
-            : current);
-          renderFiles();
-          photos.push({
-            fileName: item.file.name,
-            contentType: inferContentType(item.file),
-            dataBase64: await fileToBase64(item.file),
-          });
+          photos.push(await photoPayloadFromItem(item, index, selectedFiles.length));
         }
 
         if (runId !== photoCheckRun) {
@@ -533,15 +586,20 @@ const description = 'Секретная тестовая страница зая
         if (runId !== photoCheckRun) {
           return;
         }
+        const errorMessage = error instanceof Error ? error.message : 'Не удалось проверить фотографии.';
+        const fileStatus = errorMessage.indexOf('прочитать') >= 0
+          ? 'Не удалось прочитать файл'
+          : 'Не удалось проверить';
         precheckState = 'error';
         selectedFiles = selectedFiles.map((item) => ({
           ...item,
           kind: 'error',
-          status: 'Не удалось проверить',
+          status: fileStatus,
         }));
-        setUploadStatus('error', error instanceof Error ? error.message : 'Не удалось проверить фотографии.');
+        setUploadStatus('error', errorMessage);
       } finally {
         if (runId === photoCheckRun) {
+          photosInput.value = '';
           renderFiles();
           renderPrecheck();
           updateSubmitState();
@@ -605,7 +663,6 @@ const description = 'Секретная тестовая страница зая
         setUploadStatus('error', `Файл уже добавлен: ${duplicates.slice(0, 2).join(', ')}${duplicates.length > 2 ? '…' : ''}`);
       }
 
-      photosInput.value = '';
       updateSubmitState();
     };
 
@@ -620,8 +677,8 @@ const description = 'Секретная тестовая страница зая
       }
       const id = button.dataset.removeFile;
       const removed = selectedFiles.find((item) => item.id === id);
-      if (removed && removed.previewUrl && window.URL && typeof window.URL.revokeObjectURL === 'function') {
-        window.URL.revokeObjectURL(removed.previewUrl);
+      if (removed) {
+        releasePreviewUrl(removed.previewUrl);
       }
       selectedFiles = selectedFiles.filter((item) => item.id !== id);
       setUploadStatus('progress', selectedFiles.length ? 'Фото удалено, пересчитываем баллы.' : 'Фото удалено. Добавьте фото паспорта участника фестиваля.');
@@ -690,11 +747,7 @@ const description = 'Секретная тестовая страница зая
         const photos = [];
         for (let index = 0; index < selectedFiles.length; index += 1) {
           const item = selectedFiles[index];
-          photos.push({
-            fileName: item.file.name,
-            contentType: inferContentType(item.file),
-            dataBase64: await fileToBase64(item.file),
-          });
+          photos.push(await photoPayloadFromItem(item, index, selectedFiles.length));
         }
 
         const response = await fetch(`${apiBaseUrl}/api/v1/special/applications`, {
@@ -984,6 +1037,10 @@ const description = 'Секретная тестовая страница зая
     height: 100%;
     opacity: 0;
     cursor: pointer;
+  }
+
+  .special-upload input:disabled {
+    pointer-events: none;
   }
 
   .special-upload__plus {

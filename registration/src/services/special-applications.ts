@@ -599,15 +599,24 @@ function computeScore(options: {
   const hasEnoughStamps = options.stampCount >= options.minStampCount;
   const extraStamps = hasEnoughStamps ? Math.max(options.stampCount - options.minStampCount, 0) : 0;
   const penaltyCount = hasEnoughStamps ? Math.max(noShowCount - options.noShowGraceCount, 0) : 0;
-  const stampScore = hasEnoughStamps
+  const penalizedStampScore = hasEnoughStamps
     ? options.basePoints + extraStamps * options.extraStampPoints - penaltyCount * options.noShowPenaltyPoints
     : 0;
-  const rawScore = stampScore + options.volunteerBonusPoints;
-  const score = hasEnoughStamps
-    ? Math.max(rawScore, 3)
-    : Math.max(rawScore, 0);
+  const stampScore = hasEnoughStamps ? Math.max(penalizedStampScore, 3) : 0;
+  const score = Math.max(stampScore + options.volunteerBonusPoints, 0);
 
   return { noShowCount, score };
+}
+
+function getOrdinaryRegistrationPenaltyCutoffIso(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Kaliningrad',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}T00:00:00+02:00`;
 }
 
 type OrdinaryRegistrationNameMatchSummary = {
@@ -696,6 +705,7 @@ function countOrdinaryRegistrationsByFullName(
 
   const target = normalizeNameForMatching(matchFullName);
   const targetTokens = nameTokens(matchFullName);
+  const penaltyCutoffIso = getOrdinaryRegistrationPenaltyCutoffIso();
   let exactCount = 0;
 
   if (fingerprintSecret) {
@@ -704,8 +714,8 @@ function countOrdinaryRegistrationsByFullName(
       FROM registrations
       INNER JOIN events ON events.id = registrations.event_id
       WHERE full_name_fingerprint = ?
-        AND events.starts_at < ?
-    `).get(computeFingerprint(fingerprintSecret, target), new Date().toISOString()) as { count: number } | undefined;
+        AND datetime(events.starts_at) < datetime(?)
+    `).get(computeFingerprint(fingerprintSecret, target), penaltyCutoffIso) as { count: number } | undefined;
     exactCount = Math.max(0, Number(row?.count ?? 0));
   }
 
@@ -721,10 +731,10 @@ function countOrdinaryRegistrationsByFullName(
     SELECT registrations.pii_ciphertext, registrations.pii_wrapped_key, registrations.pii_iv, registrations.pii_alg
     FROM registrations
     INNER JOIN events ON events.id = registrations.event_id
-    WHERE events.starts_at < ?
+    WHERE datetime(events.starts_at) < datetime(?)
     ORDER BY registrations.created_at DESC
     LIMIT ?
-  `).all(new Date().toISOString(), readPositiveInteger(process.env.SPECIAL_FUZZY_ORDINARY_MATCH_LIMIT, 500)) as Array<{
+  `).all(penaltyCutoffIso, readPositiveInteger(process.env.SPECIAL_FUZZY_ORDINARY_MATCH_LIMIT, 500)) as Array<{
     pii_ciphertext: Buffer;
     pii_wrapped_key: Buffer;
     pii_iv: Buffer;

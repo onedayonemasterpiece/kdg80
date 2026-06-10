@@ -602,10 +602,10 @@ function computeScore(options: {
   const stampScore = hasEnoughStamps
     ? options.basePoints + extraStamps * options.extraStampPoints - penaltyCount * options.noShowPenaltyPoints
     : 0;
-  const score = Math.max(
-    stampScore + options.volunteerBonusPoints,
-    0,
-  );
+  const rawScore = stampScore + options.volunteerBonusPoints;
+  const score = hasEnoughStamps
+    ? Math.max(rawScore, 3)
+    : Math.max(rawScore, 0);
 
   return { noShowCount, score };
 }
@@ -702,8 +702,10 @@ function countOrdinaryRegistrationsByFullName(
     const row = db.prepare(`
       SELECT COUNT(*) AS count
       FROM registrations
+      INNER JOIN events ON events.id = registrations.event_id
       WHERE full_name_fingerprint = ?
-    `).get(computeFingerprint(fingerprintSecret, target)) as { count: number } | undefined;
+        AND events.starts_at < ?
+    `).get(computeFingerprint(fingerprintSecret, target), new Date().toISOString()) as { count: number } | undefined;
     exactCount = Math.max(0, Number(row?.count ?? 0));
   }
 
@@ -716,11 +718,13 @@ function countOrdinaryRegistrationsByFullName(
   }
 
   const rows = db.prepare(`
-    SELECT pii_ciphertext, pii_wrapped_key, pii_iv, pii_alg
+    SELECT registrations.pii_ciphertext, registrations.pii_wrapped_key, registrations.pii_iv, registrations.pii_alg
     FROM registrations
-    ORDER BY created_at DESC
+    INNER JOIN events ON events.id = registrations.event_id
+    WHERE events.starts_at < ?
+    ORDER BY registrations.created_at DESC
     LIMIT ?
-  `).all(readPositiveInteger(process.env.SPECIAL_FUZZY_ORDINARY_MATCH_LIMIT, 500)) as Array<{
+  `).all(new Date().toISOString(), readPositiveInteger(process.env.SPECIAL_FUZZY_ORDINARY_MATCH_LIMIT, 500)) as Array<{
     pii_ciphertext: Buffer;
     pii_wrapped_key: Buffer;
     pii_iv: Buffer;

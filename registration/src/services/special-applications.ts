@@ -322,7 +322,12 @@ function mapOcrJson(parsed: Record<string, unknown>, provider: string, model: st
     );
   const hasFullName = parsedHasFullName && !rejectedBecauseMissingFullName;
   const rejectedOnlyByStampMinimum = rejectionLower.includes('штамп')
-    && (rejectionLower.includes('меньше') || rejectionLower.includes('менее') || rejectionLower.includes('5'));
+    && (
+      rejectionLower.includes('меньше')
+      || rejectionLower.includes('менее')
+      || rejectionLower.includes('недостаточно')
+      || rejectionLower.includes('5')
+    );
   const accepted = hasFullName
     && confidence >= 0.75
     && (

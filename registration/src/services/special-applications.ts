@@ -780,15 +780,24 @@ function countOrdinaryRegistrationsByFullName(
 }
 
 function duplicateMessage(error: unknown) {
-  if (isUniqueConstraintError(error, 'special_applications.special_event_id, special_applications.full_name_fingerprint')) {
+  if (
+    isUniqueConstraintError(error, 'special_applications.special_event_id, special_applications.full_name_fingerprint')
+    || isUniqueConstraintError(error, 'special_applications_event_full_name_accepted_idx')
+  ) {
     return 'Заявка с таким ФИО уже участвует в розыгрыше этого спецмероприятия.';
   }
 
-  if (isUniqueConstraintError(error, 'special_applications.special_event_id, special_applications.email_fingerprint')) {
+  if (
+    isUniqueConstraintError(error, 'special_applications.special_event_id, special_applications.email_fingerprint')
+    || isUniqueConstraintError(error, 'special_applications_event_email_accepted_idx')
+  ) {
     return 'Заявка с таким email уже участвует в розыгрыше этого спецмероприятия.';
   }
 
-  if (isUniqueConstraintError(error, 'special_applications.special_event_id, special_applications.phone_fingerprint')) {
+  if (
+    isUniqueConstraintError(error, 'special_applications.special_event_id, special_applications.phone_fingerprint')
+    || isUniqueConstraintError(error, 'special_applications_event_phone_accepted_idx')
+  ) {
     return 'Заявка с таким телефоном уже участвует в розыгрыше этого спецмероприятия.';
   }
 
@@ -825,6 +834,7 @@ function findDuplicateSpecialApplication(
       application_code
     FROM special_applications
     WHERE special_event_id = ?
+      AND status = 'accepted'
       AND (
         full_name_fingerprint = ?
         OR email_fingerprint = ?

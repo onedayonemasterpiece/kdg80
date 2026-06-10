@@ -70,6 +70,12 @@ type SpecialDrawRunRow = {
 
 export type SpecialDrawRunType = 'draft' | 'published';
 
+export type SpecialAutoDrawDueShowing = {
+  event: SpecialEventRow;
+  showing: SpecialShowingRow;
+  autoPublishAt: string;
+};
+
 export type SpecialParticipant = {
   applicationId: number;
   applicationCode: string;
@@ -273,6 +279,82 @@ function getLatestDrawRow(db: Database.Database, showingId: number, runType?: Sp
     ORDER BY id DESC
     LIMIT 1
   `).get(...params) as SpecialDrawRunRow | undefined;
+}
+
+export function listSpecialShowingsDueForAutoDraw(
+  db: Database.Database,
+  now = new Date(),
+) {
+  const rows = db.prepare(`
+    SELECT
+      e.id AS event_id,
+      e.slug AS event_slug,
+      e.title AS event_title,
+      e.format_label AS event_format_label,
+      e.venue_name AS event_venue_name,
+      s.id AS showing_id,
+      s.special_event_id AS showing_special_event_id,
+      s.slug AS showing_slug,
+      s.starts_at AS showing_starts_at,
+      s.display_label AS showing_display_label,
+      s.time_is_final AS showing_time_is_final,
+      s.physical_quota AS showing_physical_quota,
+      s.reserved_seats AS showing_reserved_seats,
+      s.lottery_quota AS showing_lottery_quota,
+      s.draw_status AS showing_draw_status
+    FROM special_event_showings s
+    INNER JOIN special_events e ON e.id = s.special_event_id
+    WHERE s.draw_status NOT IN ('published', 'final')
+      AND s.lottery_quota > 0
+      AND datetime(?) >= datetime(s.starts_at, '-24 hours')
+      AND datetime(?) < datetime(s.starts_at)
+      AND NOT EXISTS (
+        SELECT 1
+        FROM special_draw_runs dr
+        WHERE dr.showing_id = s.id
+          AND dr.run_type = 'published'
+      )
+    ORDER BY s.starts_at ASC, s.id ASC
+  `).all(now.toISOString(), now.toISOString()) as Array<{
+    event_id: number;
+    event_slug: string;
+    event_title: string;
+    event_format_label: string;
+    event_venue_name: string;
+    showing_id: number;
+    showing_special_event_id: number;
+    showing_slug: string;
+    showing_starts_at: string;
+    showing_display_label: string;
+    showing_time_is_final: number;
+    showing_physical_quota: number;
+    showing_reserved_seats: number;
+    showing_lottery_quota: number;
+    showing_draw_status: string;
+  }>;
+
+  return rows.map((row) => ({
+    event: {
+      id: row.event_id,
+      slug: row.event_slug,
+      title: row.event_title,
+      format_label: row.event_format_label,
+      venue_name: row.event_venue_name,
+    },
+    showing: {
+      id: row.showing_id,
+      special_event_id: row.showing_special_event_id,
+      slug: row.showing_slug,
+      starts_at: row.showing_starts_at,
+      display_label: row.showing_display_label,
+      time_is_final: row.showing_time_is_final,
+      physical_quota: row.showing_physical_quota,
+      reserved_seats: row.showing_reserved_seats,
+      lottery_quota: row.showing_lottery_quota,
+      draw_status: row.showing_draw_status,
+    },
+    autoPublishAt: new Date(new Date(row.showing_starts_at).getTime() - 24 * 60 * 60 * 1000).toISOString(),
+  } satisfies SpecialAutoDrawDueShowing));
 }
 
 function getPublishedWinnerProfileIdsForOtherSpecialDraws(

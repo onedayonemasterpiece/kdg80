@@ -3,6 +3,11 @@ import type { FastifyBaseLogger } from 'fastify';
 import { InputFile, type Bot, type Context } from 'grammy';
 import { createSqliteBackup } from './admin-maintenance';
 import { buildRegistrationsXlsxBuffer, listAllRegistrationsForExport } from './registration-exports';
+import {
+  buildSpecialDrawXlsxBuffer,
+  listSpecialShowingsDueForAutoDraw,
+  runSpecialDraw,
+} from './special-draws';
 import { listTelegramAdmins } from './telegram-admins';
 
 type DailyJobDeps = {
@@ -113,6 +118,28 @@ async function sendDocumentToSuperadmins(
   return true;
 }
 
+async function sendMessageToSuperadmins(
+  db: Database.Database,
+  bot: Bot<Context>,
+  text: string,
+) {
+  const superadmins = listTelegramAdmins(db).filter((item) => item.role === 'superadmin');
+  if (!superadmins.length) {
+    return false;
+  }
+
+  const results = await Promise.allSettled(
+    superadmins.map((admin) => bot.api.sendMessage(admin.telegramUserId, text)),
+  );
+
+  const rejected = results.filter((item) => item.status === 'rejected');
+  if (rejected.length === results.length) {
+    throw new Error('Failed to deliver message to every superadmin.');
+  }
+
+  return true;
+}
+
 async function runDailyExport(deps: DailyJobDeps) {
   if (!deps.privateKeyPemBase64) {
     throw new Error('Private key is required for daily registrations export.');
@@ -140,6 +167,73 @@ async function runDailyBackup(deps: DailyJobDeps) {
     'registration-backup.sqlite',
     'Ежедневная резервная копия SQLite.',
   );
+}
+
+async function runDueSpecialDraws(deps: DailyJobDeps, now: Date) {
+  if (!deps.privateKeyPemBase64) {
+    deps.logger.error('special_auto_draw_skipped_missing_private_key');
+    return;
+  }
+
+  const dueShowings = listSpecialShowingsDueForAutoDraw(deps.db, now);
+  for (const item of dueShowings) {
+    try {
+      deps.logger.info({
+        eventSlug: item.event.slug,
+        showingId: item.showing.id,
+        showingSlug: item.showing.slug,
+        startsAt: item.showing.starts_at,
+        autoPublishAt: item.autoPublishAt,
+      }, 'special_auto_draw_started');
+
+      const result = runSpecialDraw(deps.db, item.showing.id, 'published', deps.privateKeyPemBase64);
+      try {
+        const text = [
+          'Автоматический опубликованный розыгрыш за сутки до показа.',
+          '',
+          `${result.event.title}`,
+          `${result.showing.display_label}`,
+          `Кандидатов: ${result.totalCandidates}`,
+          `Победителей: ${result.winners.length} из ${result.showing.lottery_quota}`,
+          `Технических билетиков в барабане: ${result.totalWeight}`,
+          `Механика: баллы делятся между выбранными датами; полный аудит в XLSX.`,
+          `Источник случайности: ${result.drawMechanism.randomSource}`,
+        ].join('\n');
+        await sendMessageToSuperadmins(deps.db, deps.bot, text);
+
+        const buffer = await buildSpecialDrawXlsxBuffer(result);
+        await sendDocumentToSuperadmins(
+          deps.db,
+          deps.bot,
+          buffer,
+          `${item.event.slug}-${item.showing.slug}-auto-winners.xlsx`,
+          `Автоматический XLSX победителей: ${item.event.title}, ${item.showing.display_label}`,
+        );
+      } catch (error) {
+        deps.logger.error({
+          err: error,
+          eventSlug: item.event.slug,
+          showingId: item.showing.id,
+          showingSlug: item.showing.slug,
+        }, 'special_auto_draw_notification_failed');
+      }
+
+      deps.logger.info({
+        eventSlug: item.event.slug,
+        showingId: item.showing.id,
+        showingSlug: item.showing.slug,
+        winners: result.winners.length,
+        candidates: result.totalCandidates,
+      }, 'special_auto_draw_completed');
+    } catch (error) {
+      deps.logger.error({
+        err: error,
+        eventSlug: item.event.slug,
+        showingId: item.showing.id,
+        showingSlug: item.showing.slug,
+      }, 'special_auto_draw_failed');
+    }
+  }
 }
 
 async function maybeRunJob(
@@ -192,6 +286,7 @@ export function startDailyJobs(deps: DailyJobDeps) {
       }
 
       await maybeRunJob(deps, DAILY_STATE_MANIFEST_JOB, now, async () => deps.syncPublicStateManifest('daily'));
+      await runDueSpecialDraws(deps, now);
     } finally {
       running = false;
     }

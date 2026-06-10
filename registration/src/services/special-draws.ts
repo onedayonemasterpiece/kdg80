@@ -94,6 +94,9 @@ export type SpecialDrawWinner = SpecialParticipant & {
   selectedTicket: number;
   ticketRangeStart: number;
   ticketRangeEnd: number;
+  showingWeightNumerator: number;
+  showingWeightDenominator: number;
+  drawWeight: number;
   poolWeightBeforeDraw: number;
   randomSource: string;
 };
@@ -102,6 +105,10 @@ export type SpecialDrawTicketRange = {
   applicationId: number;
   applicationCode: string;
   score: number;
+  selectedShowingCount: number;
+  showingWeightNumerator: number;
+  showingWeightDenominator: number;
+  drawWeight: number;
   ticketRangeStart: number;
   ticketRangeEnd: number;
 };
@@ -127,8 +134,9 @@ export type SpecialDrawResult = {
   winners: SpecialDrawWinner[];
   candidates: SpecialParticipant[];
   drawMechanism: {
-    algorithm: 'weighted_ticket_draw_without_replacement';
-    ticketRule: '1_score_point_equals_1_ticket';
+    algorithm: 'weighted_ticket_draw_without_replacement' | 'distributed_weighted_ticket_draw_without_replacement';
+    ticketRule: '1_score_point_equals_1_ticket' | 'score_divided_by_selected_showing_count';
+    weightScale?: number;
     randomSource: string;
     audit: SpecialDrawAuditEntry[];
   };
@@ -211,6 +219,47 @@ function countSelectedShowings(value: string) {
   } catch {
     return 0;
   }
+}
+
+function normalizeSelectedShowingCount(value: number) {
+  return Number.isFinite(value) && value > 0 ? Math.max(1, Math.trunc(value)) : 1;
+}
+
+function greatestCommonDivisor(a: number, b: number): number {
+  let left = Math.abs(Math.trunc(a));
+  let right = Math.abs(Math.trunc(b));
+  while (right > 0) {
+    const next = left % right;
+    left = right;
+    right = next;
+  }
+  return left || 1;
+}
+
+function leastCommonMultiple(a: number, b: number) {
+  return Math.abs(Math.trunc(a * b)) / greatestCommonDivisor(a, b);
+}
+
+function computeWeightScale(candidates: SpecialParticipant[]) {
+  return candidates.reduce((scale, candidate) => (
+    leastCommonMultiple(scale, normalizeSelectedShowingCount(candidate.selectedShowingCount))
+  ), 1);
+}
+
+function getDistributedDrawWeight(candidate: Pick<SpecialParticipant, 'score' | 'selectedShowingCount'>, weightScale: number) {
+  const selectedShowingCount = normalizeSelectedShowingCount(candidate.selectedShowingCount);
+  return Math.max(0, Math.trunc(candidate.score * (weightScale / selectedShowingCount)));
+}
+
+function formatShowingWeight(score: number, selectedShowingCount: number) {
+  const denominator = normalizeSelectedShowingCount(selectedShowingCount);
+  if (denominator === 1) {
+    return String(score);
+  }
+  if (score % denominator === 0) {
+    return String(score / denominator);
+  }
+  return `${score}/${denominator}`;
 }
 
 function getLatestDrawRow(db: Database.Database, showingId: number, runType?: SpecialDrawRunType) {
@@ -310,9 +359,10 @@ function weightedDraw(candidates: SpecialParticipant[], limit: number) {
   const winners: SpecialDrawWinner[] = [];
   const audit: SpecialDrawAuditEntry[] = [];
   const randomSource = 'node:crypto.randomInt';
+  const weightScale = computeWeightScale(candidates);
 
   while (pool.length && winners.length < limit) {
-    const totalWeight = pool.reduce((sum, candidate) => sum + candidate.score, 0);
+    const totalWeight = pool.reduce((sum, candidate) => sum + getDistributedDrawWeight(candidate, weightScale), 0);
     if (totalWeight <= 0) {
       break;
     }
@@ -323,17 +373,23 @@ function weightedDraw(candidates: SpecialParticipant[], limit: number) {
     let ticketCursor = 1;
     const ticketRanges: SpecialDrawTicketRange[] = [];
     for (const [index, candidate] of pool.entries()) {
+      const selectedShowingCount = normalizeSelectedShowingCount(candidate.selectedShowingCount);
+      const drawWeight = getDistributedDrawWeight(candidate, weightScale);
       const ticketRangeStart = ticketCursor;
-      const ticketRangeEnd = ticketCursor + candidate.score - 1;
+      const ticketRangeEnd = ticketCursor + drawWeight - 1;
       ticketRanges.push({
         applicationId: candidate.applicationId,
         applicationCode: candidate.applicationCode,
         score: candidate.score,
+        selectedShowingCount,
+        showingWeightNumerator: candidate.score,
+        showingWeightDenominator: selectedShowingCount,
+        drawWeight,
         ticketRangeStart,
         ticketRangeEnd,
       });
 
-      target -= candidate.score;
+      target -= drawWeight;
       if (winnerIndex === -1 && target <= 0) {
         winnerIndex = index;
       }
@@ -349,6 +405,9 @@ function weightedDraw(candidates: SpecialParticipant[], limit: number) {
       selectedTicket,
       ticketRangeStart: winnerRange?.ticketRangeStart ?? selectedTicket,
       ticketRangeEnd: winnerRange?.ticketRangeEnd ?? selectedTicket,
+      showingWeightNumerator: winnerRange?.showingWeightNumerator ?? winner.score,
+      showingWeightDenominator: winnerRange?.showingWeightDenominator ?? normalizeSelectedShowingCount(winner.selectedShowingCount),
+      drawWeight: winnerRange?.drawWeight ?? getDistributedDrawWeight(winner, weightScale),
       poolWeightBeforeDraw: totalWeight,
       randomSource,
     });
@@ -363,7 +422,7 @@ function weightedDraw(candidates: SpecialParticipant[], limit: number) {
     });
   }
 
-  return { winners, audit, randomSource };
+  return { winners, audit, randomSource, weightScale };
 }
 
 function snapshotParticipant(participant: SpecialParticipant) {
@@ -378,6 +437,7 @@ function snapshotParticipant(participant: SpecialParticipant) {
     uploadedPhotoCount: participant.uploadedPhotoCount,
     uniquePhotoCount: participant.uniquePhotoCount,
     acceptedPhotoCount: participant.acceptedPhotoCount,
+    selectedShowingCount: participant.selectedShowingCount,
     createdAt: participant.createdAt,
   };
 }
@@ -397,6 +457,9 @@ function rowToDrawResult(
       selectedTicket?: number;
       ticketRangeStart?: number;
       ticketRangeEnd?: number;
+      showingWeightNumerator?: number;
+      showingWeightDenominator?: number;
+      drawWeight?: number;
       poolWeightBeforeDraw?: number;
       randomSource?: string;
     }>;
@@ -411,6 +474,9 @@ function rowToDrawResult(
       selectedTicket: winner.selectedTicket ?? 0,
       ticketRangeStart: winner.ticketRangeStart ?? 0,
       ticketRangeEnd: winner.ticketRangeEnd ?? 0,
+      showingWeightNumerator: winner.showingWeightNumerator ?? participant.score,
+      showingWeightDenominator: winner.showingWeightDenominator ?? normalizeSelectedShowingCount(participant.selectedShowingCount),
+      drawWeight: winner.drawWeight ?? getDistributedDrawWeight(participant, result.drawMechanism?.weightScale ?? 1),
       poolWeightBeforeDraw: winner.poolWeightBeforeDraw ?? result.totalWeight,
       randomSource: winner.randomSource ?? result.drawMechanism?.randomSource ?? 'node:crypto.randomInt',
     }] : [];
@@ -524,7 +590,7 @@ export function runSpecialDraw(
   const candidates = mapParticipants(listCandidateRows(db, showing), privateKeyPemBase64);
   const draw = weightedDraw(candidates, showing.lottery_quota);
   const winners = draw.winners;
-  const totalWeight = candidates.reduce((sum, candidate) => sum + candidate.score, 0);
+  const totalWeight = candidates.reduce((sum, candidate) => sum + getDistributedDrawWeight(candidate, draw.weightScale), 0);
   const snapshot = {
     createdAt: new Date().toISOString(),
     eventId: event.id,
@@ -539,8 +605,9 @@ export function runSpecialDraw(
     totalWeight,
     quota: showing.lottery_quota,
     drawMechanism: {
-      algorithm: 'weighted_ticket_draw_without_replacement',
-      ticketRule: '1_score_point_equals_1_ticket',
+      algorithm: 'distributed_weighted_ticket_draw_without_replacement',
+      ticketRule: 'score_divided_by_selected_showing_count',
+      weightScale: draw.weightScale,
       randomSource: draw.randomSource,
       audit: draw.audit,
     } as const,
@@ -555,6 +622,9 @@ export function runSpecialDraw(
       selectedTicket: winner.selectedTicket,
       ticketRangeStart: winner.ticketRangeStart,
       ticketRangeEnd: winner.ticketRangeEnd,
+      showingWeightNumerator: winner.showingWeightNumerator,
+      showingWeightDenominator: winner.showingWeightDenominator,
+      drawWeight: winner.drawWeight,
       poolWeightBeforeDraw: winner.poolWeightBeforeDraw,
       randomSource: winner.randomSource,
     })),
@@ -672,6 +742,7 @@ export function formatSpecialShowingPanel(item: NonNullable<ReturnType<typeof ge
 }
 
 export function formatSpecialShowingApplicants(item: NonNullable<ReturnType<typeof getSpecialShowingForTelegram>>) {
+  const weightScale = computeWeightScale(item.candidates);
   const header = [
     'Заявители до розыгрыша',
     item.event.title,
@@ -688,7 +759,7 @@ export function formatSpecialShowingApplicants(item: NonNullable<ReturnType<type
     `${index + 1}. ФИО: ${candidate.fullName}`,
     `   Баллы: ${candidate.score}, штампы: ${candidate.stampCount}, неявки: ${candidate.noShowCount}`,
     `   Фото: ${candidate.acceptedPhotoCount}/${candidate.uniquePhotoCount}/${candidate.uploadedPhotoCount}`,
-    `   Выбрано дат: ${candidate.selectedShowingCount}`,
+    `   Выбрано дат: ${candidate.selectedShowingCount}, вес на этот показ: ${formatShowingWeight(candidate.score, candidate.selectedShowingCount)} (${getDistributedDrawWeight(candidate, weightScale)} тех. билетиков)`,
     `   Код заявки: ${candidate.applicationCode}`,
   ].join('\n'));
 
@@ -706,12 +777,15 @@ export function formatSpecialDrawResult(result: SpecialDrawResult) {
     result.showing.display_label,
     '',
     `Кандидатов: ${result.totalCandidates}`,
-    `Билетов в барабане: ${result.totalWeight}`,
+    `Технических билетиков в барабане: ${result.totalWeight}`,
     `Победителей: ${result.winners.length} из ${result.showing.lottery_quota}`,
-    'Механика: 1 балл = 1 билет; выбирается один случайный номер билета в раунде.',
+    result.drawMechanism.ticketRule === 'score_divided_by_selected_showing_count'
+      ? 'Механика: баллы участника делятся между выбранными датами; на этом показе вес = баллы / количество выбранных дат.'
+      : 'Механика: 1 балл = 1 билет; выбирается один случайный номер билета в раунде.',
+    result.drawMechanism.weightScale ? `Технический масштаб весов: ${result.drawMechanism.weightScale}` : null,
     `Источник случайности: ${result.drawMechanism.randomSource}`,
     '',
-  ];
+  ].filter((item): item is string => Boolean(item));
 
   if (!result.winners.length) {
     return [...header, 'Победителей нет: недостаточно допущенных заявок.'].join('\n');
@@ -720,8 +794,9 @@ export function formatSpecialDrawResult(result: SpecialDrawResult) {
   const winners = result.winners.slice(0, 30).map((winner) => [
     `${winner.position}. ${winner.fullName}`,
     `   Баллы: ${winner.score}, штампы: ${winner.stampCount}, неявки: ${winner.noShowCount}`,
+    `   Выбрано дат: ${winner.selectedShowingCount}, вес на этот показ: ${formatShowingWeight(winner.showingWeightNumerator, winner.showingWeightDenominator)} (${winner.drawWeight} тех. билетиков)`,
     `   Раунд: выпал билет №${winner.selectedTicket} из ${winner.poolWeightBeforeDraw}`,
-    `   Билеты участника: №${winner.ticketRangeStart}–${winner.ticketRangeEnd} (${winner.score} шт.)`,
+    `   Билетики участника в раунде: №${winner.ticketRangeStart}–${winner.ticketRangeEnd}`,
     `   ${maskEmail(winner.email)}, ${maskPhone(winner.phone)}`,
     `   Код заявки: ${winner.applicationCode}`,
   ].join('\n'));
@@ -746,8 +821,11 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
     { header: 'Телефон', key: 'phone', width: 20 },
     { header: 'Код заявки', key: 'applicationCode', width: 42 },
     { header: 'Баллы', key: 'score', width: 10 },
+    { header: 'Выбрано дат', key: 'selectedShowingCount', width: 14 },
+    { header: 'Вес на показ', key: 'showingWeight', width: 18 },
+    { header: 'Тех. билетики участника', key: 'drawWeight', width: 22 },
     { header: 'Выпавший билет', key: 'selectedTicket', width: 18 },
-    { header: 'Всего билетов в раунде', key: 'poolWeightBeforeDraw', width: 24 },
+    { header: 'Всего тех. билетиков в раунде', key: 'poolWeightBeforeDraw', width: 30 },
     { header: 'Диапазон билетов победителя', key: 'ticketRange', width: 30 },
     { header: 'Источник случайности', key: 'randomSource', width: 28 },
     { header: 'Штампы', key: 'stampCount', width: 10 },
@@ -763,6 +841,9 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
       phone: winner.phone,
       applicationCode: winner.applicationCode,
       score: winner.score,
+      selectedShowingCount: winner.selectedShowingCount,
+      showingWeight: formatShowingWeight(winner.showingWeightNumerator, winner.showingWeightDenominator),
+      drawWeight: winner.drawWeight,
       selectedTicket: winner.selectedTicket,
       poolWeightBeforeDraw: winner.poolWeightBeforeDraw,
       ticketRange: `№${winner.ticketRangeStart}–№${winner.ticketRangeEnd}`,
@@ -780,12 +861,16 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
     { header: 'Телефон', key: 'phone', width: 20 },
     { header: 'Код заявки', key: 'applicationCode', width: 42 },
     { header: 'Баллы', key: 'score', width: 10 },
+    { header: 'Выбрано дат', key: 'selectedShowingCount', width: 14 },
+    { header: 'Вес на этот показ', key: 'showingWeight', width: 18 },
+    { header: 'Тех. билетики на этот показ', key: 'drawWeight', width: 26 },
     { header: 'Штампы', key: 'stampCount', width: 10 },
     { header: 'Неявки', key: 'noShowCount', width: 10 },
     { header: 'Зачтено фото', key: 'acceptedPhotoCount', width: 14 },
     { header: 'Дата заявки', key: 'createdAt', width: 28 },
   ];
 
+  const weightScale = result.drawMechanism.weightScale ?? computeWeightScale(result.candidates);
   for (const candidate of result.candidates) {
     candidatesSheet.addRow({
       fullName: candidate.fullName,
@@ -793,6 +878,9 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
       phone: candidate.phone,
       applicationCode: candidate.applicationCode,
       score: candidate.score,
+      selectedShowingCount: candidate.selectedShowingCount,
+      showingWeight: formatShowingWeight(candidate.score, candidate.selectedShowingCount),
+      drawWeight: getDistributedDrawWeight(candidate, weightScale),
       stampCount: candidate.stampCount,
       noShowCount: candidate.noShowCount,
       acceptedPhotoCount: candidate.acceptedPhotoCount,
@@ -807,6 +895,9 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
     { header: 'Выпавший билет', key: 'selectedTicket', width: 18 },
     { header: 'Код заявки', key: 'applicationCode', width: 42 },
     { header: 'Баллы участника', key: 'score', width: 18 },
+    { header: 'Выбрано дат', key: 'selectedShowingCount', width: 14 },
+    { header: 'Вес на показ', key: 'showingWeight', width: 18 },
+    { header: 'Тех. билетики участника', key: 'drawWeight', width: 22 },
     { header: 'Диапазон билетов', key: 'ticketRange', width: 24 },
     { header: 'Победитель', key: 'winner', width: 14 },
     { header: 'Источник случайности', key: 'randomSource', width: 28 },
@@ -820,6 +911,12 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
         selectedTicket: round.selectedTicket,
         applicationCode: range.applicationCode,
         score: range.score,
+        selectedShowingCount: range.selectedShowingCount ?? '',
+        showingWeight: formatShowingWeight(
+          range.showingWeightNumerator ?? range.score,
+          range.showingWeightDenominator ?? 1,
+        ),
+        drawWeight: range.drawWeight ?? range.score,
         ticketRange: `№${range.ticketRangeStart}–№${range.ticketRangeEnd}`,
         winner: range.applicationId === round.winnerApplicationId ? 'да' : '',
         randomSource: round.randomSource,

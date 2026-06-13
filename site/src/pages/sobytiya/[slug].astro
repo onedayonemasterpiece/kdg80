@@ -67,6 +67,10 @@ const jsonLdOrganizer = {
   name: 'Российское общество Знание',
   url: 'https://znanierussia.ru/',
 };
+const recordingPlatformLabel = event.recording?.platform === 'vk-video' ? 'VK Видео' : event.recording ? 'Rutube' : '';
+const recordingAriaLabel = recordingPlatformLabel
+  ? `Смотреть запись лекции «${event.title}» на ${recordingPlatformLabel}`
+  : `Смотреть запись лекции «${event.title}»`;
 const baseStructuredData = {
   '@context': 'https://schema.org',
   '@type': 'Event',
@@ -171,6 +175,21 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
                 {event.speakerLabel && <p class="event-leaf__speaker">Спикер: {event.speakerLabel}</p>}
 
                 <div class="event-leaf__actions">
+                  {event.recording && (
+                    <a
+                      class="button button--primary event-leaf__recording-link"
+                      href={event.recording.href}
+                      target="_blank"
+                      rel="nofollow noreferrer noopener"
+                      aria-label={recordingAriaLabel}
+                    >
+                      <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                        <path d="M8 5.6v12.8L18.6 12 8 5.6Z"></path>
+                      </svg>
+                      Смотреть запись
+                    </a>
+                  )}
+
                   {isEtudySpecialEvent ? (
                     <div class="event-leaf__registration event-leaf__registration--special" data-special-event-cta-card>
                       <a
@@ -184,9 +203,9 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
                       </a>
                       <div class="notice" data-special-event-notice hidden></div>
                     </div>
-                  ) : temporalState === 'past' ? (
+                  ) : temporalState === 'past' && !event.recording ? (
                     <div class="button button--ghost button--disabled" aria-disabled="true">Событие прошло</div>
-                  ) : (
+                  ) : temporalState !== 'past' ? (
                     <div class="event-leaf__registration" data-registration-card data-event-slug={event.slug} data-registration-autoload>
                       <button
                         class="button button--primary button--disabled"
@@ -207,7 +226,7 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
                       </button>
                       <div class="notice" data-registration-notice hidden></div>
                     </div>
-                  )}
+                  ) : null}
 
                   <button
                     class="button button--ghost event-leaf__share"
@@ -260,6 +279,30 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
             )}
 
             <div class="event-leaf__sections">
+              {event.recording && (
+                <section class="event-leaf__section event-leaf__section--recording" aria-labelledby="event-leaf-recording">
+                  <h2 id="event-leaf-recording">Запись лекции</h2>
+                  <p class="event-leaf__section-copy">Лекция уже прошла, но запись доступна для просмотра на {recordingPlatformLabel}.</p>
+                  <a
+                    class="event-leaf__recording-panel"
+                    href={event.recording.href}
+                    target="_blank"
+                    rel="nofollow noreferrer noopener"
+                    aria-label={recordingAriaLabel}
+                  >
+                    <span class="event-leaf__recording-panel-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" focusable="false">
+                        <path d="M8 5.6v12.8L18.6 12 8 5.6Z"></path>
+                      </svg>
+                    </span>
+                    <span>
+                      <strong>Открыть запись лекции</strong>
+                      <small>{recordingPlatformLabel}</small>
+                    </span>
+                  </a>
+                </section>
+              )}
+
               {isEtudySpecialEvent && (
                 <section class="event-leaf__section event-leaf__section--special-access" aria-labelledby="event-leaf-special-access">
                   <h2 id="event-leaf-special-access">Как попасть на спектакль</h2>

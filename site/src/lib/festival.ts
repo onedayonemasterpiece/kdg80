@@ -43,6 +43,12 @@ export type SpeakerSocialLink = {
   href: string;
 };
 
+export type FestivalEventRecording = {
+  platform: 'vk-video' | 'rutube';
+  href: string;
+  label: string;
+};
+
 export type SpeakerShowcaseEntry = {
   name: string;
   affiliation: string;
@@ -90,6 +96,7 @@ export type FestivalEvent = {
   isoStart?: string;
   relatedEvent?: RelatedFestivalEvent;
   speakerLectureLinks: SpeakerLectureLink[];
+  recording?: FestivalEventRecording;
 };
 
 const MONTHS: Record<string, { number: string; label: string; anchor: string }> = {
@@ -175,6 +182,18 @@ const SPEAKER_SOCIAL_LINKS_SOURCE: Array<{ names: string[]; links: SpeakerSocial
 const SPEAKER_SOCIAL_LINKS = new Map<string, SpeakerSocialLink[]>(
   SPEAKER_SOCIAL_LINKS_SOURCE.flatMap((entry) => entry.names.map((name) => [normalizeLookup(name), entry.links] as const)),
 );
+const EVENT_RECORDING_LINKS: Record<string, FestivalEventRecording> = {
+  'vishtynetskaya-vozvyshennost-kak-osvaivali-s-1945-goda-sovremennost-i-perspektivy': {
+    platform: 'rutube',
+    href: 'https://rutube.ru/video/private/953fcaf9c0daad5db75aa4ecbb2334bf/?p=eorCqrBhfZnpna3mOXLzhQ&r=a',
+    label: 'Запись Rutube',
+  },
+  'demografiya-pervogo-desyatiletiya-kaliningradskoy-oblasti': {
+    platform: 'vk-video',
+    href: 'https://vk.ru/video-205261142_456239994',
+    label: 'Запись VK Видео',
+  },
+};
 
 const EVENT_IMAGE_MAP: Array<{ title: string; speaker: string; manifestKeys: string[]; alternateTitles?: string[] }> = [
   {
@@ -1531,6 +1550,7 @@ function parseSections() {
       kind,
       isoStart: kind === 'special' ? undefined : exactDate?.isoStart ?? rangeDate?.isoStart,
       speakerLectureLinks: [],
+      recording: EVENT_RECORDING_LINKS[slug],
     });
   }
 

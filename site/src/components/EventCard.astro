@@ -213,6 +213,19 @@ function getSpeakerSocialAriaLabel(platform: SpeakerSocialLink['platform'], spea
   return platform === 'vk' ? `Открыть ВКонтакте спикера ${speakerName}` : `Открыть Telegram спикера ${speakerName}`;
 }
 
+function getRecordingPlatformText(recording: FestivalEvent['recording']) {
+  if (!recording) {
+    return '';
+  }
+
+  return recording.platform === 'vk-video' ? 'VK Видео' : 'Rutube';
+}
+
+function getRecordingAriaLabel(value: Pick<FestivalEvent, 'title' | 'recording'>) {
+  const platform = getRecordingPlatformText(value.recording);
+  return platform ? `Смотреть запись лекции «${value.title}» на ${platform}` : `Смотреть запись лекции «${value.title}»`;
+}
+
 const dateParts = getDateParts(event.dateLabel);
 const rangeDateParts = event.kind === 'range' ? getRangeDateParts(event.dateLabel) : null;
 const isDialogueEvent = event.formatLabel.includes('Открытый диалог') && event.dialogueParticipants.length > 0;
@@ -265,6 +278,7 @@ const hasActionRow = showActions && !isRangeEvent;
 const eventHref = getFestivalEventHref(event.slug);
 const VisualTitleTag = headingLevel === 'page' ? 'h1' : 'p';
 const BodyTitleTag = headingLevel === 'page' ? 'h1' : 'h4';
+const recordingPlatformText = getRecordingPlatformText(event.recording);
 ---
 
 <article
@@ -457,6 +471,26 @@ const BodyTitleTag = headingLevel === 'page' ? 'h1' : 'h4';
         </div>
       )}
 
+      {event.recording && (
+        <a
+          class={`event-card__recording event-card__recording--${event.recording.platform}`}
+          href={event.recording.href}
+          target="_blank"
+          rel="nofollow noreferrer noopener"
+          aria-label={getRecordingAriaLabel(event)}
+        >
+          <span class="event-card__recording-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="M8 5.6v12.8L18.6 12 8 5.6Z"></path>
+            </svg>
+          </span>
+          <span>
+            <strong>Доступна запись лекции</strong>
+            <small>{recordingPlatformText}</small>
+          </span>
+        </a>
+      )}
+
       {showExpandedCardSummary ? (
         <div class="event-card__summary-expanded">
           <p class="event-card__summary-plain">{cardText}</p>
@@ -578,6 +612,19 @@ const BodyTitleTag = headingLevel === 'page' ? 'h1' : 'h4';
       <aside class="event-card__actions">
         {isSpecialEvent ? (
           <a class="button button--primary event-card__special-details" href={eventHref}>Подробнее</a>
+        ) : temporalState === 'past' && event.recording ? (
+          <a
+            class="button button--primary event-card__recording-action"
+            href={event.recording.href}
+            target="_blank"
+            rel="nofollow noreferrer noopener"
+            aria-label={getRecordingAriaLabel(event)}
+          >
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+              <path d="M8 5.6v12.8L18.6 12 8 5.6Z"></path>
+            </svg>
+            Смотреть запись
+          </a>
         ) : temporalState === 'past' ? (
           <div class="button button--ghost button--disabled event-card__past-state" aria-disabled="true">Событие прошло</div>
         ) : (

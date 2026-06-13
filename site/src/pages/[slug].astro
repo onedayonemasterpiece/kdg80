@@ -5,7 +5,7 @@ import RouteHero from '../components/RouteHero.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 import SiteHeader from '../components/SiteHeader.astro';
 import Layout from '../layouts/Layout.astro';
-import { getFestivalEvents } from '../lib/festival';
+import { getFestivalEvents, getNextRecordedFestivalEvent } from '../lib/festival';
 import {
   getFestivalRouteBySlug,
   getFestivalRoutes,
@@ -68,7 +68,7 @@ const description = route.description || `Маршрут по интересам
                 </header>
                 <div class="event-list">
                   {section.events.map((event) => (
-                    <EventCard event={event} now={now} />
+                    <EventCard event={event} now={now} nextRecordedEvent={getNextRecordedFestivalEvent(event.slug, allEvents)} />
                   ))}
                 </div>
               </section>
@@ -99,7 +99,7 @@ const description = route.description || `Маршрут по интересам
                   </header>
                   <div class="event-list">
                     {section.events.map((event) => (
-                      <EventCard event={event} now={now} />
+                      <EventCard event={event} now={now} nextRecordedEvent={getNextRecordedFestivalEvent(event.slug, allEvents)} />
                     ))}
                   </div>
                 </section>

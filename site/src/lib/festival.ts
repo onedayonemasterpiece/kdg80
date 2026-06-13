@@ -1613,6 +1613,42 @@ export function getFestivalEventBySlug(slug: string, options: { includeHidden?: 
   return getFestivalEvents(options).find((event) => event.slug === slug);
 }
 
+function compareEventStart(left: FestivalEvent, right: FestivalEvent) {
+  if (left.isoStart && right.isoStart) {
+    return left.isoStart.localeCompare(right.isoStart);
+  }
+  if (left.isoStart) {
+    return -1;
+  }
+  if (right.isoStart) {
+    return 1;
+  }
+  return left.title.localeCompare(right.title, 'ru');
+}
+
+export function getRecordedFestivalEvents(events = getFestivalEvents()) {
+  return [...events]
+    .filter((event) => Boolean(event.recording))
+    .sort(compareEventStart);
+}
+
+export function getRecordingNoticeEvents(events = getFestivalEvents()) {
+  return [...events]
+    .filter((event) => Boolean(event.recordingNotice) && !event.recording)
+    .sort(compareEventStart);
+}
+
+export function getNextRecordedFestivalEvent(currentSlug: string, events = getFestivalEvents()) {
+  const recordedEvents = getRecordedFestivalEvents(events);
+  const currentIndex = recordedEvents.findIndex((event) => event.slug === currentSlug);
+
+  if (currentIndex < 0) {
+    return null;
+  }
+
+  return recordedEvents[currentIndex + 1] ?? null;
+}
+
 export function getMonthGroups(events: FestivalEvent[]) {
   const groups = new Map<string, { label: string; anchor: string; events: FestivalEvent[] }>();
 

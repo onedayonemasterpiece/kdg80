@@ -16,6 +16,7 @@ interface Props {
   linkToDetails?: boolean;
   expandSummary?: boolean;
   headingLevel?: 'default' | 'page';
+  nextRecordedEvent?: Pick<FestivalEvent, 'slug' | 'title'> | null;
 }
 
 const {
@@ -25,6 +26,7 @@ const {
   linkToDetails = true,
   expandSummary = false,
   headingLevel = 'default',
+  nextRecordedEvent = null,
 } = Astro.props;
 
 const WEEKDAY_SHORT: Record<string, string> = {
@@ -280,6 +282,7 @@ const VisualTitleTag = headingLevel === 'page' ? 'h1' : 'p';
 const BodyTitleTag = headingLevel === 'page' ? 'h1' : 'h4';
 const recordingPlatformText = getRecordingPlatformText(event.recording);
 const recordingNotice = event.recordingNotice;
+const recordingsHref = '/zapisi/';
 ---
 
 <article
@@ -490,6 +493,22 @@ const recordingNotice = event.recordingNotice;
             <small>{recordingPlatformText}</small>
           </span>
         </a>
+      )}
+
+      {event.recording && (
+        <nav class="event-card__recording-nav" aria-label={`Навигация по записям события «${event.title}»`}>
+          {nextRecordedEvent && (
+            <a
+              class="event-card__recording-next"
+              href={getFestivalEventHref(nextRecordedEvent.slug)}
+              aria-label={`Следующая запись: ${nextRecordedEvent.title}`}
+            >
+              <span>Следующая запись</span>
+              <strong>{nextRecordedEvent.title}</strong>
+            </a>
+          )}
+          <a class="event-card__recording-all" href={recordingsHref}>Все записи</a>
+        </nav>
       )}
 
       {!event.recording && recordingNotice && (

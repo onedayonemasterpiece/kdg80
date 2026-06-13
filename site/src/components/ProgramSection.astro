@@ -1,6 +1,6 @@
 ---
 import EventCard from './EventCard.astro';
-import type { FestivalEvent } from '../lib/festival';
+import { getNextRecordedFestivalEvent, type FestivalEvent } from '../lib/festival';
 
 type ProgramMonthGroup = {
   label: string;
@@ -15,6 +15,7 @@ interface Props {
 }
 
 const { monthGroups, now, standalone = false } = Astro.props;
+const allEvents = monthGroups.flatMap((group) => group.events);
 const title = standalone
   ? 'Полная программа фестиваля по месяцам, чтобы можно было быстро перейти к нужной дате и сразу открыть регистрацию.'
   : 'Найдите подходящие события фестиваля в нашей программе';
@@ -32,6 +33,9 @@ const description = standalone
       </div>
       <p class="section__text">
         {description}
+        {standalone && (
+          <a class="section__inline-link" href="/zapisi/">Смотреть записи прошедших лекций</a>
+        )}
       </p>
     </div>
 
@@ -56,7 +60,7 @@ const description = standalone
 
           <div class="event-list">
             {group.events.map((event) => (
-              <EventCard event={event} now={now} />
+              <EventCard event={event} now={now} nextRecordedEvent={getNextRecordedFestivalEvent(event.slug, allEvents)} />
             ))}
           </div>
         </section>

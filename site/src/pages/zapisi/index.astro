@@ -1,0 +1,127 @@
+---
+import EventCard from '../../components/EventCard.astro';
+import RegistrationClient from '../../components/RegistrationClient.astro';
+import SiteFooter from '../../components/SiteFooter.astro';
+import SiteHeader from '../../components/SiteHeader.astro';
+import Layout from '../../layouts/Layout.astro';
+import {
+  getFestivalEventHref,
+  getFestivalEvents,
+  getNextRecordedFestivalEvent,
+  getRecordedFestivalEvents,
+  getRecordingNoticeEvents,
+} from '../../lib/festival';
+import { getRouteNavItems, getSmartProgramHref } from '../../lib/routes';
+
+const allEvents = getFestivalEvents();
+const recordedEvents = [...getRecordedFestivalEvents(allEvents)].reverse();
+const pendingRecordingEvents = getRecordingNoticeEvents(allEvents);
+const routeItems = getRouteNavItems();
+const now = new Date();
+const programHref = getSmartProgramHref(allEvents, false, now);
+const title = 'Записи лекций | 80 историй о главном';
+const description = 'Записи прошедших лекций и событий фестиваля «80 историй о главном»: смотрите опубликованные видео и переходите к следующим записям.';
+const canonicalPath = '/zapisi/';
+const siteOrigin = (import.meta.env.PUBLIC_SITE_ORIGIN || 'https://kgd80.ru').replace(/\/+$/u, '');
+const absoluteUrl = new URL(canonicalPath, `${siteOrigin}/`).toString();
+const structuredData = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: title,
+    description,
+    url: absoluteUrl,
+    mainEntity: {
+      '@type': 'ItemList',
+      name: 'Записи лекций фестиваля «80 историй о главном»',
+      itemListElement: recordedEvents.map((event, index) => ({
+        '@type': 'ListItem',
+        position: index + 1,
+        url: new URL(getFestivalEventHref(event.slug), `${siteOrigin}/`).toString(),
+        name: event.title,
+      })),
+    },
+  },
+];
+---
+
+<Layout
+  title={title}
+  description={description}
+  canonicalPath={canonicalPath}
+  structuredData={structuredData}
+>
+  <div class="page page--recordings">
+    <div id="top" aria-hidden="true"></div>
+    <SiteHeader routeItems={routeItems} programHref={programHref} />
+
+    <main>
+      <section class="section section--recordings">
+        <div class="container">
+          <div class="section__header section__header--split">
+            <div>
+              <p class="section__eyebrow">Записи</p>
+              <h1>Записи лекций</h1>
+            </div>
+            <p class="section__text">
+              Прошедшие лекции и события фестиваля можно смотреть в записи. Начните с любой темы и переходите к следующей записи прямо из карточки.
+              <a class="section__inline-link" href="/programma/">Вернуться к программе</a>
+            </p>
+          </div>
+
+          <div class="recordings-summary" aria-label="Сводка по записям">
+            <span>{recordedEvents.length} опубликованных записей</span>
+            {pendingRecordingEvents.length > 0 && <span>{pendingRecordingEvents.length} готовятся к публикации</span>}
+          </div>
+
+          <div class="event-list event-list--recordings">
+            {recordedEvents.map((event) => (
+              <EventCard
+                event={event}
+                now={now}
+                nextRecordedEvent={getNextRecordedFestivalEvent(event.slug, allEvents)}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {pendingRecordingEvents.length > 0 && (
+        <section class="section section--recordings-pending">
+          <div class="container">
+            <div class="section__header section__header--split">
+              <div>
+                <p class="section__eyebrow">Скоро</p>
+                <h2>Скоро опубликуем</h2>
+              </div>
+              <p class="section__text">
+                Эти события уже прошли, записи готовятся к публикации.
+              </p>
+            </div>
+
+            <div class="recordings-pending-list">
+              {pendingRecordingEvents.map((event) => (
+                <article class="recordings-pending-card">
+                  <div class="recordings-pending-card__meta">
+                    <span>{event.dateLabel}</span>
+                    {event.timeLabel && <span>{event.timeLabel}</span>}
+                  </div>
+                  <div class="recordings-pending-card__body">
+                    <h3>{event.title}</h3>
+                    {event.speakerLabel && <p>{event.speakerLabel}</p>}
+                    <strong>{event.recordingNotice?.label}</strong>
+                    <span>{event.recordingNotice?.description}</span>
+                  </div>
+                  <a href={getFestivalEventHref(event.slug)}>Подробнее</a>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+    </main>
+
+    <SiteFooter routeItems={routeItems} programHref={programHref} />
+    <RegistrationClient />
+  </div>
+</Layout>

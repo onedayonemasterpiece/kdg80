@@ -1096,6 +1096,7 @@ summary {
   color: var(--accent-deep);
 }
 
+.section h1,
 .section h2 {
   margin: 0;
   max-width: 18ch;
@@ -1110,6 +1111,29 @@ summary {
   margin: 0;
   color: var(--ink-soft);
   line-height: 1.6;
+}
+
+.section__inline-link {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 0.65rem;
+  color: var(--accent-deep);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.16em;
+}
+
+.section__inline-link:hover,
+.section__inline-link:focus-visible {
+  color: var(--accent);
+}
+
+.section__inline-link:focus-visible {
+  outline: 2px solid rgba(216, 75, 49, 0.24);
+  outline-offset: 3px;
+  border-radius: 0.35rem;
 }
 
 .speaker-section {
@@ -1631,6 +1655,106 @@ summary {
   display: grid;
   gap: 2.55rem;
   padding-bottom: 1rem;
+}
+
+.recordings-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: -0.15rem 0 1rem;
+}
+
+.recordings-summary span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.3rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  color: var(--accent-deep);
+  background: rgba(216, 75, 49, 0.08);
+  border: 1px solid rgba(216, 75, 49, 0.14);
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.recordings-pending-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.recordings-pending-card {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 0.32fr) minmax(0, 1fr) auto;
+  gap: 0.9rem;
+  align-items: center;
+  padding: 1rem;
+  border-radius: 1.15rem;
+  background: rgba(255, 250, 244, 0.78);
+  border: 1px solid rgba(18, 17, 14, 0.08);
+  box-shadow: 0 18px 45px rgba(71, 51, 35, 0.08);
+}
+
+.recordings-pending-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  color: var(--accent-deep);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.recordings-pending-card__meta span {
+  display: inline-flex;
+  min-height: 1.75rem;
+  align-items: center;
+  padding: 0.35rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(216, 75, 49, 0.08);
+}
+
+.recordings-pending-card__body {
+  display: grid;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.recordings-pending-card h3,
+.recordings-pending-card p {
+  margin: 0;
+}
+
+.recordings-pending-card h3 {
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 2.4vw, 1.9rem);
+  line-height: 0.95;
+  letter-spacing: 0;
+}
+
+.recordings-pending-card p,
+.recordings-pending-card span {
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.recordings-pending-card strong {
+  color: var(--accent-deep);
+  font-size: 0.88rem;
+}
+
+.recordings-pending-card > a {
+  justify-self: end;
+  color: var(--accent-deep);
+  font-size: 0.84rem;
+  font-weight: 800;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: rgba(155, 46, 26, 0.28);
+  text-underline-offset: 0.14rem;
 }
 
 .month-block {
@@ -2301,6 +2425,61 @@ a.event-card__recording:focus-visible {
 
 .event-card__recording--pending small {
   color: rgba(59, 40, 30, 0.7);
+}
+
+.event-card__recording-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.7rem;
+  align-items: center;
+  max-width: 100%;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.event-card__recording-next,
+.event-card__recording-all {
+  color: var(--accent-deep);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: rgba(155, 46, 26, 0.28);
+  text-underline-offset: 0.14rem;
+}
+
+.event-card__recording-next {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.32rem;
+  align-items: baseline;
+  max-width: min(100%, 35rem);
+}
+
+.event-card__recording-next span {
+  color: var(--ink-soft);
+}
+
+.event-card__recording-next strong {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.event-card__recording-next:hover,
+.event-card__recording-next:focus-visible,
+.event-card__recording-all:hover,
+.event-card__recording-all:focus-visible {
+  color: var(--accent);
+  text-decoration-color: rgba(216, 75, 49, 0.48);
+}
+
+.event-card__recording-next:focus-visible,
+.event-card__recording-all:focus-visible {
+  outline: 2px solid rgba(216, 75, 49, 0.24);
+  outline-offset: 3px;
+  border-radius: 0.35rem;
 }
 
 .event-card__service-note {
@@ -4465,6 +4644,61 @@ body.registration-modal-open {
   gap: 0.42rem;
 }
 
+.event-leaf__recording-nav,
+.event-leaf__recording-section-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  align-items: center;
+  max-width: 100%;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.event-leaf__recording-nav {
+  min-height: 2.75rem;
+}
+
+.event-leaf__recording-next,
+.event-leaf__recording-all,
+.event-leaf__recording-section-nav a {
+  color: var(--accent-deep);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 0.08em;
+  text-decoration-color: rgba(155, 46, 26, 0.28);
+  text-underline-offset: 0.16em;
+}
+
+.event-leaf__recording-next {
+  max-width: min(100%, 36rem);
+}
+
+.event-leaf__recording-next span,
+.event-leaf__recording-section-nav span {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.event-leaf__recording-next:hover,
+.event-leaf__recording-next:focus-visible,
+.event-leaf__recording-all:hover,
+.event-leaf__recording-all:focus-visible,
+.event-leaf__recording-section-nav a:hover,
+.event-leaf__recording-section-nav a:focus-visible {
+  color: var(--accent);
+  text-decoration-color: rgba(216, 75, 49, 0.48);
+}
+
+.event-leaf__recording-next:focus-visible,
+.event-leaf__recording-all:focus-visible,
+.event-leaf__recording-section-nav a:focus-visible {
+  outline: 2px solid rgba(216, 75, 49, 0.24);
+  outline-offset: 3px;
+  border-radius: 0.35rem;
+}
+
 .event-leaf__share {
   min-width: max-content;
 }
@@ -5477,6 +5711,20 @@ a.event-leaf__recording-panel:focus-visible {
 
   .section--program {
     margin-top: 1rem;
+  }
+
+  .recordings-pending-list {
+    grid-template-columns: 1fr;
+  }
+
+  .recordings-pending-card {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 0.7rem;
+  }
+
+  .recordings-pending-card > a {
+    justify-self: start;
   }
 
   .site-header__row {

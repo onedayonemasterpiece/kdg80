@@ -10,6 +10,7 @@ import {
   getFestivalEventBySlug,
   getFestivalEventHref,
   getFestivalEvents,
+  getNextRecordedFestivalEvent,
 } from '../../lib/festival';
 import { getRouteNavItems, getSmartProgramHref } from '../../lib/routes';
 
@@ -30,6 +31,7 @@ const routeItems = getRouteNavItems();
 const now = new Date();
 const temporalState = getEventTemporalState(event, now);
 const programHref = getSmartProgramHref(allEvents, false, now);
+const recordingsHref = '/zapisi/';
 const canonicalPath = getFestivalEventHref(event.slug);
 const siteOrigin = (import.meta.env.PUBLIC_SITE_ORIGIN || 'https://kgd80.ru').replace(/\/+$/u, '');
 const specialRegistrationHref = '/special/etudy-toy-vesny/';
@@ -48,7 +50,7 @@ const description = [
 ].filter(Boolean).join(' · ');
 const whyGoCopy = event.whyGo && event.whyGo !== event.summary ? event.whyGo : '';
 const metadataParts = [event.dateLabel, event.timeLabel, event.venue].filter(Boolean);
-const robots = temporalState === 'past' ? 'noindex, follow, noarchive' : undefined;
+const robots = temporalState === 'past' && !event.recording ? 'noindex, follow, noarchive' : undefined;
 const jsonLdStartDate = event.timeLabel ? event.isoStart : event.isoStart?.slice(0, 10);
 const jsonLdEndDate = event.timeLabel ? getEventEndIso(event) : event.isoStart?.slice(0, 10);
 const jsonLdImage = event.image ? [new URL(event.image, `${siteOrigin}/`).toString()] : undefined;
@@ -67,11 +69,24 @@ const jsonLdOrganizer = {
   name: 'Российское общество Знание',
   url: 'https://znanierussia.ru/',
 };
+const recordingStructuredUrl = event.recording && !event.recording.href.includes('/private/')
+  ? event.recording.href
+  : undefined;
+const jsonLdRecording = recordingStructuredUrl ? {
+  '@type': 'VideoObject',
+  name: `Запись лекции «${event.title}»`,
+  description: descriptionBase,
+  thumbnailUrl: jsonLdImage?.[0],
+  uploadDate: event.isoStart?.slice(0, 10),
+  contentUrl: recordingStructuredUrl,
+  url: absoluteEventUrl,
+} : undefined;
 const recordingPlatformLabel = event.recording?.platform === 'vk-video' ? 'VK Видео' : event.recording ? 'Rutube' : '';
 const recordingAriaLabel = recordingPlatformLabel
   ? `Смотреть запись лекции «${event.title}» на ${recordingPlatformLabel}`
   : `Смотреть запись лекции «${event.title}»`;
 const recordingNotice = event.recordingNotice;
+const nextRecordedEvent = getNextRecordedFestivalEvent(event.slug, allEvents);
 const baseStructuredData = {
   '@context': 'https://schema.org',
   '@type': 'Event',
@@ -88,6 +103,7 @@ const baseStructuredData = {
   image: jsonLdImage,
   location: jsonLdLocation,
   organizer: jsonLdOrganizer,
+  subjectOf: jsonLdRecording,
 };
 const etudyStructuredData = [
   {
@@ -153,6 +169,12 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
             <nav class="event-leaf__crumbs" aria-label="Навигация по странице события">
               <a href={programMonthHref}>Программа</a>
               <span aria-hidden="true">/</span>
+              {event.recording && (
+                <>
+                  <a href={recordingsHref}>Записи</a>
+                  <span aria-hidden="true">/</span>
+                </>
+              )}
               <span>{event.title}</span>
             </nav>
 
@@ -164,6 +186,7 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
                 linkToDetails={false}
                 expandSummary={true}
                 headingLevel="page"
+                nextRecordedEvent={nextRecordedEvent}
               />
             </div>
 
@@ -189,6 +212,21 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
                       </svg>
                       Смотреть запись
                     </a>
+                  )}
+
+                  {event.recording && (
+                    <nav class="event-leaf__recording-nav" aria-label={`Навигация по записям события «${event.title}»`}>
+                      {nextRecordedEvent && (
+                        <a
+                          class="event-leaf__recording-next"
+                          href={getFestivalEventHref(nextRecordedEvent.slug)}
+                          aria-label={`Следующая запись: ${nextRecordedEvent.title}`}
+                        >
+                          Следующая запись: <span>{nextRecordedEvent.title}</span>
+                        </a>
+                      )}
+                      <a class="event-leaf__recording-all" href={recordingsHref}>Все записи</a>
+                    </nav>
                   )}
 
                   {isEtudySpecialEvent ? (
@@ -303,6 +341,14 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
                       <small>{recordingPlatformLabel}</small>
                     </span>
                   </a>
+                  <nav class="event-leaf__recording-section-nav" aria-label={`Другие записи после события «${event.title}»`}>
+                    {nextRecordedEvent && (
+                      <a href={getFestivalEventHref(nextRecordedEvent.slug)}>
+                        Следующая запись: <span>{nextRecordedEvent.title}</span>
+                      </a>
+                    )}
+                    <a href={recordingsHref}>Все записи лекций</a>
+                  </nav>
                 </section>
               )}
 

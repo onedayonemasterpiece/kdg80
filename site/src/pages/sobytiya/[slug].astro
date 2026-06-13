@@ -71,6 +71,7 @@ const recordingPlatformLabel = event.recording?.platform === 'vk-video' ? 'VK В
 const recordingAriaLabel = recordingPlatformLabel
   ? `Смотреть запись лекции «${event.title}» на ${recordingPlatformLabel}`
   : `Смотреть запись лекции «${event.title}»`;
+const recordingNotice = event.recordingNotice;
 const baseStructuredData = {
   '@context': 'https://schema.org',
   '@type': 'Event',
@@ -203,6 +204,8 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
                       </a>
                       <div class="notice" data-special-event-notice hidden></div>
                     </div>
+                  ) : temporalState === 'past' && !event.recording && recordingNotice ? (
+                    <div class="button button--ghost button--disabled" aria-disabled="true">Запись скоро</div>
                   ) : temporalState === 'past' && !event.recording ? (
                     <div class="button button--ghost button--disabled" aria-disabled="true">Событие прошло</div>
                   ) : temporalState !== 'past' ? (
@@ -300,6 +303,23 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
                       <small>{recordingPlatformLabel}</small>
                     </span>
                   </a>
+                </section>
+              )}
+
+              {!event.recording && recordingNotice && (
+                <section class="event-leaf__section event-leaf__section--recording" aria-labelledby="event-leaf-recording">
+                  <h2 id="event-leaf-recording">Запись лекции</h2>
+                  <p class="event-leaf__section-copy">{recordingNotice.description}</p>
+                  <div class="event-leaf__recording-panel event-leaf__recording-panel--pending">
+                    <span class="event-leaf__recording-panel-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" focusable="false">
+                        <path d="M12 2.75a9.25 9.25 0 1 0 0 18.5 9.25 9.25 0 0 0 0-18.5Zm0 2a7.25 7.25 0 1 1 0 14.5 7.25 7.25 0 0 1 0-14.5Zm.75 2.9h-1.9v5.15l4.1 2.55.98-1.58-3.18-1.9V7.65Z"></path>
+                      </svg>
+                    </span>
+                    <span>
+                      <strong>{recordingNotice.label}</strong>
+                    </span>
+                  </div>
                 </section>
               )}
 

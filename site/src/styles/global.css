@@ -2238,13 +2238,13 @@ summary {
   transition: transform 180ms ease, box-shadow 180ms ease;
 }
 
-.event-card__recording:hover,
-.event-card__recording:focus-visible {
+a.event-card__recording:hover,
+a.event-card__recording:focus-visible {
   transform: translateY(-1px);
   box-shadow: 0 20px 38px rgba(83, 38, 25, 0.22);
 }
 
-.event-card__recording:focus-visible {
+a.event-card__recording:focus-visible {
   outline: 2px solid rgba(216, 75, 49, 0.32);
   outline-offset: 3px;
 }
@@ -2283,6 +2283,24 @@ summary {
   color: rgba(255, 248, 241, 0.76);
   font-size: 0.72rem;
   line-height: 1.2;
+}
+
+.event-card__recording--pending {
+  color: #3b281e;
+  background:
+    radial-gradient(circle at 12% 20%, rgba(255, 255, 255, 0.55), transparent 34%),
+    linear-gradient(135deg, #fff8f1 0%, #f5dfc8 54%, #eab187 100%);
+  border-color: rgba(155, 46, 26, 0.2);
+  box-shadow: 0 14px 30px rgba(83, 38, 25, 0.1);
+}
+
+.event-card__recording--pending .event-card__recording-icon {
+  color: #fff8f1;
+  background: var(--accent-deep);
+}
+
+.event-card__recording--pending small {
+  color: rgba(59, 40, 30, 0.7);
 }
 
 .event-card__service-note {
@@ -4603,13 +4621,13 @@ body.registration-modal-open {
   transition: transform 180ms ease, box-shadow 180ms ease;
 }
 
-.event-leaf__recording-panel:hover,
-.event-leaf__recording-panel:focus-visible {
+a.event-leaf__recording-panel:hover,
+a.event-leaf__recording-panel:focus-visible {
   transform: translateY(-1px);
   box-shadow: 0 22px 44px rgba(83, 38, 25, 0.22);
 }
 
-.event-leaf__recording-panel:focus-visible {
+a.event-leaf__recording-panel:focus-visible {
   outline: 2px solid rgba(216, 75, 49, 0.32);
   outline-offset: 3px;
 }
@@ -4645,6 +4663,24 @@ body.registration-modal-open {
   color: rgba(255, 248, 241, 0.74);
   font-size: 0.78rem;
   line-height: 1.2;
+}
+
+.event-leaf__recording-panel--pending {
+  color: #3b281e;
+  background:
+    radial-gradient(circle at 12% 20%, rgba(255, 255, 255, 0.55), transparent 34%),
+    linear-gradient(135deg, #fff8f1 0%, #f5dfc8 54%, #eab187 100%);
+  border-color: rgba(155, 46, 26, 0.2);
+  box-shadow: 0 16px 34px rgba(83, 38, 25, 0.1);
+}
+
+.event-leaf__recording-panel--pending .event-leaf__recording-panel-icon {
+  color: #fff8f1;
+  background: var(--accent-deep);
+}
+
+.event-leaf__recording-panel--pending small {
+  color: rgba(59, 40, 30, 0.7);
 }
 
 .event-leaf__sections {

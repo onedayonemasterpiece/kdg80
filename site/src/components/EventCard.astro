@@ -279,6 +279,7 @@ const eventHref = getFestivalEventHref(event.slug);
 const VisualTitleTag = headingLevel === 'page' ? 'h1' : 'p';
 const BodyTitleTag = headingLevel === 'page' ? 'h1' : 'h4';
 const recordingPlatformText = getRecordingPlatformText(event.recording);
+const recordingNotice = event.recordingNotice;
 ---
 
 <article
@@ -491,6 +492,20 @@ const recordingPlatformText = getRecordingPlatformText(event.recording);
         </a>
       )}
 
+      {!event.recording && recordingNotice && (
+        <div class="event-card__recording event-card__recording--pending">
+          <span class="event-card__recording-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="M12 2.75a9.25 9.25 0 1 0 0 18.5 9.25 9.25 0 0 0 0-18.5Zm0 2a7.25 7.25 0 1 1 0 14.5 7.25 7.25 0 0 1 0-14.5Zm.75 2.9h-1.9v5.15l4.1 2.55.98-1.58-3.18-1.9V7.65Z"></path>
+            </svg>
+          </span>
+          <span>
+            <strong>{recordingNotice.label}</strong>
+            <small>{recordingNotice.description}</small>
+          </span>
+        </div>
+      )}
+
       {showExpandedCardSummary ? (
         <div class="event-card__summary-expanded">
           <p class="event-card__summary-plain">{cardText}</p>
@@ -625,6 +640,8 @@ const recordingPlatformText = getRecordingPlatformText(event.recording);
             </svg>
             Смотреть запись
           </a>
+        ) : temporalState === 'past' && recordingNotice ? (
+          <div class="button button--ghost button--disabled event-card__past-state" aria-disabled="true">Запись скоро</div>
         ) : temporalState === 'past' ? (
           <div class="button button--ghost button--disabled event-card__past-state" aria-disabled="true">Событие прошло</div>
         ) : (

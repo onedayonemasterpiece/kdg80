@@ -49,6 +49,12 @@ export type FestivalEventRecording = {
   label: string;
 };
 
+export type FestivalEventRecordingNotice = {
+  status: 'coming_soon';
+  label: string;
+  description: string;
+};
+
 export type SpeakerShowcaseEntry = {
   name: string;
   affiliation: string;
@@ -97,6 +103,7 @@ export type FestivalEvent = {
   relatedEvent?: RelatedFestivalEvent;
   speakerLectureLinks: SpeakerLectureLink[];
   recording?: FestivalEventRecording;
+  recordingNotice?: FestivalEventRecordingNotice;
 };
 
 const MONTHS: Record<string, { number: string; label: string; anchor: string }> = {
@@ -183,15 +190,42 @@ const SPEAKER_SOCIAL_LINKS = new Map<string, SpeakerSocialLink[]>(
   SPEAKER_SOCIAL_LINKS_SOURCE.flatMap((entry) => entry.names.map((name) => [normalizeLookup(name), entry.links] as const)),
 );
 const EVENT_RECORDING_LINKS: Record<string, FestivalEventRecording> = {
+  'vosstanovlenie-yantarnogo-karera-i-yantarnyy-kombinat-v-poslevoennye-gody': {
+    platform: 'rutube',
+    href: 'https://rutube.ru/video/dee67c94a50e16c518e0e0e7449a2f58/?r=a',
+    label: 'Запись Rutube',
+  },
   'vishtynetskaya-vozvyshennost-kak-osvaivali-s-1945-goda-sovremennost-i-perspektivy': {
     platform: 'rutube',
     href: 'https://rutube.ru/video/private/953fcaf9c0daad5db75aa4ecbb2334bf/?p=eorCqrBhfZnpna3mOXLzhQ&r=a',
+    label: 'Запись Rutube',
+  },
+  'zavody-i-parohody-postsovetskoe-industrialnoe-nasledie-kaliningrada': {
+    platform: 'rutube',
+    href: 'https://rutube.ru/video/f21e1de1dba5a98b5a23681bdf83aea0/?r=a',
+    label: 'Запись Rutube',
+  },
+  'pervye-na-kose': {
+    platform: 'rutube',
+    href: 'https://rutube.ru/video/f537385dac6e5c02c62dc9e639ff9669/?r=a',
+    label: 'Запись Rutube',
+  },
+  'sovetskiy-gusev-vremya-sozidaniy': {
+    platform: 'rutube',
+    href: 'https://rutube.ru/video/4b9c74ac33ef6b376a6c1263f3ea8fa8/?r=a',
     label: 'Запись Rutube',
   },
   'demografiya-pervogo-desyatiletiya-kaliningradskoy-oblasti': {
     platform: 'vk-video',
     href: 'https://vk.ru/video-205261142_456239994',
     label: 'Запись VK Видео',
+  },
+};
+const EVENT_RECORDING_NOTICES: Record<string, FestivalEventRecordingNotice> = {
+  'mirnaya-zhizn-samoy-zapadnoy-tochki-rossii-baltiyskoy-kosy': {
+    status: 'coming_soon',
+    label: 'Скоро опубликуем запись',
+    description: 'Запись лекции готовится к публикации.',
   },
 };
 
@@ -1551,6 +1585,7 @@ function parseSections() {
       isoStart: kind === 'special' ? undefined : exactDate?.isoStart ?? rangeDate?.isoStart,
       speakerLectureLinks: [],
       recording: EVENT_RECORDING_LINKS[slug],
+      recordingNotice: EVENT_RECORDING_NOTICES[slug],
     });
   }
 

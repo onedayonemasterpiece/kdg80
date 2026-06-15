@@ -36,7 +36,7 @@ export type VkSocialActor = {
 
 export type VkSocialActivity = {
   activityKey: string;
-  source: 'notifications' | 'wall_scan' | 'wall_scan_copies';
+  source: 'notifications' | 'wall_scan' | 'wall_scan_copies' | 'user_wall';
   action: VkSocialAction;
   vkUserId: number;
   groupId: number | null;
@@ -134,6 +134,39 @@ function safeString(value: unknown) {
   return text || null;
 }
 
+function normalizePostText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/ё/gu, 'е')
+    .replace(/[^a-zа-я0-9:.\/\s-]+/giu, ' ')
+    .replace(/-/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
+function extractPostSearchText(value: unknown): string {
+  if (!value || typeof value !== 'object') return '';
+  const row = value as Record<string, unknown>;
+  const parts = [safeString(row.text) ?? ''];
+  const attachments = Array.isArray(row.attachments) ? row.attachments : [];
+  for (const rawAttachment of attachments) {
+    if (!rawAttachment || typeof rawAttachment !== 'object') continue;
+    const attachment = rawAttachment as Record<string, unknown>;
+    for (const key of ['link', 'video', 'photo', 'event']) {
+      const nested = attachment[key];
+      if (nested && typeof nested === 'object') {
+        const nestedRow = nested as Record<string, unknown>;
+        parts.push(
+          safeString(nestedRow.title) ?? '',
+          safeString(nestedRow.description) ?? '',
+          safeString(nestedRow.text) ?? '',
+        );
+      }
+    }
+  }
+  return parts.filter(Boolean).join(' ');
+}
+
 function normalizeName(value: string) {
   return value
     .toLowerCase()
@@ -146,6 +179,117 @@ function normalizeName(value: string) {
 
 export function nameTokens(value: string) {
   return normalizeName(value).split(' ').filter(Boolean);
+}
+
+type FutureEventSignature = {
+  title: string;
+  startsAt: string;
+  aliases: string[];
+  titleTokens: string[];
+};
+
+const RUSSIAN_MONTHS_GENITIVE = [
+  'января',
+  'февраля',
+  'марта',
+  'апреля',
+  'мая',
+  'июня',
+  'июля',
+  'августа',
+  'сентября',
+  'октября',
+  'ноября',
+  'декабря',
+];
+
+const TITLE_STOP_WORDS = new Set([
+  'фестиваль',
+  'знание',
+  'кино',
+  'показ',
+  'спецпоказ',
+  'регистрация',
+  'калининград',
+  'южный',
+  'вокзал',
+]);
+
+function localDateParts(date: Date, timeZone = DEFAULT_TIME_ZONE) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((item) => item.type === type)?.value ?? '';
+  return {
+    day: Number(get('day')),
+    month: Number(get('month')),
+    hour: get('hour'),
+    minute: get('minute'),
+  };
+}
+
+function buildDateAliases(startsAt: string) {
+  const date = new Date(startsAt);
+  if (Number.isNaN(date.getTime())) return [];
+  const parts = localDateParts(date);
+  const day = String(parts.day);
+  const paddedDay = day.padStart(2, '0');
+  const paddedMonth = String(parts.month).padStart(2, '0');
+  const monthName = RUSSIAN_MONTHS_GENITIVE[parts.month - 1] ?? '';
+  return [
+    `${day} ${monthName}`,
+    `${paddedDay} ${monthName}`,
+    `${paddedDay}.${paddedMonth}`,
+    `${day}.${paddedMonth}`,
+    `${paddedDay}/${paddedMonth}`,
+    `${day}/${paddedMonth}`,
+    `${day} ${monthName} ${parts.hour}:${parts.minute}`,
+  ].filter(Boolean).map(normalizePostText);
+}
+
+function buildTitleTokens(title: string) {
+  return nameTokens(title)
+    .filter((token) => token.length >= 5 && !TITLE_STOP_WORDS.has(token))
+    .slice(0, 6);
+}
+
+function loadFutureEventSignatures(db: Database.Database, now = new Date()): FutureEventSignature[] {
+  const rows = db.prepare(`
+    SELECT title, starts_at AS startsAt
+    FROM events
+    UNION ALL
+    SELECT e.title || ' ' || s.display_label AS title, s.starts_at AS startsAt
+    FROM special_event_showings s
+    INNER JOIN special_events e ON e.id = s.special_event_id
+  `).all() as Array<{ title: string; startsAt: string }>;
+  return rows
+    .filter((row) => new Date(row.startsAt).getTime() > now.getTime())
+    .map((row) => ({
+      title: row.title,
+      startsAt: row.startsAt,
+      aliases: buildDateAliases(row.startsAt),
+      titleTokens: buildTitleTokens(row.title),
+    }))
+    .filter((row) => row.aliases.length || row.titleTokens.length);
+}
+
+function isFutureEventPost(post: unknown, signatures: FutureEventSignature[]) {
+  if (!signatures.length) return false;
+  const normalized = normalizePostText(extractPostSearchText(post));
+  if (!normalized) return false;
+  return signatures.some((signature) => {
+    if (signature.aliases.some((alias) => alias && normalized.includes(alias))) return true;
+    const requiredMatches = Math.min(2, signature.titleTokens.length);
+    if (requiredMatches <= 0) return false;
+    const matches = signature.titleTokens.filter((token) => normalized.includes(token)).length;
+    return matches >= requiredMatches;
+  });
 }
 
 function levenshtein(left: string, right: string) {
@@ -330,10 +474,12 @@ class VkApiClient {
 
   async call<T extends Record<string, unknown>>(method: string, params: Record<string, string | number | undefined>) {
     const minIntervalMs = readPositiveInteger(process.env.VK_SOCIAL_API_MIN_INTERVAL_MS, 1_100);
+    const jitterMs = readPositiveInteger(process.env.VK_SOCIAL_API_JITTER_MS, 700);
     const maxRetries = readPositiveInteger(process.env.VK_SOCIAL_API_MAX_RETRIES, 4);
     let lastError: unknown;
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
-      const waitMs = Math.max(0, this.lastStartedAt + minIntervalMs - Date.now());
+      const plannedIntervalMs = minIntervalMs + crypto.randomInt(jitterMs + 1);
+      const waitMs = Math.max(0, this.lastStartedAt + plannedIntervalMs - Date.now());
       if (waitMs > 0) {
         await sleep(waitMs);
       }
@@ -466,6 +612,7 @@ export function parseNotificationActivities(
   response: Record<string, unknown>,
   actors: Map<number, VkSocialActor> = new Map(),
   activities: Map<string, VkSocialActivity> = new Map(),
+  futureSignatures: FutureEventSignature[] = [],
 ) {
   const profiles = getProfileMap(response);
   const items = Array.isArray(response.items) ? response.items : [];
@@ -484,6 +631,13 @@ export function parseNotificationActivities(
     const parentPost = parent.post && typeof parent.post === 'object'
       ? parent.post as Record<string, unknown>
       : {};
+    if ((action === 'like_post' || action === 'repost_post') && futureSignatures.length) {
+      const postForClassification = Object.keys(parentPost).length ? parentPost : parent;
+      const hasClassifiableText = extractPostSearchText(postForClassification).trim().length > 0;
+      if (hasClassifiableText && !isFutureEventPost(postForClassification, futureSignatures)) {
+        continue;
+      }
+    }
     const ownerId = Number(parent.owner_id ?? feedback.owner_id ?? parentPost.owner_id);
     const groupId = Number.isFinite(ownerId) && ownerId < 0 ? Math.abs(ownerId) : null;
     const postId = Number(parent.post_id ?? parentPost.id ?? parent.id);
@@ -519,6 +673,7 @@ async function collectNotifications(
   client: VkApiClient,
   actors: Map<number, VkSocialActor>,
   activities: Map<string, VkSocialActivity>,
+  futureSignatures: FutureEventSignature[],
 ) {
   const maxPages = readPositiveInteger(process.env.VK_SOCIAL_NOTIFICATIONS_MAX_PAGES, 8);
   let startFrom: string | undefined;
@@ -531,7 +686,7 @@ async function collectNotifications(
     });
     const items = Array.isArray(response.items) ? response.items : [];
     count += items.length;
-    parseNotificationActivities(response, actors, activities);
+    parseNotificationActivities(response, actors, activities, futureSignatures);
     startFrom = safeString(response.next_from) ?? undefined;
     if (!startFrom) break;
   }
@@ -542,47 +697,61 @@ async function collectWallBackfill(
   client: VkApiClient,
   actors: Map<number, VkSocialActor>,
   activities: Map<string, VkSocialActivity>,
+  futureSignatures: FutureEventSignature[],
 ) {
-  const postCount = readPositiveInteger(process.env.VK_SOCIAL_WALL_POST_COUNT, 100);
+  const pageSize = Math.min(readPositiveInteger(process.env.VK_SOCIAL_WALL_PAGE_SIZE, 100), 100);
+  const maxPages = readPositiveInteger(process.env.VK_SOCIAL_WALL_MAX_PAGES, 5);
+  const lookbackDays = Math.min(readPositiveInteger(process.env.VK_SOCIAL_WALL_LOOKBACK_DAYS, 5), 5);
+  const cutoffMs = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
   let scannedPosts = 0;
   for (const group of DEFAULT_GROUPS) {
-    const wall = await client.call<{ items?: unknown[] }>('wall.get', {
-      owner_id: -group.groupId,
-      filter: 'owner',
-      count: postCount,
-    });
-    const posts = Array.isArray(wall.items) ? wall.items : [];
-    scannedPosts += posts.length;
-    for (const rawPost of posts) {
-      if (!rawPost || typeof rawPost !== 'object') continue;
-      const post = rawPost as Record<string, unknown>;
-      const postId = Number(post.id);
-      if (!Number.isFinite(postId)) continue;
-      const postDate = isoFromUnix(post.date);
-      const likesCount = Number((post.likes as Record<string, unknown> | undefined)?.count ?? 0);
-      const commentsCount = Number((post.comments as Record<string, unknown> | undefined)?.count ?? 0);
-      const repostsCount = Number((post.reposts as Record<string, unknown> | undefined)?.count ?? 0);
-      if (likesCount > 0) {
-        try {
-          await collectPostLikes(client, actors, activities, group.groupId, postId, postDate);
-        } catch (error) {
-          if (!isIgnorableWallObjectError(error)) throw error;
+    for (let page = 0; page < maxPages; page += 1) {
+      const wall = await client.call<{ items?: unknown[] }>('wall.get', {
+        owner_id: -group.groupId,
+        filter: 'owner',
+        count: pageSize,
+        offset: page * pageSize,
+      });
+      const posts = Array.isArray(wall.items) ? wall.items : [];
+      scannedPosts += posts.length;
+      let reachedOldPosts = false;
+      for (const rawPost of posts) {
+        if (!rawPost || typeof rawPost !== 'object') continue;
+        const post = rawPost as Record<string, unknown>;
+        const postId = Number(post.id);
+        if (!Number.isFinite(postId)) continue;
+        const postDate = isoFromUnix(post.date);
+        if (postDate && new Date(postDate).getTime() < cutoffMs) {
+          reachedOldPosts = true;
+          continue;
+        }
+        const isFuture = isFutureEventPost(post, futureSignatures);
+        const likesCount = Number((post.likes as Record<string, unknown> | undefined)?.count ?? 0);
+        const commentsCount = Number((post.comments as Record<string, unknown> | undefined)?.count ?? 0);
+        const repostsCount = Number((post.reposts as Record<string, unknown> | undefined)?.count ?? 0);
+        if (likesCount > 0 && isFuture) {
+          try {
+            await collectPostLikes(client, actors, activities, group.groupId, postId);
+          } catch (error) {
+            if (!isIgnorableWallObjectError(error)) throw error;
+          }
+        }
+        if (commentsCount > 0) {
+          try {
+            await collectPostComments(client, actors, activities, group.groupId, postId);
+          } catch (error) {
+            if (!isIgnorableWallObjectError(error)) throw error;
+          }
+        }
+        if (repostsCount > 0 && isFuture) {
+          try {
+            await collectPostReposts(client, actors, activities, group.groupId, postId);
+          } catch (error) {
+            if (!isIgnorableWallObjectError(error)) throw error;
+          }
         }
       }
-      if (commentsCount > 0) {
-        try {
-          await collectPostComments(client, actors, activities, group.groupId, postId);
-        } catch (error) {
-          if (!isIgnorableWallObjectError(error)) throw error;
-        }
-      }
-      if (repostsCount > 0) {
-        try {
-          await collectPostReposts(client, actors, activities, group.groupId, postId, postDate);
-        } catch (error) {
-          if (!isIgnorableWallObjectError(error)) throw error;
-        }
-      }
+      if (posts.length < pageSize || reachedOldPosts) break;
     }
   }
   return scannedPosts;
@@ -594,7 +763,6 @@ async function collectPostLikes(
   activities: Map<string, VkSocialActivity>,
   groupId: number,
   postId: number,
-  postDate: string | null,
 ) {
   const response = await client.call<{ items?: unknown[]; profiles?: unknown[] }>('likes.getList', {
     type: 'post',
@@ -615,8 +783,8 @@ async function collectPostLikes(
         groupId,
         postId,
         commentId: null,
-        activityDate: postDate,
-        payload: { activityDateApproximation: 'post_date' },
+        activityDate: null,
+        payload: { activityDatePrecision: 'unknown_from_likes_getList' },
       }, item ?? profiles.get(vkUserId));
     }
   }
@@ -662,7 +830,6 @@ async function collectPostReposts(
   activities: Map<string, VkSocialActivity>,
   groupId: number,
   postId: number,
-  postDate: string | null,
 ) {
   const response = await client.call<{ items?: unknown[]; profiles?: unknown[] }>('likes.getList', {
     type: 'post',
@@ -684,11 +851,113 @@ async function collectPostReposts(
         groupId,
         postId,
         commentId: null,
-        activityDate: postDate,
-        payload: { activityDateApproximation: 'post_date' },
+        activityDate: null,
+        payload: { activityDatePrecision: 'unknown_from_likes_getList_copies' },
       }, item ?? profiles.get(vkUserId));
     }
   }
+}
+
+function findTargetGroupCopies(post: unknown, futureSignatures: FutureEventSignature[], out: Array<{
+  groupId: number;
+  originalPostId: number;
+  originalUrl: string;
+}> = []) {
+  if (!post || typeof post !== 'object') return out;
+  const row = post as Record<string, unknown>;
+  const copies = Array.isArray(row.copy_history) ? row.copy_history : [];
+  for (const rawCopy of copies) {
+    if (!rawCopy || typeof rawCopy !== 'object') continue;
+    const copy = rawCopy as Record<string, unknown>;
+    const ownerId = Number(copy.owner_id);
+    const groupId = ownerId < 0 ? Math.abs(ownerId) : null;
+    const originalPostId = Number(copy.id);
+    if (groupId && DEFAULT_GROUPS.some((group) => group.groupId === groupId) && Number.isFinite(originalPostId)) {
+      if (isFutureEventPost(copy, futureSignatures)) {
+        out.push({
+          groupId,
+          originalPostId,
+          originalUrl: `https://vk.com/wall-${groupId}_${originalPostId}`,
+        });
+      }
+    }
+    findTargetGroupCopies(copy, futureSignatures, out);
+  }
+  return out;
+}
+
+async function collectMatchedUserWallReposts(
+  client: VkApiClient,
+  actors: Map<number, VkSocialActor>,
+  activities: Map<string, VkSocialActivity>,
+  matches: Map<number, MatchVerdict>,
+  futureSignatures: FutureEventSignature[],
+) {
+  const pageSize = Math.min(readPositiveInteger(process.env.VK_SOCIAL_USER_WALL_PAGE_SIZE, 100), 100);
+  const maxPages = readPositiveInteger(process.env.VK_SOCIAL_USER_WALL_MAX_PAGES, 5);
+  const lookbackDays = Math.min(readPositiveInteger(process.env.VK_SOCIAL_USER_WALL_LOOKBACK_DAYS, 5), 5);
+  const cutoffMs = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
+  let scannedUserWallPosts = 0;
+  let userWallRepostCount = 0;
+  const targetActors = [...actors.values()].filter((actor) => {
+    const match = matches.get(actor.vkUserId);
+    return match?.matchedSpecialApplicationId && (match.status === 'matched' || match.status === 'weak');
+  });
+
+  for (const actor of targetActors) {
+    for (let page = 0; page < maxPages; page += 1) {
+      let wall: { items?: unknown[] };
+      try {
+        wall = await client.call<{ items?: unknown[] }>('wall.get', {
+          owner_id: actor.vkUserId,
+          filter: 'owner',
+          count: pageSize,
+          offset: page * pageSize,
+        });
+      } catch (error) {
+        if (isIgnorableWallObjectError(error)) break;
+        throw error;
+      }
+      const posts = Array.isArray(wall.items) ? wall.items : [];
+      scannedUserWallPosts += posts.length;
+      let reachedOldPosts = false;
+      for (const rawPost of posts) {
+        if (!rawPost || typeof rawPost !== 'object') continue;
+        const post = rawPost as Record<string, unknown>;
+        const wallPostId = Number(post.id);
+        const activityDate = isoFromUnix(post.date);
+        if (activityDate && new Date(activityDate).getTime() < cutoffMs) {
+          reachedOldPosts = true;
+          continue;
+        }
+        if (!Number.isFinite(wallPostId) || !activityDate) continue;
+        const copies = findTargetGroupCopies(post, futureSignatures);
+        for (const copy of copies) {
+          addActivity(activities, actors, {
+            source: 'user_wall',
+            action: 'repost_post',
+            vkUserId: actor.vkUserId,
+            groupId: copy.groupId,
+            postId: copy.originalPostId,
+            commentId: wallPostId,
+            activityDate,
+            payload: {
+              activityDatePrecision: 'user_wall_post_date',
+              userWallUrl: `https://vk.com/wall${actor.vkUserId}_${wallPostId}`,
+              originalUrl: copy.originalUrl,
+            },
+          });
+          userWallRepostCount += 1;
+        }
+      }
+      if (posts.length < pageSize || reachedOldPosts) break;
+    }
+  }
+
+  return {
+    scannedUserWallPosts,
+    userWallRepostCount,
+  };
 }
 
 function loadSpecialApplicants(db: Database.Database, privateKeyPemBase64: string) {
@@ -1118,7 +1387,8 @@ function sourceLabel(source: string) {
   switch (source) {
     case 'notifications': return 'уведомления';
     case 'wall_scan': return 'скан стены';
-    case 'wall_scan_copies': return 'репосты/копии';
+    case 'wall_scan_copies': return 'репосты/копии без точного времени';
+    case 'user_wall': return 'стены пользователей';
     default: return source;
   }
 }
@@ -1350,6 +1620,7 @@ export function buildVkSocialDailyReport(
     `• по типам: ${actionStats}`,
     `• по источникам: ${sourceStats}`,
     `• по качеству матчинга VK-акторов: ${matchStats}`,
+    '• лайки/репосты из wall scan без точного времени не входят в суточный отчёт; репосты считаются по времени записи на стене пользователя.',
     '',
     'ФИО и активности:',
   ];
@@ -1440,11 +1711,14 @@ export async function runVkSocialMonitoring(deps: VkSocialRunDeps): Promise<VkSo
   const activities = new Map<string, VkSocialActivity>();
   try {
     const client = new VkApiClient(deps.token);
-    const notificationsCount = await collectNotifications(client, actors, activities);
-    const wallPostCount = await collectWallBackfill(client, actors, activities);
+    const futureSignatures = loadFutureEventSignatures(deps.db);
+    const notificationsCount = await collectNotifications(client, actors, activities, futureSignatures);
+    const wallPostCount = await collectWallBackfill(client, actors, activities, futureSignatures);
     const applicants = loadSpecialApplicants(deps.db, deps.privateKeyPemBase64);
-    const actorList = [...actors.values()].sort((left, right) => right.activityCount - left.activityCount);
+    let actorList = [...actors.values()].sort((left, right) => right.activityCount - left.activityCount);
     const matchResult = await matchActors(deps.db, actorList, applicants, dryRun);
+    const userWallStats = await collectMatchedUserWallReposts(client, actors, activities, matchResult.results, futureSignatures);
+    actorList = [...actors.values()].sort((left, right) => right.activityCount - left.activityCount);
     if (!dryRun) {
       persistActorsAndActivities(deps.db, actorList, [...activities.values()], matchResult.results);
     }
@@ -1465,6 +1739,9 @@ export async function runVkSocialMonitoring(deps: VkSocialRunDeps): Promise<VkSo
         groups: DEFAULT_GROUPS,
         wallPostCount,
         notificationsCount,
+        futureEventSignatureCount: futureSignatures.length,
+        userWallRepostCount: userWallStats.userWallRepostCount,
+        scannedUserWallPosts: userWallStats.scannedUserWallPosts,
       },
       actors: actorList.map((actor) => ({
         vkUserId: actor.vkUserId,

@@ -309,6 +309,20 @@ class VkApiRateLimitError extends Error {
   }
 }
 
+class VkApiError extends Error {
+  constructor(
+    readonly method: string,
+    readonly code: number,
+    message: string,
+  ) {
+    super(`VK API ${method} failed: ${code} ${message}`);
+  }
+}
+
+function isIgnorableWallObjectError(error: unknown) {
+  return error instanceof VkApiError && [15, 30, 100, 203].includes(error.code);
+}
+
 class VkApiClient {
   private lastStartedAt = 0;
 
@@ -343,7 +357,7 @@ class VkApiClient {
           if (json.error.error_code === 6) {
             throw new VkApiRateLimitError(json.error.error_msg);
           }
-          throw new Error(`VK API ${method} failed: ${json.error.error_code} ${json.error.error_msg}`);
+          throw new VkApiError(method, json.error.error_code, json.error.error_msg);
         }
         return json.response as T;
       } catch (error) {
@@ -549,13 +563,25 @@ async function collectWallBackfill(
       const commentsCount = Number((post.comments as Record<string, unknown> | undefined)?.count ?? 0);
       const repostsCount = Number((post.reposts as Record<string, unknown> | undefined)?.count ?? 0);
       if (likesCount > 0) {
-        await collectPostLikes(client, actors, activities, group.groupId, postId, postDate);
+        try {
+          await collectPostLikes(client, actors, activities, group.groupId, postId, postDate);
+        } catch (error) {
+          if (!isIgnorableWallObjectError(error)) throw error;
+        }
       }
       if (commentsCount > 0) {
-        await collectPostComments(client, actors, activities, group.groupId, postId);
+        try {
+          await collectPostComments(client, actors, activities, group.groupId, postId);
+        } catch (error) {
+          if (!isIgnorableWallObjectError(error)) throw error;
+        }
       }
       if (repostsCount > 0) {
-        await collectPostReposts(client, actors, activities, group.groupId, postId, postDate);
+        try {
+          await collectPostReposts(client, actors, activities, group.groupId, postId, postDate);
+        } catch (error) {
+          if (!isIgnorableWallObjectError(error)) throw error;
+        }
       }
     }
   }

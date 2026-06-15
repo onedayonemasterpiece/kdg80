@@ -1499,6 +1499,10 @@ export function buildVkSocialDailyReport(
     WHERE act.activity_date IS NOT NULL
       AND act.activity_date >= ?
       AND act.activity_date <= ?
+      AND NOT (
+        act.source IN ('wall_scan', 'wall_scan_copies')
+        AND act.action IN ('like_post', 'repost_post')
+      )
     ORDER BY act.activity_date DESC, act.id DESC
   `).all(sinceIso, untilIso) as Array<{
     activityKey: string;

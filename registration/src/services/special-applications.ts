@@ -4,6 +4,7 @@ import type { StoragePublisher } from '../lib/storage';
 import { computeFingerprint, decryptPii, encryptPii } from '../lib/crypto';
 import { LlmProviderError, runLlmLimited } from '../lib/llm-rate-limiter';
 import { normalizeEmail, normalizeFullName, normalizePhone } from '../lib/normalize';
+import { getVkAuthSession } from '../api/vk-auth';
 import { enqueueSpecialApplicationCreated } from './telegram-outbox';
 import { findSpecialVolunteerMatch } from './special-volunteers';
 
@@ -56,6 +57,7 @@ export type SpecialApplicationPayload = {
   consentAccepted: boolean;
   photos: SpecialPhotoPayload[];
   website?: string;
+  vkAuthToken?: string;
 };
 
 export type SpecialPhotoCheckPayload = {
@@ -1075,6 +1077,10 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
   const fullNameFingerprint = computeFingerprint(deps.fingerprintSecret, fullName.toLowerCase());
   const emailFingerprint = computeFingerprint(deps.fingerprintSecret, email);
   const phoneFingerprint = computeFingerprint(deps.fingerprintSecret, phone);
+  const vkAuth = getVkAuthSession(deps.db, payload.vkAuthToken);
+  const vkUserIdFingerprint = vkAuth
+    ? computeFingerprint(deps.fingerprintSecret, vkAuth.vkUserId)
+    : null;
   const duplicate = findDuplicateSpecialApplication(
     deps.db,
     loaded.event.id,
@@ -1131,7 +1137,16 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
   const status: 'accepted' | 'rejected' = rejectionReasons.length ? 'rejected' : 'accepted';
   const rejectionReason = rejectionReasons.join(' ');
 
-  const encrypted = encryptPii(deps.publicKeyPemBase64, { fullName, email, phone });
+  const encrypted = encryptPii(deps.publicKeyPemBase64, {
+    fullName,
+    email,
+    phone,
+    vkUserId: vkAuth?.vkUserId || '',
+    vkFirstName: vkAuth?.firstName || '',
+    vkLastName: vkAuth?.lastName || '',
+    vkEmail: vkAuth?.email || '',
+    vkPhone: vkAuth?.phone || '',
+  });
   const selectedShowingIds = selectedShowings.map((showing) => showing.id);
   const ocrSummary = {
     hasFullName: analysis.hasFullName,
@@ -1179,6 +1194,10 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
         full_name_fingerprint,
         email_fingerprint,
         phone_fingerprint,
+        vk_auth_provider,
+        vk_user_id_fingerprint,
+        vk_auth_verified_at,
+        vk_auth_scope,
         selected_showing_ids_json,
         status,
         rejection_reason,
@@ -1210,6 +1229,10 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
         @fullNameFingerprint,
         @emailFingerprint,
         @phoneFingerprint,
+        @vkAuthProvider,
+        @vkUserIdFingerprint,
+        @vkAuthVerifiedAt,
+        @vkAuthScope,
         @selectedShowingIdsJson,
         @status,
         @rejectionReason,
@@ -1239,6 +1262,10 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
       fullNameFingerprint,
       emailFingerprint,
       phoneFingerprint,
+      vkAuthProvider: vkAuth?.provider ?? null,
+      vkUserIdFingerprint,
+      vkAuthVerifiedAt: vkAuth ? new Date().toISOString() : null,
+      vkAuthScope: vkAuth?.scope ?? null,
       selectedShowingIdsJson: JSON.stringify(selectedShowingIds),
       status,
       rejectionReason: rejectionReason || null,

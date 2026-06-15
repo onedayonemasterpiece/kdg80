@@ -29,6 +29,13 @@ type AppConfig = {
   s3AccessKeyId: string | null;
   s3SecretAccessKey: string | null;
   s3ForcePathStyle: boolean;
+  vkIdClientId: string | null;
+  vkIdClientSecret: string | null;
+  vkIdRedirectUri: string;
+  vkIdScope: string;
+  vkAuthAllowedReturnOrigins: string[];
+  vkAuthToken: string | null;
+  vkSocialMonitoringEnabled: boolean;
 };
 
 function trimTrailingSlash(value: string) {
@@ -94,6 +101,19 @@ export function loadConfig(): AppConfig {
   const s3SecretAccessKey = process.env.S3_SECRET_ACCESS_KEY?.trim() || process.env.YC_SECRET_ACCESS_KEY?.trim() || null;
   const s3ForcePathStyle = parseBoolean(process.env.S3_FORCE_PATH_STYLE, true);
   const storageDriver = s3Bucket && s3Endpoint && s3Region && s3AccessKeyId && s3SecretAccessKey ? 's3' : 'local';
+  const vkIdClientId = process.env.VK_ID_CLIENT_ID?.trim() || null;
+  const vkIdClientSecret = process.env.VK_ID_CLIENT_SECRET?.trim() || null;
+  const vkIdRedirectUri = trimTrailingSlash(
+    process.env.VK_ID_REDIRECT_URI?.trim()
+      || 'https://api.kgd80.ru/api/v1/auth/vk/callback',
+  );
+  const vkIdScope = process.env.VK_ID_SCOPE?.trim() || 'vkid.personal_info email phone';
+  const vkAuthAllowedReturnOrigins = parseOrigins(
+    process.env.VK_AUTH_ALLOWED_RETURN_ORIGINS,
+    'https://kgd80.ru,https://www.kgd80.ru,http://localhost:4321,http://127.0.0.1:4321',
+  );
+  const vkAuthToken = process.env.VK_AUTH_TOKEN?.trim() || null;
+  const vkSocialMonitoringEnabled = parseBoolean(process.env.VK_SOCIAL_MONITORING_ENABLED, true);
 
   return {
     operatingMode,
@@ -124,5 +144,12 @@ export function loadConfig(): AppConfig {
     s3AccessKeyId,
     s3SecretAccessKey,
     s3ForcePathStyle,
+    vkIdClientId,
+    vkIdClientSecret,
+    vkIdRedirectUri,
+    vkIdScope,
+    vkAuthAllowedReturnOrigins,
+    vkAuthToken,
+    vkSocialMonitoringEnabled,
   };
 }

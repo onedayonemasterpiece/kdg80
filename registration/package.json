@@ -11,7 +11,10 @@
     "start": "tsx src/server.ts",
     "check": "tsc --noEmit",
     "special:e2e:seed": "tsx scripts/seed-special-e2e-data.ts",
-    "telegram:e2e:polling": "tsx scripts/run-telegram-e2e-polling.ts"
+    "telegram:e2e:polling": "tsx scripts/run-telegram-e2e-polling.ts",
+    "vk:social:dry-run": "tsx scripts/run-vk-social-sync.ts --dry-run",
+    "vk:social:write": "tsx scripts/run-vk-social-sync.ts --write",
+    "test:social": "tsx --test src/services/vk-social-monitoring.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.888.0",

@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import type { FastifyInstance } from 'fastify';
 import { createSqliteBackup } from '../services/admin-maintenance';
 import { buildRegistrationsXlsxBuffer, listAllRegistrationsForExport } from '../services/registration-exports';
+import { getVkSocialReport } from '../services/vk-social-monitoring';
 
 type AdminApiDeps = {
   db: Database.Database;
@@ -52,5 +53,16 @@ export async function registerAdminApi(app: FastifyInstance, deps: AdminApiDeps)
     reply.header('content-type', 'application/octet-stream');
     reply.header('content-disposition', 'attachment; filename="registration-backup.sqlite"');
     return reply.send(buffer);
+  });
+
+  app.get('/api/v1/admin/social/vk/report', async (request, reply) => {
+    if (!isAuthorized(request.headers.authorization, deps.emergencyExportToken)) {
+      reply.code(401);
+      return {
+        error: 'unauthorized',
+      };
+    }
+
+    return getVkSocialReport(deps.db);
   });
 }

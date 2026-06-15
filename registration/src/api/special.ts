@@ -232,6 +232,7 @@ function multipartApplicationPayloadFromParts(parts: MultipartPart[]): SpecialAp
     phone: multipartField(parts, 'phone'),
     consentAccepted: multipartField(parts, 'consentAccepted') === 'on' || multipartField(parts, 'consentAccepted') === 'true',
     website: multipartField(parts, 'website'),
+    vkAuthToken: multipartField(parts, 'vkAuthToken'),
     photos: photosFromMultipart(parts),
   };
 }
@@ -1027,6 +1028,7 @@ function renderPreviewPage(eventJson: string) {
           phone: String(formData.get('phone') || ''),
           consentAccepted: formData.get('consentAccepted') === 'on',
           website: String(formData.get('website') || ''),
+          vkAuthToken: String(formData.get('vkAuthToken') || ''),
           photos,
         };
         const response = await fetch('/api/v1/special/applications', {

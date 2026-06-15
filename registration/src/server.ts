@@ -11,12 +11,14 @@ import { registerPublicApi } from './api/public';
 import { registerRegistrationApi } from './api/registration';
 import { registerAdminApi } from './api/admin';
 import { registerSpecialApi } from './api/special';
+import { registerVkAuthApi } from './api/vk-auth';
 import { createStoragePublisher } from './lib/storage';
 import { syncCatalog } from './services/catalog';
 import { startDailyJobs } from './services/daily-jobs';
 import { registerTelegramBot } from './services/telegram-bot';
 import { startTelegramOutboxWorker } from './services/telegram-outbox';
 import { publishPublicStateManifest } from './services/state-manifest';
+import { startVkSocialMonitoring } from './services/vk-social-monitoring';
 
 const config = loadConfig();
 const db = createDatabase(config.sqlitePath);
@@ -119,6 +121,14 @@ await registerAdminApi(app, {
   emergencyExportToken: config.emergencyExportToken,
   privateKeyPemBase64: config.piiPrivateKeyPemBase64,
 });
+await registerVkAuthApi(app, {
+  db,
+  clientId: config.vkIdClientId,
+  clientSecret: config.vkIdClientSecret,
+  redirectUri: config.vkIdRedirectUri,
+  scope: config.vkIdScope,
+  allowedReturnOrigins: config.vkAuthAllowedReturnOrigins,
+});
 await registerSpecialApi(app, {
   db,
   consentVersion: config.consentVersion,
@@ -142,6 +152,16 @@ await registerRegistrationApi(app, {
 });
 
 await syncPublicStateManifest('startup');
+
+if (config.vkSocialMonitoringEnabled) {
+  startVkSocialMonitoring({
+    db,
+    token: config.vkAuthToken,
+    privateKeyPemBase64: config.piiPrivateKeyPemBase64,
+    logger: app.log,
+    timeZone: config.timeZone,
+  });
+}
 
 await app.listen({
   host: config.host,

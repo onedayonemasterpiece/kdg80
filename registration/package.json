@@ -14,7 +14,8 @@
     "telegram:e2e:polling": "tsx scripts/run-telegram-e2e-polling.ts",
     "vk:social:dry-run": "tsx scripts/run-vk-social-sync.ts --dry-run",
     "vk:social:write": "tsx scripts/run-vk-social-sync.ts --write",
-    "test:social": "tsx --test src/services/vk-social-monitoring.test.ts"
+    "test:social": "tsx --test src/services/vk-social-monitoring.test.ts",
+    "vk:social:write:telegram": "tsx scripts/run-vk-social-sync.ts --write --telegram"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.888.0",

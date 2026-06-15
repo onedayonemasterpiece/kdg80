@@ -160,6 +160,7 @@ if (config.vkSocialMonitoringEnabled) {
     privateKeyPemBase64: config.piiPrivateKeyPemBase64,
     logger: app.log,
     timeZone: config.timeZone,
+    bot: telegramBot?.bot,
   });
 }
 

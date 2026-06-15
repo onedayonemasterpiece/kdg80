@@ -1,8 +1,10 @@
 import crypto from 'node:crypto';
 import type Database from 'better-sqlite3';
 import type { FastifyBaseLogger } from 'fastify';
+import type { Bot, Context } from 'grammy';
 import { decryptPii } from '../lib/crypto';
 import { LlmProviderError, runLlmLimited } from '../lib/llm-rate-limiter';
+import { listTelegramAdmins } from './telegram-admins';
 
 const VK_API_BASE_URL = 'https://api.vk.com/method/';
 const VK_API_VERSION = process.env.VK_API_VERSION?.trim() || '5.199';
@@ -80,6 +82,9 @@ type VkSocialRunDeps = {
   dryRun?: boolean;
   trigger?: 'scheduled' | 'manual' | 'dry_run';
   runKey?: string;
+  bot?: Bot<Context>;
+  sendTelegramReport?: boolean;
+  reportHours?: number;
 };
 
 type VkSocialRunResult = {
@@ -95,6 +100,7 @@ type VkSocialRunResult = {
   unmatchedCount: number;
   llmRequestCount: number;
   sourceSummary: Record<string, unknown>;
+  telegramReportSent: boolean;
   actors: Array<{
     vkUserId: number;
     displayName: string;
@@ -538,17 +544,18 @@ async function collectWallBackfill(
       const post = rawPost as Record<string, unknown>;
       const postId = Number(post.id);
       if (!Number.isFinite(postId)) continue;
+      const postDate = isoFromUnix(post.date);
       const likesCount = Number((post.likes as Record<string, unknown> | undefined)?.count ?? 0);
       const commentsCount = Number((post.comments as Record<string, unknown> | undefined)?.count ?? 0);
       const repostsCount = Number((post.reposts as Record<string, unknown> | undefined)?.count ?? 0);
       if (likesCount > 0) {
-        await collectPostLikes(client, actors, activities, group.groupId, postId);
+        await collectPostLikes(client, actors, activities, group.groupId, postId, postDate);
       }
       if (commentsCount > 0) {
         await collectPostComments(client, actors, activities, group.groupId, postId);
       }
       if (repostsCount > 0) {
-        await collectPostReposts(client, actors, activities, group.groupId, postId);
+        await collectPostReposts(client, actors, activities, group.groupId, postId, postDate);
       }
     }
   }
@@ -561,6 +568,7 @@ async function collectPostLikes(
   activities: Map<string, VkSocialActivity>,
   groupId: number,
   postId: number,
+  postDate: string | null,
 ) {
   const response = await client.call<{ items?: unknown[]; profiles?: unknown[] }>('likes.getList', {
     type: 'post',
@@ -581,8 +589,8 @@ async function collectPostLikes(
         groupId,
         postId,
         commentId: null,
-        activityDate: null,
-        payload: {},
+        activityDate: postDate,
+        payload: { activityDateApproximation: 'post_date' },
       }, item ?? profiles.get(vkUserId));
     }
   }
@@ -628,6 +636,7 @@ async function collectPostReposts(
   activities: Map<string, VkSocialActivity>,
   groupId: number,
   postId: number,
+  postDate: string | null,
 ) {
   const response = await client.call<{ items?: unknown[]; profiles?: unknown[] }>('likes.getList', {
     type: 'post',
@@ -649,8 +658,8 @@ async function collectPostReposts(
         groupId,
         postId,
         commentId: null,
-        activityDate: null,
-        payload: {},
+        activityDate: postDate,
+        payload: { activityDateApproximation: 'post_date' },
       }, item ?? profiles.get(vkUserId));
     }
   }
@@ -1067,6 +1076,326 @@ function persistActorsAndActivities(
   transaction();
 }
 
+function actionLabel(action: string) {
+  switch (action) {
+    case 'like_post': return 'лайки постов';
+    case 'comment_post': return 'комментарии';
+    case 'reply_comment': return 'ответы в комментариях';
+    case 'like_comment': return 'лайки комментариев';
+    case 'repost_post': return 'репосты';
+    case 'like_video': return 'лайки видео';
+    default: return action;
+  }
+}
+
+function sourceLabel(source: string) {
+  switch (source) {
+    case 'notifications': return 'уведомления';
+    case 'wall_scan': return 'скан стены';
+    case 'wall_scan_copies': return 'репосты/копии';
+    default: return source;
+  }
+}
+
+function parseHours(value: unknown, fallback = 24) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 && parsed <= 168 ? parsed : fallback;
+}
+
+function formatKaliningradDateTime(isoValue: string) {
+  return new Intl.DateTimeFormat('ru-RU', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: DEFAULT_TIME_ZONE,
+  }).format(new Date(isoValue));
+}
+
+function incrementCounter(target: Record<string, number>, key: string, amount = 1) {
+  target[key] = (target[key] ?? 0) + amount;
+}
+
+function loadSpecialApplicantNames(
+  db: Database.Database,
+  privateKeyPemBase64: string,
+  ids: number[],
+) {
+  if (!ids.length) {
+    return new Map<number, {
+      id: number;
+      applicationCode: string;
+      fullName: string;
+      eventTitle: string | null;
+    }>();
+  }
+
+  const rows = db.prepare(`
+    SELECT
+      a.id,
+      a.application_code,
+      a.pii_ciphertext,
+      a.pii_wrapped_key,
+      a.pii_iv,
+      a.pii_alg,
+      e.title AS event_title
+    FROM special_applications a
+    LEFT JOIN special_events e ON e.id = a.special_event_id
+    WHERE a.id IN (${ids.map(() => '?').join(',')})
+  `).all(...ids) as Array<{
+    id: number;
+    application_code: string;
+    pii_ciphertext: Buffer;
+    pii_wrapped_key: Buffer;
+    pii_iv: Buffer;
+    pii_alg: string;
+    event_title: string | null;
+  }>;
+
+  const out = new Map<number, {
+    id: number;
+    applicationCode: string;
+    fullName: string;
+    eventTitle: string | null;
+  }>();
+  for (const row of rows) {
+    const pii = decryptPii(privateKeyPemBase64, {
+      piiCiphertext: row.pii_ciphertext,
+      piiWrappedKey: row.pii_wrapped_key,
+      piiIv: row.pii_iv,
+      piiAlg: row.pii_alg,
+    });
+    out.set(row.id, {
+      id: row.id,
+      applicationCode: row.application_code,
+      fullName: String(pii.fullName ?? '').trim() || `Заявка #${row.id}`,
+      eventTitle: row.event_title,
+    });
+  }
+  return out;
+}
+
+export function buildVkSocialDailyReport(
+  db: Database.Database,
+  privateKeyPemBase64: string,
+  options: { hours?: number; now?: Date } = {},
+) {
+  const hours = parseHours(options.hours, 24);
+  const now = options.now ?? new Date();
+  const since = new Date(now.getTime() - hours * 60 * 60 * 1000);
+  const sinceIso = since.toISOString();
+  const untilIso = now.toISOString();
+  const rows = db.prepare(`
+    SELECT
+      act.activity_key AS activityKey,
+      act.source,
+      act.action,
+      act.vk_user_id AS vkUserId,
+      act.group_id AS groupId,
+      act.post_id AS postId,
+      act.comment_id AS commentId,
+      act.activity_date AS activityDate,
+      actor.display_name AS vkDisplayName,
+      actor.match_status AS matchStatus,
+      actor.match_method AS matchMethod,
+      actor.match_confidence AS matchConfidence,
+      actor.matched_special_application_id AS matchedSpecialApplicationId
+    FROM vk_social_activities act
+    INNER JOIN vk_social_actors actor ON actor.vk_user_id = act.vk_user_id
+    WHERE act.activity_date IS NOT NULL
+      AND act.activity_date >= ?
+      AND act.activity_date <= ?
+    ORDER BY act.activity_date DESC, act.id DESC
+  `).all(sinceIso, untilIso) as Array<{
+    activityKey: string;
+    source: string;
+    action: string;
+    vkUserId: number;
+    groupId: number | null;
+    postId: number | null;
+    commentId: number | null;
+    activityDate: string;
+    vkDisplayName: string;
+    matchStatus: MatchStatus;
+    matchMethod: MatchMethod | null;
+    matchConfidence: number;
+    matchedSpecialApplicationId: number | null;
+  }>;
+
+  const matchedIds = [...new Set(rows
+    .filter((row) => ['matched', 'weak'].includes(row.matchStatus) && row.matchedSpecialApplicationId)
+    .map((row) => Number(row.matchedSpecialApplicationId)))];
+  const applicants = loadSpecialApplicantNames(db, privateKeyPemBase64, matchedIds);
+  const people = new Map<number, {
+    specialApplicationId: number;
+    applicationCode: string;
+    fullName: string;
+    eventTitle: string | null;
+    matchStatus: MatchStatus;
+    matchConfidence: number;
+    vkDisplayNames: Set<string>;
+    totalActions: number;
+    actions: Record<string, number>;
+    sources: Record<string, number>;
+    latestActivityAt: string | null;
+  }>();
+
+  const stats = {
+    hours,
+    sinceIso,
+    untilIso,
+    totalActivities: rows.length,
+    uniqueVkActors: new Set(rows.map((row) => row.vkUserId)).size,
+    matchedPeople: 0,
+    actions: {} as Record<string, number>,
+    sources: {} as Record<string, number>,
+    byMatchStatus: {} as Record<string, number>,
+  };
+
+  const statusActorSets = new Map<string, Set<number>>();
+  for (const row of rows) {
+    incrementCounter(stats.actions, row.action);
+    incrementCounter(stats.sources, row.source);
+    const statusSet = statusActorSets.get(row.matchStatus) ?? new Set<number>();
+    statusSet.add(row.vkUserId);
+    statusActorSets.set(row.matchStatus, statusSet);
+
+    if (!['matched', 'weak'].includes(row.matchStatus) || !row.matchedSpecialApplicationId) {
+      continue;
+    }
+    const applicant = applicants.get(row.matchedSpecialApplicationId);
+    if (!applicant) continue;
+    const current = people.get(row.matchedSpecialApplicationId) ?? {
+      specialApplicationId: row.matchedSpecialApplicationId,
+      applicationCode: applicant.applicationCode,
+      fullName: applicant.fullName,
+      eventTitle: applicant.eventTitle,
+      matchStatus: row.matchStatus,
+      matchConfidence: Number(row.matchConfidence ?? 0),
+      vkDisplayNames: new Set<string>(),
+      totalActions: 0,
+      actions: {},
+      sources: {},
+      latestActivityAt: null,
+    };
+    current.matchStatus = current.matchStatus === 'matched' || row.matchStatus === 'matched' ? 'matched' : row.matchStatus;
+    current.matchConfidence = Math.max(current.matchConfidence, Number(row.matchConfidence ?? 0));
+    current.vkDisplayNames.add(row.vkDisplayName);
+    current.totalActions += 1;
+    incrementCounter(current.actions, row.action);
+    incrementCounter(current.sources, row.source);
+    if (!current.latestActivityAt || row.activityDate > current.latestActivityAt) {
+      current.latestActivityAt = row.activityDate;
+    }
+    people.set(row.matchedSpecialApplicationId, current);
+  }
+
+  for (const [status, set] of statusActorSets) {
+    stats.byMatchStatus[status] = set.size;
+  }
+
+  const peopleRows = [...people.values()]
+    .sort((left, right) => right.totalActions - left.totalActions || left.fullName.localeCompare(right.fullName, 'ru'))
+    .map((person) => ({
+      ...person,
+      vkDisplayNames: [...person.vkDisplayNames].sort(),
+    }));
+  stats.matchedPeople = peopleRows.length;
+
+  const actionStats = Object.entries(stats.actions)
+    .sort((left, right) => right[1] - left[1])
+    .map(([action, count]) => `${actionLabel(action)}: ${count}`)
+    .join(', ') || 'нет';
+  const sourceStats = Object.entries(stats.sources)
+    .sort((left, right) => right[1] - left[1])
+    .map(([source, count]) => `${sourceLabel(source)}: ${count}`)
+    .join(', ') || 'нет';
+  const matchStats = Object.entries(stats.byMatchStatus)
+    .sort((left, right) => right[1] - left[1])
+    .map(([status, count]) => `${status}: ${count}`)
+    .join(', ') || 'нет';
+
+  const lines = [
+    `VK социальная активность за ${hours} ч.`,
+    `${formatKaliningradDateTime(sinceIso)} — ${formatKaliningradDateTime(untilIso)} Калининград`,
+    '',
+    'Статистика:',
+    `• действий: ${stats.totalActivities}`,
+    `• VK-акторов: ${stats.uniqueVkActors}`,
+    `• людей с ФИО в спецзаявках: ${stats.matchedPeople}`,
+    `• по типам: ${actionStats}`,
+    `• по источникам: ${sourceStats}`,
+    `• по качеству матчинга VK-акторов: ${matchStats}`,
+    '',
+    'ФИО и активности:',
+  ];
+
+  if (!peopleRows.length) {
+    lines.push('За период нет активностей, сопоставленных со спецзаявками по ФИО.');
+  } else {
+    peopleRows.slice(0, 60).forEach((person, index) => {
+      const actions = Object.entries(person.actions)
+        .sort((left, right) => right[1] - left[1])
+        .map(([action, count]) => `${actionLabel(action)} ${count}`)
+        .join(', ');
+      const weakMark = person.matchStatus === 'weak' ? ' ⚠️ weak' : '';
+      lines.push(`${index + 1}. ${person.fullName}${weakMark}`);
+      lines.push(`   ${actions}; всего ${person.totalActions}; VK: ${person.vkDisplayNames.join(', ')}`);
+      if (person.eventTitle) lines.push(`   спец: ${person.eventTitle}; код: ${person.applicationCode}`);
+      if (person.latestActivityAt) lines.push(`   последнее: ${formatKaliningradDateTime(person.latestActivityAt)}`);
+    });
+    if (peopleRows.length > 60) {
+      lines.push(`…ещё ${peopleRows.length - 60} человек не вошли в короткое Telegram-сообщение.`);
+    }
+  }
+
+  lines.push('', 'Баллы не изменялись: отчётный режим v1.');
+
+  return {
+    generatedAt: untilIso,
+    stats,
+    people: peopleRows,
+    text: lines.join('\n'),
+  };
+}
+
+function splitTelegramText(text: string) {
+  const chunks: string[] = [];
+  let current = '';
+  for (const line of text.split('\n')) {
+    const next = current ? `${current}\n${line}` : line;
+    if (next.length > 3_800) {
+      if (current) chunks.push(current);
+      current = line;
+    } else {
+      current = next;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+export async function sendVkSocialDailyReportToTelegram(deps: {
+  db: Database.Database;
+  bot: Bot<Context>;
+  privateKeyPemBase64: string;
+  hours?: number;
+}) {
+  const superadmins = listTelegramAdmins(deps.db).filter((item) => item.role === 'superadmin');
+  if (!superadmins.length) {
+    return false;
+  }
+
+  const report = buildVkSocialDailyReport(deps.db, deps.privateKeyPemBase64, { hours: deps.hours ?? 24 });
+  const chunks = splitTelegramText(report.text);
+  const results = await Promise.allSettled(superadmins.flatMap((admin) => (
+    chunks.map((chunk) => deps.bot.api.sendMessage(admin.telegramUserId, chunk))
+  )));
+  const rejected = results.filter((item) => item.status === 'rejected');
+  if (rejected.length === results.length) {
+    throw new Error('Failed to deliver VK social daily report to every superadmin.');
+  }
+  return true;
+}
+
 export async function runVkSocialMonitoring(deps: VkSocialRunDeps): Promise<VkSocialRunResult> {
   const dryRun = deps.dryRun ?? false;
   const trigger = deps.trigger ?? (dryRun ? 'dry_run' : 'manual');
@@ -1105,6 +1434,7 @@ export async function runVkSocialMonitoring(deps: VkSocialRunDeps): Promise<VkSo
       ambiguousCount: countByStatus(matchResult.results, 'ambiguous'),
       unmatchedCount: countByStatus(matchResult.results, 'unmatched'),
       llmRequestCount: matchResult.llmRequestCount,
+      telegramReportSent: false,
       sourceSummary: {
         groups: DEFAULT_GROUPS,
         wallPostCount,
@@ -1120,6 +1450,18 @@ export async function runVkSocialMonitoring(deps: VkSocialRunDeps): Promise<VkSo
     };
     if (!dryRun) {
       persistRun(deps.db, runId, result, 'completed');
+    }
+    if (!dryRun && deps.sendTelegramReport && deps.bot && deps.privateKeyPemBase64) {
+      try {
+        result.telegramReportSent = await sendVkSocialDailyReportToTelegram({
+          db: deps.db,
+          bot: deps.bot,
+          privateKeyPemBase64: deps.privateKeyPemBase64,
+          hours: deps.reportHours ?? 24,
+        });
+      } catch (telegramError) {
+        deps.logger?.error({ err: telegramError, runKey }, 'vk_social_telegram_report_failed');
+      }
     }
     deps.logger?.info({
       runKey,
@@ -1145,6 +1487,7 @@ export async function runVkSocialMonitoring(deps: VkSocialRunDeps): Promise<VkSo
         ambiguousCount: 0,
         unmatchedCount: 0,
         llmRequestCount: 0,
+        telegramReportSent: false,
         sourceSummary: {},
       };
       persistRun(deps.db, runId, empty, 'failed', error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500));
@@ -1208,6 +1551,7 @@ export function startVkSocialMonitoring(deps: {
   privateKeyPemBase64: string | null;
   logger: FastifyBaseLogger;
   timeZone: string;
+  bot?: Bot<Context>;
 }) {
   let running = false;
   const tick = async () => {
@@ -1223,6 +1567,9 @@ export function startVkSocialMonitoring(deps: {
         logger: deps.logger,
         trigger: 'scheduled',
         runKey,
+        bot: deps.bot,
+        sendTelegramReport: Boolean(deps.bot),
+        reportHours: 24,
       });
     } catch (error) {
       deps.logger.error({ err: error, runKey }, 'vk_social_monitoring_failed');

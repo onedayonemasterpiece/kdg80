@@ -1,3 +1,4 @@
+import { Bot } from 'grammy';
 import { loadConfig } from '../src/config';
 import { createDatabase } from '../src/db/client';
 import { runMigrations } from '../src/db/migrate';
@@ -6,6 +7,7 @@ import { runVkSocialMonitoring } from '../src/services/vk-social-monitoring';
 
 const args = new Set(process.argv.slice(2));
 const dryRun = !args.has('--write');
+const sendTelegram = args.has('--telegram');
 const config = loadConfig();
 
 if (!config.vkAuthToken) {
@@ -14,6 +16,11 @@ if (!config.vkAuthToken) {
 
 if (!config.piiPrivateKeyPemBase64) {
   throw new Error('PII_PRIVATE_KEY_PEM_B64 is required to match special application names');
+}
+
+const bot = sendTelegram && config.telegramBotToken ? new Bot(config.telegramBotToken) : undefined;
+if (sendTelegram && !bot) {
+  throw new Error('TELEGRAM_BOT_TOKEN is required for --telegram report delivery');
 }
 
 const db = createDatabase(config.sqlitePath);
@@ -28,6 +35,9 @@ const result = await runVkSocialMonitoring({
   privateKeyPemBase64: config.piiPrivateKeyPemBase64,
   dryRun,
   trigger: dryRun ? 'dry_run' : 'manual',
+  bot,
+  sendTelegramReport: sendTelegram,
+  reportHours: 24,
 });
 
 const byStatus = result.actors.reduce<Record<string, number>>((acc, actor) => {
@@ -43,5 +53,6 @@ console.log(JSON.stringify({
   activityCount: result.activityCount,
   actorCount: result.actorCount,
   llmRequestCount: result.llmRequestCount,
+  telegramReportSent: result.telegramReportSent,
   byStatus,
 }, null, 2));

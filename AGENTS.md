@@ -132,3 +132,10 @@
 - Read the persistent `gho_...` token from `/home/codespace/.config/gh/hosts.yml` and use it for `fetch`/`push` via `git -c credential.helper= -c core.askPass= -c http.https://github.com/.extraheader="AUTHORIZATION: basic ..."` so git stops using the wrong token.
 - If push then fails with `non-fast-forward`, fetch `origin`, create a clean `worktree` from `origin/main`, replay only the intended durable commits there, drop accidentally staged files, and push from that clean worktree instead of forcing from the dirty main worktree.
 - Never stop at “403” as the final state if a valid `gh` user token is available locally; recover the correct auth path and finish the sync.
+
+## Shared SVG Icon Library
+
+- For decorative/UI/social SVG icons, first check the shared local icon library at `/home/dev/projects/svg-icon-library` before searching the web.
+- Use `/home/dev/projects/svg-icon-library/scripts/find_icons.py <query>` and inspect contact sheets in `/home/dev/projects/svg-icon-library/sheets/` to choose visually from multiple options.
+- When SVG Repo is needed, use the `svgrepo-svg-finder` workflow: compare several candidates across results/pages, check license, add useful assets to the shared library, regenerate the relevant contact sheet, and preserve source/license metadata.
+- Do not blindly use the first SVG found; for design assets, choose by visual fit in context.

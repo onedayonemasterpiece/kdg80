@@ -1520,9 +1520,52 @@ export function buildVkSocialDailyReport(
     matchedSpecialApplicationId: number | null;
   }>;
 
-  const matchedIds = [...new Set(rows
+  const firstSeenWallScanRows = db.prepare(`
+    SELECT
+      act.activity_key AS activityKey,
+      act.source,
+      act.action,
+      act.vk_user_id AS vkUserId,
+      act.group_id AS groupId,
+      act.post_id AS postId,
+      act.comment_id AS commentId,
+      act.activity_date AS activityDate,
+      act.created_at AS detectedAt,
+      actor.display_name AS vkDisplayName,
+      actor.match_status AS matchStatus,
+      actor.match_confidence AS matchConfidence,
+      actor.matched_special_application_id AS matchedSpecialApplicationId
+    FROM vk_social_activities act
+    INNER JOIN vk_social_actors actor ON actor.vk_user_id = act.vk_user_id
+    WHERE act.created_at >= ?
+      AND act.created_at <= ?
+      AND act.source IN ('wall_scan', 'wall_scan_copies')
+      AND act.action IN ('like_post', 'repost_post')
+    ORDER BY act.created_at DESC, act.id DESC
+  `).all(sinceIso, untilIso) as Array<{
+    activityKey: string;
+    source: string;
+    action: string;
+    vkUserId: number;
+    groupId: number | null;
+    postId: number | null;
+    commentId: number | null;
+    activityDate: string | null;
+    detectedAt: string;
+    vkDisplayName: string;
+    matchStatus: MatchStatus;
+    matchConfidence: number;
+    matchedSpecialApplicationId: number | null;
+  }>;
+
+  const matchedIds = [...new Set([
+    ...rows
     .filter((row) => ['matched', 'weak'].includes(row.matchStatus) && row.matchedSpecialApplicationId)
-    .map((row) => Number(row.matchedSpecialApplicationId)))];
+    .map((row) => Number(row.matchedSpecialApplicationId)),
+    ...firstSeenWallScanRows
+      .filter((row) => ['matched', 'weak'].includes(row.matchStatus) && row.matchedSpecialApplicationId)
+      .map((row) => Number(row.matchedSpecialApplicationId)),
+  ])];
   const applicants = loadSpecialApplicantNames(db, privateKeyPemBase64, matchedIds);
   const people = new Map<number, {
     specialApplicationId: number;
@@ -1548,6 +1591,9 @@ export function buildVkSocialDailyReport(
     actions: {} as Record<string, number>,
     sources: {} as Record<string, number>,
     byMatchStatus: {} as Record<string, number>,
+    firstSeenWallScanActivities: firstSeenWallScanRows.length,
+    firstSeenWallScanMatchedPeople: 0,
+    firstSeenWallScanActions: {} as Record<string, number>,
   };
 
   const statusActorSets = new Map<string, Set<number>>();
@@ -1600,6 +1646,57 @@ export function buildVkSocialDailyReport(
     }));
   stats.matchedPeople = peopleRows.length;
 
+  const firstSeenPeople = new Map<number, {
+    specialApplicationId: number;
+    applicationCode: string;
+    fullName: string;
+    eventTitle: string | null;
+    matchStatus: MatchStatus;
+    matchConfidence: number;
+    vkDisplayNames: Set<string>;
+    totalActions: number;
+    actions: Record<string, number>;
+    latestDetectedAt: string | null;
+  }>();
+
+  for (const row of firstSeenWallScanRows) {
+    incrementCounter(stats.firstSeenWallScanActions, row.action);
+    if (!['matched', 'weak'].includes(row.matchStatus) || !row.matchedSpecialApplicationId) {
+      continue;
+    }
+    const applicant = applicants.get(row.matchedSpecialApplicationId);
+    if (!applicant) continue;
+    const current = firstSeenPeople.get(row.matchedSpecialApplicationId) ?? {
+      specialApplicationId: row.matchedSpecialApplicationId,
+      applicationCode: applicant.applicationCode,
+      fullName: applicant.fullName,
+      eventTitle: applicant.eventTitle,
+      matchStatus: row.matchStatus,
+      matchConfidence: Number(row.matchConfidence ?? 0),
+      vkDisplayNames: new Set<string>(),
+      totalActions: 0,
+      actions: {},
+      latestDetectedAt: null,
+    };
+    current.matchStatus = current.matchStatus === 'matched' || row.matchStatus === 'matched' ? 'matched' : row.matchStatus;
+    current.matchConfidence = Math.max(current.matchConfidence, Number(row.matchConfidence ?? 0));
+    current.vkDisplayNames.add(row.vkDisplayName);
+    current.totalActions += 1;
+    incrementCounter(current.actions, row.action);
+    if (!current.latestDetectedAt || row.detectedAt > current.latestDetectedAt) {
+      current.latestDetectedAt = row.detectedAt;
+    }
+    firstSeenPeople.set(row.matchedSpecialApplicationId, current);
+  }
+
+  const firstSeenPeopleRows = [...firstSeenPeople.values()]
+    .sort((left, right) => right.totalActions - left.totalActions || left.fullName.localeCompare(right.fullName, 'ru'))
+    .map((person) => ({
+      ...person,
+      vkDisplayNames: [...person.vkDisplayNames].sort(),
+    }));
+  stats.firstSeenWallScanMatchedPeople = firstSeenPeopleRows.length;
+
   const actionStats = Object.entries(stats.actions)
     .sort((left, right) => right[1] - left[1])
     .map(([action, count]) => `${actionLabel(action)}: ${count}`)
@@ -1611,6 +1708,10 @@ export function buildVkSocialDailyReport(
   const matchStats = Object.entries(stats.byMatchStatus)
     .sort((left, right) => right[1] - left[1])
     .map(([status, count]) => `${status}: ${count}`)
+    .join(', ') || 'нет';
+  const firstSeenActionStats = Object.entries(stats.firstSeenWallScanActions)
+    .sort((left, right) => right[1] - left[1])
+    .map(([action, count]) => `${actionLabel(action)}: ${count}`)
     .join(', ') || 'нет';
 
   const lines = [
@@ -1624,7 +1725,8 @@ export function buildVkSocialDailyReport(
     `• по типам: ${actionStats}`,
     `• по источникам: ${sourceStats}`,
     `• по качеству матчинга VK-акторов: ${matchStats}`,
-    '• лайки/репосты из wall scan без точного времени не входят в суточный отчёт; репосты считаются по времени записи на стене пользователя.',
+    `• дополнительно впервые найдено сканом без точного времени VK: ${stats.firstSeenWallScanActivities}; по типам: ${firstSeenActionStats}; людей с ФИО: ${stats.firstSeenWallScanMatchedPeople}`,
+    '• Важно: VK wall scan не отдаёт время лайка/копии. Такие лайки/копии ниже показаны отдельно как впервые обнаруженные за период, а не как точное время действия.',
     '',
     'ФИО и активности:',
   ];
@@ -1648,12 +1750,31 @@ export function buildVkSocialDailyReport(
     }
   }
 
+  if (firstSeenPeopleRows.length) {
+    lines.push('', 'Дополнительно найдено сканом без точного времени VK:');
+    firstSeenPeopleRows.slice(0, 40).forEach((person, index) => {
+      const actions = Object.entries(person.actions)
+        .sort((left, right) => right[1] - left[1])
+        .map(([action, count]) => `${actionLabel(action)} ${count}`)
+        .join(', ');
+      const weakMark = person.matchStatus === 'weak' ? ' ⚠️ weak' : '';
+      lines.push(`${index + 1}. ${person.fullName}${weakMark}`);
+      lines.push(`   ${actions}; всего ${person.totalActions}; VK: ${person.vkDisplayNames.join(', ')}`);
+      if (person.eventTitle) lines.push(`   спец: ${person.eventTitle}; код: ${person.applicationCode}`);
+      if (person.latestDetectedAt) lines.push(`   обнаружено: ${formatKaliningradDateTime(person.latestDetectedAt)}`);
+    });
+    if (firstSeenPeopleRows.length > 40) {
+      lines.push(`…ещё ${firstSeenPeopleRows.length - 40} человек не вошли в короткое Telegram-сообщение.`);
+    }
+  }
+
   lines.push('', 'Баллы не изменялись: отчётный режим v1.');
 
   return {
     generatedAt: untilIso,
     stats,
     people: peopleRows,
+    firstSeenWallScanPeople: firstSeenPeopleRows,
     text: lines.join('\n'),
   };
 }

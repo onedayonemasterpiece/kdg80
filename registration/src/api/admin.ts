@@ -74,6 +74,8 @@ export async function registerAdminApi(app: FastifyInstance, deps: AdminApiDeps)
     const query = request.query as Record<string, unknown>;
     return buildVkSocialDailyReport(deps.db, deps.privateKeyPemBase64, {
       hours: Number(query.hours ?? 24),
+      mode: query.mode === 'rolling' ? 'rolling' : 'delta',
+      currentRunId: Number(query.runId ?? 0) || undefined,
     });
   });
 

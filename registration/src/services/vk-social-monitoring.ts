@@ -56,6 +56,7 @@ export type SpecialApplicant = {
 
 export type MatchStatus = 'matched' | 'weak' | 'ambiguous' | 'unmatched';
 type MatchMethod = 'deterministic' | 'llm' | 'none';
+type VkSocialReportMode = 'delta' | 'rolling';
 
 export type MatchVerdict = {
   status: MatchStatus;
@@ -108,6 +109,18 @@ type VkSocialRunResult = {
     activityCount: number;
     match: MatchVerdict;
   }>;
+};
+
+type VkSocialReportInterval = {
+  mode: VkSocialReportMode;
+  sinceIso: string;
+  untilIso: string;
+  sinceExclusive: boolean;
+  hours: number;
+  source: 'rolling_hours' | 'previous_sent_report' | 'previous_completed_run' | 'fallback_hours';
+  currentRunId: number | null;
+  previousReportId: number | null;
+  previousRunId: number | null;
 };
 
 function readPositiveInteger(value: string | undefined, fallback: number) {
@@ -1398,6 +1411,180 @@ function parseHours(value: unknown, fallback = 24) {
   return Number.isFinite(parsed) && parsed > 0 && parsed <= 168 ? parsed : fallback;
 }
 
+function parseReportMode(value: unknown): VkSocialReportMode {
+  return value === 'rolling' ? 'rolling' : 'delta';
+}
+
+function tableExists(db: Database.Database, tableName: string) {
+  const row = db.prepare(`
+    SELECT name
+    FROM sqlite_master
+    WHERE type = 'table' AND name = ?
+    LIMIT 1
+  `).get(tableName) as { name: string } | undefined;
+  return Boolean(row);
+}
+
+function completedRunById(db: Database.Database, runId: number) {
+  if (!Number.isFinite(runId) || runId <= 0 || !tableExists(db, 'vk_social_runs')) return null;
+  const row = db.prepare(`
+    SELECT id, finished_at AS finishedAt
+    FROM vk_social_runs
+    WHERE id = ? AND status = 'completed' AND finished_at IS NOT NULL
+    LIMIT 1
+  `).get(runId) as { id: number; finishedAt: string } | undefined;
+  return row ?? null;
+}
+
+function latestCompletedRun(db: Database.Database) {
+  if (!tableExists(db, 'vk_social_runs')) return null;
+  const row = db.prepare(`
+    SELECT id, finished_at AS finishedAt
+    FROM vk_social_runs
+    WHERE status = 'completed' AND finished_at IS NOT NULL
+    ORDER BY finished_at DESC, id DESC
+    LIMIT 1
+  `).get() as { id: number; finishedAt: string } | undefined;
+  return row ?? null;
+}
+
+function latestSentDeltaReportUntil(
+  db: Database.Database,
+  untilIso: string,
+) {
+  if (!tableExists(db, 'vk_social_reports')) return null;
+  const row = db.prepare(`
+    SELECT id, until_at AS untilAt
+    FROM vk_social_reports
+    WHERE mode = 'delta'
+      AND status = 'sent'
+      AND until_at <= ?
+    ORDER BY until_at DESC, id DESC
+    LIMIT 1
+  `).get(untilIso) as { id: number; untilAt: string } | undefined;
+  return row ?? null;
+}
+
+function previousCompletedRunUntil(
+  db: Database.Database,
+  untilIso: string,
+  currentRunId: number | null,
+) {
+  if (!tableExists(db, 'vk_social_runs')) return null;
+  const row = db.prepare(`
+    SELECT id, finished_at AS finishedAt
+    FROM vk_social_runs
+    WHERE status = 'completed'
+      AND finished_at IS NOT NULL
+      AND finished_at < ?
+      AND (? IS NULL OR id != ?)
+    ORDER BY finished_at DESC, id DESC
+    LIMIT 1
+  `).get(untilIso, currentRunId, currentRunId) as { id: number; finishedAt: string } | undefined;
+  return row ?? null;
+}
+
+function resolveVkSocialReportInterval(
+  db: Database.Database,
+  options: {
+    hours?: number;
+    now?: Date;
+    mode?: VkSocialReportMode;
+    currentRunId?: number;
+    sinceIso?: string;
+    untilIso?: string;
+  } = {},
+): VkSocialReportInterval {
+  const mode = parseReportMode(options.mode);
+  const hours = parseHours(options.hours, 24);
+  const now = options.now ?? new Date();
+
+  if (mode === 'rolling') {
+    const untilIso = options.untilIso ?? now.toISOString();
+    const until = new Date(untilIso);
+    const since = options.sinceIso
+      ? new Date(options.sinceIso)
+      : new Date(until.getTime() - hours * 60 * 60 * 1000);
+    return {
+      mode,
+      sinceIso: since.toISOString(),
+      untilIso,
+      sinceExclusive: false,
+      hours,
+      source: 'rolling_hours',
+      currentRunId: null,
+      previousReportId: null,
+      previousRunId: null,
+    };
+  }
+
+  const currentRun = options.currentRunId ? completedRunById(db, options.currentRunId) : null;
+  const latestRun = currentRun ?? latestCompletedRun(db);
+  const untilIso = options.untilIso ?? latestRun?.finishedAt ?? now.toISOString();
+  const currentRunId = currentRun?.id ?? latestRun?.id ?? null;
+
+  if (options.sinceIso) {
+    const since = new Date(options.sinceIso);
+    return {
+      mode,
+      sinceIso: since.toISOString(),
+      untilIso,
+      sinceExclusive: true,
+      hours: Math.max(0, (new Date(untilIso).getTime() - since.getTime()) / (60 * 60 * 1000)),
+      source: 'previous_sent_report',
+      currentRunId,
+      previousReportId: null,
+      previousRunId: null,
+    };
+  }
+
+  const previousReport = latestSentDeltaReportUntil(db, untilIso);
+  if (previousReport) {
+    const since = new Date(previousReport.untilAt);
+    return {
+      mode,
+      sinceIso: previousReport.untilAt,
+      untilIso,
+      sinceExclusive: true,
+      hours: Math.max(0, (new Date(untilIso).getTime() - since.getTime()) / (60 * 60 * 1000)),
+      source: 'previous_sent_report',
+      currentRunId,
+      previousReportId: previousReport.id,
+      previousRunId: null,
+    };
+  }
+
+  const previousRun = previousCompletedRunUntil(db, untilIso, currentRunId);
+  if (previousRun) {
+    const since = new Date(previousRun.finishedAt);
+    return {
+      mode,
+      sinceIso: previousRun.finishedAt,
+      untilIso,
+      sinceExclusive: true,
+      hours: Math.max(0, (new Date(untilIso).getTime() - since.getTime()) / (60 * 60 * 1000)),
+      source: 'previous_completed_run',
+      currentRunId,
+      previousReportId: null,
+      previousRunId: previousRun.id,
+    };
+  }
+
+  const until = new Date(untilIso);
+  const since = new Date(until.getTime() - hours * 60 * 60 * 1000);
+  return {
+    mode,
+    sinceIso: since.toISOString(),
+    untilIso,
+    sinceExclusive: false,
+    hours,
+    source: 'fallback_hours',
+    currentRunId,
+    previousReportId: null,
+    previousRunId: null,
+  };
+}
+
 function formatKaliningradDateTime(isoValue: string) {
   return new Intl.DateTimeFormat('ru-RU', {
     dateStyle: 'short',
@@ -1472,13 +1659,20 @@ function loadSpecialApplicantNames(
 export function buildVkSocialDailyReport(
   db: Database.Database,
   privateKeyPemBase64: string,
-  options: { hours?: number; now?: Date } = {},
+  options: {
+    hours?: number;
+    now?: Date;
+    mode?: VkSocialReportMode;
+    currentRunId?: number;
+    sinceIso?: string;
+    untilIso?: string;
+  } = {},
 ) {
-  const hours = parseHours(options.hours, 24);
-  const now = options.now ?? new Date();
-  const since = new Date(now.getTime() - hours * 60 * 60 * 1000);
-  const sinceIso = since.toISOString();
-  const untilIso = now.toISOString();
+  const interval = resolveVkSocialReportInterval(db, options);
+  const hours = interval.hours;
+  const sinceIso = interval.sinceIso;
+  const untilIso = interval.untilIso;
+  const lowerBoundOperator = interval.sinceExclusive ? '>' : '>=';
   const rows = db.prepare(`
     SELECT
       act.activity_key AS activityKey,
@@ -1497,7 +1691,7 @@ export function buildVkSocialDailyReport(
     FROM vk_social_activities act
     INNER JOIN vk_social_actors actor ON actor.vk_user_id = act.vk_user_id
     WHERE act.activity_date IS NOT NULL
-      AND act.activity_date >= ?
+      AND act.activity_date ${lowerBoundOperator} ?
       AND act.activity_date <= ?
       AND NOT (
         act.source IN ('wall_scan', 'wall_scan_copies')
@@ -1537,7 +1731,7 @@ export function buildVkSocialDailyReport(
       actor.matched_special_application_id AS matchedSpecialApplicationId
     FROM vk_social_activities act
     INNER JOIN vk_social_actors actor ON actor.vk_user_id = act.vk_user_id
-    WHERE act.created_at >= ?
+    WHERE act.created_at ${lowerBoundOperator} ?
       AND act.created_at <= ?
       AND act.source IN ('wall_scan', 'wall_scan_copies')
       AND act.action IN ('like_post', 'repost_post')
@@ -1582,9 +1776,15 @@ export function buildVkSocialDailyReport(
   }>();
 
   const stats = {
+    mode: interval.mode,
     hours,
     sinceIso,
     untilIso,
+    sinceExclusive: interval.sinceExclusive,
+    intervalSource: interval.source,
+    currentRunId: interval.currentRunId,
+    previousReportId: interval.previousReportId,
+    previousRunId: interval.previousRunId,
     totalActivities: rows.length,
     uniqueVkActors: new Set(rows.map((row) => row.vkUserId)).size,
     matchedPeople: 0,
@@ -1714,19 +1914,38 @@ export function buildVkSocialDailyReport(
     .map(([action, count]) => `${actionLabel(action)}: ${count}`)
     .join(', ') || 'нет';
 
+  const title = interval.mode === 'delta'
+    ? 'VK социальная активность без нахлёста'
+    : `VK социальная активность за ${Number(hours.toFixed(1))} ч. (rolling-аудит)`;
+  const intervalHint = interval.mode === 'delta'
+    ? interval.source === 'previous_sent_report'
+      ? 'период: после прошлого успешного отчёта'
+      : interval.source === 'previous_completed_run'
+        ? 'период: после предыдущего успешного запуска мониторинга'
+        : 'период: первый отчёт, fallback-окно'
+    : 'период: rolling-окно; соседние отчёты могут пересекаться';
+  const exactActivityLabel = interval.mode === 'delta' ? 'новых точных действий' : 'точных действий';
+  const firstSeenLabel = interval.mode === 'delta'
+    ? 'новых впервые найденных сканом без точного времени VK'
+    : 'дополнительно впервые найдено сканом без точного времени VK';
+
   const lines = [
-    `VK социальная активность за ${hours} ч.`,
+    title,
     `${formatKaliningradDateTime(sinceIso)} — ${formatKaliningradDateTime(untilIso)} Калининград`,
+    intervalHint,
     '',
     'Статистика:',
-    `• действий: ${stats.totalActivities}`,
+    `• ${exactActivityLabel}: ${stats.totalActivities}`,
     `• VK-акторов: ${stats.uniqueVkActors}`,
     `• людей с ФИО в спецзаявках: ${stats.matchedPeople}`,
     `• по типам: ${actionStats}`,
     `• по источникам: ${sourceStats}`,
     `• по качеству матчинга VK-акторов: ${matchStats}`,
-    `• дополнительно впервые найдено сканом без точного времени VK: ${stats.firstSeenWallScanActivities}; по типам: ${firstSeenActionStats}; людей с ФИО: ${stats.firstSeenWallScanMatchedPeople}`,
-    '• Важно: VK wall scan не отдаёт время лайка/копии. Такие лайки/копии ниже показаны отдельно как впервые обнаруженные за период, а не как точное время действия.',
+    `• ${firstSeenLabel}: ${stats.firstSeenWallScanActivities}; по типам: ${firstSeenActionStats}; людей с ФИО: ${stats.firstSeenWallScanMatchedPeople}`,
+    interval.mode === 'delta'
+      ? '• Важно: отчёт показывает только дельту после прошлого отчёта/запуска, без повторного rolling-нахлёста.'
+      : '• Важно: это rolling-аудит; при запуске каждые 12 часов соседние 24-часовые окна пересекаются.',
+    '• Важно: VK wall scan не отдаёт время лайка/копии. Такие лайки/копии ниже показаны отдельно как впервые обнаруженные сканом за период, а не как точное время действия.',
     '',
     'ФИО и активности:',
   ];
@@ -1772,6 +1991,7 @@ export function buildVkSocialDailyReport(
 
   return {
     generatedAt: untilIso,
+    reportKey: `${interval.mode}:${sinceIso}:${untilIso}`,
     stats,
     people: peopleRows,
     firstSeenWallScanPeople: firstSeenPeopleRows,
@@ -1795,27 +2015,127 @@ function splitTelegramText(text: string) {
   return chunks;
 }
 
+function startVkSocialReportDelivery(
+  db: Database.Database,
+  report: ReturnType<typeof buildVkSocialDailyReport>,
+  runId: number | null,
+) {
+  if (!tableExists(db, 'vk_social_reports')) {
+    return { reportId: null, alreadySent: false };
+  }
+
+  const existing = db.prepare(`
+    SELECT id, status
+    FROM vk_social_reports
+    WHERE report_key = ?
+    LIMIT 1
+  `).get(report.reportKey) as { id: number; status: string } | undefined;
+  if (existing?.status === 'sent') {
+    return { reportId: existing.id, alreadySent: true };
+  }
+
+  const textHash = crypto.createHash('sha256').update(report.text).digest('hex');
+  const row = db.prepare(`
+    INSERT INTO vk_social_reports(
+      report_key,
+      mode,
+      status,
+      run_id,
+      since_at,
+      until_at,
+      since_exclusive,
+      text_hash,
+      telegram_message_count,
+      error,
+      updated_at
+    ) VALUES (?, ?, 'sending', ?, ?, ?, ?, ?, 0, NULL, (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))
+    ON CONFLICT(report_key) DO UPDATE SET
+      status = 'sending',
+      run_id = excluded.run_id,
+      since_at = excluded.since_at,
+      until_at = excluded.until_at,
+      since_exclusive = excluded.since_exclusive,
+      text_hash = excluded.text_hash,
+      telegram_message_count = 0,
+      error = NULL,
+      updated_at = excluded.updated_at
+    RETURNING id
+  `).get(
+    report.reportKey,
+    report.stats.mode,
+    runId,
+    report.stats.sinceIso,
+    report.stats.untilIso,
+    report.stats.sinceExclusive ? 1 : 0,
+    textHash,
+  ) as { id: number };
+  return { reportId: row.id, alreadySent: false };
+}
+
+function markVkSocialReportSent(db: Database.Database, reportId: number | null, telegramMessageCount: number) {
+  if (!reportId || !tableExists(db, 'vk_social_reports')) return;
+  db.prepare(`
+    UPDATE vk_social_reports
+    SET status = 'sent',
+        sent_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        telegram_message_count = ?,
+        error = NULL,
+        updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    WHERE id = ?
+  `).run(telegramMessageCount, reportId);
+}
+
+function markVkSocialReportFailed(db: Database.Database, reportId: number | null, error: unknown) {
+  if (!reportId || !tableExists(db, 'vk_social_reports')) return;
+  const message = error instanceof Error ? error.message : String(error);
+  db.prepare(`
+    UPDATE vk_social_reports
+    SET status = 'failed',
+        error = ?,
+        updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    WHERE id = ?
+  `).run(message.slice(0, 500), reportId);
+}
+
 export async function sendVkSocialDailyReportToTelegram(deps: {
   db: Database.Database;
   bot: Bot<Context>;
   privateKeyPemBase64: string;
   hours?: number;
+  mode?: VkSocialReportMode;
+  currentRunId?: number;
 }) {
   const superadmins = listTelegramAdmins(deps.db).filter((item) => item.role === 'superadmin');
   if (!superadmins.length) {
     return false;
   }
 
-  const report = buildVkSocialDailyReport(deps.db, deps.privateKeyPemBase64, { hours: deps.hours ?? 24 });
-  const chunks = splitTelegramText(report.text);
-  const results = await Promise.allSettled(superadmins.flatMap((admin) => (
-    chunks.map((chunk) => deps.bot.api.sendMessage(admin.telegramUserId, chunk))
-  )));
-  const rejected = results.filter((item) => item.status === 'rejected');
-  if (rejected.length === results.length) {
-    throw new Error('Failed to deliver VK social daily report to every superadmin.');
+  const report = buildVkSocialDailyReport(deps.db, deps.privateKeyPemBase64, {
+    hours: deps.hours ?? 24,
+    mode: deps.mode ?? 'delta',
+    currentRunId: deps.currentRunId,
+  });
+  const delivery = startVkSocialReportDelivery(deps.db, report, deps.currentRunId ?? report.stats.currentRunId);
+  if (delivery.alreadySent) {
+    return false;
   }
-  return true;
+  const chunks = splitTelegramText(report.text);
+  try {
+    const results = await Promise.allSettled(superadmins.flatMap((admin) => (
+      chunks.map((chunk) => deps.bot.api.sendMessage(admin.telegramUserId, chunk))
+    )));
+    const rejected = results.filter((item) => item.status === 'rejected');
+    if (rejected.length === results.length) {
+      const error = new Error('Failed to deliver VK social daily report to every superadmin.');
+      markVkSocialReportFailed(deps.db, delivery.reportId, error);
+      throw error;
+    }
+    markVkSocialReportSent(deps.db, delivery.reportId, results.length - rejected.length);
+    return true;
+  } catch (error) {
+    markVkSocialReportFailed(deps.db, delivery.reportId, error);
+    throw error;
+  }
 }
 
 export async function runVkSocialMonitoring(deps: VkSocialRunDeps): Promise<VkSocialRunResult> {
@@ -1882,11 +2202,13 @@ export async function runVkSocialMonitoring(deps: VkSocialRunDeps): Promise<VkSo
     if (!dryRun && deps.sendTelegramReport && deps.bot && deps.privateKeyPemBase64) {
       try {
         result.telegramReportSent = await sendVkSocialDailyReportToTelegram({
-          db: deps.db,
-          bot: deps.bot,
-          privateKeyPemBase64: deps.privateKeyPemBase64,
-          hours: deps.reportHours ?? 24,
-        });
+        db: deps.db,
+        bot: deps.bot,
+        privateKeyPemBase64: deps.privateKeyPemBase64,
+        mode: 'delta',
+        currentRunId: runId,
+        hours: deps.reportHours ?? 24,
+      });
       } catch (telegramError) {
         deps.logger?.error({ err: telegramError, runKey }, 'vk_social_telegram_report_failed');
       }

@@ -9,6 +9,7 @@ type SpecialEventRow = {
   title: string;
   format_label: string;
   venue_name: string;
+  previous_winner_weight_percent: number;
 };
 
 type SpecialShowingRow = {
@@ -42,6 +43,11 @@ type SpecialApplicationRow = {
   no_show_count: number;
   score: number;
   created_at: string;
+};
+
+type SpecialCandidateRow = SpecialApplicationRow & {
+  previous_special_winner: number;
+  previous_winner_weight_percent: number;
 };
 
 type SpecialPhotoRow = {
@@ -92,6 +98,8 @@ export type SpecialParticipant = {
   uniquePhotoCount: number;
   acceptedPhotoCount: number;
   selectedShowingCount: number;
+  previousSpecialWinner: boolean;
+  previousWinnerWeightPercent: number;
   createdAt: string;
 };
 
@@ -112,6 +120,8 @@ export type SpecialDrawTicketRange = {
   applicationCode: string;
   score: number;
   selectedShowingCount: number;
+  previousSpecialWinner?: boolean;
+  previousWinnerWeightPercent?: number;
   showingWeightNumerator: number;
   showingWeightDenominator: number;
   drawWeight: number;
@@ -170,7 +180,7 @@ function maskPhone(phone: string) {
 
 function getEventById(db: Database.Database, eventId: number) {
   return db.prepare(`
-    SELECT id, slug, title, format_label, venue_name
+    SELECT id, slug, title, format_label, venue_name, previous_winner_weight_percent
     FROM special_events
     WHERE id = ?
     LIMIT 1
@@ -246,15 +256,35 @@ function leastCommonMultiple(a: number, b: number) {
   return Math.abs(Math.trunc(a * b)) / greatestCommonDivisor(a, b);
 }
 
+function normalizeWeightPercent(value: number) {
+  if (!Number.isFinite(value)) {
+    return 100;
+  }
+  return Math.min(100, Math.max(0, Math.trunc(value)));
+}
+
+function getWeightPercentDenominator(value: number) {
+  const percent = normalizeWeightPercent(value);
+  if (percent <= 0 || percent >= 100) {
+    return 1;
+  }
+  return 100 / greatestCommonDivisor(percent, 100);
+}
+
 function computeWeightScale(candidates: SpecialParticipant[]) {
-  return candidates.reduce((scale, candidate) => (
-    leastCommonMultiple(scale, normalizeSelectedShowingCount(candidate.selectedShowingCount))
-  ), 1);
+  return candidates.reduce((scale, candidate) => {
+    const dateScale = normalizeSelectedShowingCount(candidate.selectedShowingCount);
+    const percentScale = getWeightPercentDenominator(candidate.previousWinnerWeightPercent);
+    return leastCommonMultiple(leastCommonMultiple(scale, dateScale), percentScale);
+  }, 1);
 }
 
 function getDistributedDrawWeight(candidate: Pick<SpecialParticipant, 'score' | 'selectedShowingCount'>, weightScale: number) {
   const selectedShowingCount = normalizeSelectedShowingCount(candidate.selectedShowingCount);
-  return Math.max(0, Math.trunc(candidate.score * (weightScale / selectedShowingCount)));
+  const previousWinnerWeightPercent = 'previousWinnerWeightPercent' in candidate
+    ? normalizeWeightPercent(Number(candidate.previousWinnerWeightPercent))
+    : 100;
+  return Math.max(0, Math.trunc(candidate.score * (weightScale / selectedShowingCount) * previousWinnerWeightPercent / 100));
 }
 
 function formatShowingWeight(score: number, selectedShowingCount: number) {
@@ -292,6 +322,7 @@ export function listSpecialShowingsDueForAutoDraw(
       e.title AS event_title,
       e.format_label AS event_format_label,
       e.venue_name AS event_venue_name,
+      e.previous_winner_weight_percent AS event_previous_winner_weight_percent,
       s.id AS showing_id,
       s.special_event_id AS showing_special_event_id,
       s.slug AS showing_slug,
@@ -321,6 +352,7 @@ export function listSpecialShowingsDueForAutoDraw(
     event_title: string;
     event_format_label: string;
     event_venue_name: string;
+    event_previous_winner_weight_percent: number;
     showing_id: number;
     showing_special_event_id: number;
     showing_slug: string;
@@ -340,6 +372,7 @@ export function listSpecialShowingsDueForAutoDraw(
       title: row.event_title,
       format_label: row.event_format_label,
       venue_name: row.event_venue_name,
+      previous_winner_weight_percent: row.event_previous_winner_weight_percent,
     },
     showing: {
       id: row.showing_id,
@@ -357,17 +390,21 @@ export function listSpecialShowingsDueForAutoDraw(
   } satisfies SpecialAutoDrawDueShowing));
 }
 
-function getPublishedWinnerProfileIdsForOtherSpecialDraws(
+function getPublishedWinnerProfileIds(
   db: Database.Database,
   currentShowingId: number,
+  currentSpecialEventId: number,
+  scope: 'same_event' | 'other_events',
 ) {
   const rows = db.prepare(`
     SELECT dr.*
     FROM special_draw_runs dr
+    INNER JOIN special_event_showings s ON s.id = dr.showing_id
     WHERE dr.showing_id != ?
+      AND s.special_event_id ${scope === 'same_event' ? '=' : '!='} ?
       AND dr.run_type = 'published'
     ORDER BY dr.id ASC
-  `).all(currentShowingId) as SpecialDrawRunRow[];
+  `).all(currentShowingId, currentSpecialEventId) as SpecialDrawRunRow[];
 
   const ids = new Set<number>();
   for (const row of rows) {
@@ -385,9 +422,22 @@ function listCandidateRows(
   db: Database.Database,
   showing: SpecialShowingRow,
 ) {
-  const excludedProfileIds = getPublishedWinnerProfileIdsForOtherSpecialDraws(
+  const event = getEventById(db, showing.special_event_id);
+  if (!event) {
+    return [];
+  }
+
+  const sameEventWinnerProfileIds = getPublishedWinnerProfileIds(
     db,
     showing.id,
+    showing.special_event_id,
+    'same_event',
+  );
+  const otherEventWinnerProfileIds = getPublishedWinnerProfileIds(
+    db,
+    showing.id,
+    showing.special_event_id,
+    'other_events',
   );
   const rows = db.prepare(`
     SELECT a.*
@@ -399,10 +449,27 @@ function listCandidateRows(
     ORDER BY a.created_at ASC, a.id ASC
   `).all(showing.id) as SpecialApplicationRow[];
 
-  return rows.filter((row) => !row.participant_profile_id || !excludedProfileIds.has(row.participant_profile_id));
+  return rows.flatMap((row) => {
+    if (row.participant_profile_id && sameEventWinnerProfileIds.has(row.participant_profile_id)) {
+      return [];
+    }
+
+    const previousSpecialWinner = Boolean(
+      row.participant_profile_id && otherEventWinnerProfileIds.has(row.participant_profile_id),
+    );
+    if (previousSpecialWinner && event.previous_winner_weight_percent <= 0) {
+      return [];
+    }
+
+    return [{
+      ...row,
+      previous_special_winner: previousSpecialWinner ? 1 : 0,
+      previous_winner_weight_percent: previousSpecialWinner ? event.previous_winner_weight_percent : 100,
+    } satisfies SpecialCandidateRow];
+  });
 }
 
-function mapParticipants(rows: SpecialApplicationRow[], privateKeyPemBase64: string) {
+function mapParticipants(rows: SpecialCandidateRow[], privateKeyPemBase64: string) {
   return rows.flatMap((row) => {
     try {
       const pii = decryptPii(privateKeyPemBase64, {
@@ -428,6 +495,8 @@ function mapParticipants(rows: SpecialApplicationRow[], privateKeyPemBase64: str
         uniquePhotoCount: row.unique_photo_count,
         acceptedPhotoCount: row.accepted_photo_count,
         selectedShowingCount: countSelectedShowings(row.selected_showing_ids_json),
+        previousSpecialWinner: Boolean(row.previous_special_winner),
+        previousWinnerWeightPercent: row.previous_winner_weight_percent,
         createdAt: row.created_at,
       } satisfies SpecialParticipant];
     } catch {
@@ -464,6 +533,8 @@ function weightedDraw(candidates: SpecialParticipant[], limit: number) {
         applicationCode: candidate.applicationCode,
         score: candidate.score,
         selectedShowingCount,
+        previousSpecialWinner: candidate.previousSpecialWinner,
+        previousWinnerWeightPercent: candidate.previousWinnerWeightPercent,
         showingWeightNumerator: candidate.score,
         showingWeightDenominator: selectedShowingCount,
         drawWeight,
@@ -520,6 +591,8 @@ function snapshotParticipant(participant: SpecialParticipant) {
     uniquePhotoCount: participant.uniquePhotoCount,
     acceptedPhotoCount: participant.acceptedPhotoCount,
     selectedShowingCount: participant.selectedShowingCount,
+    previousSpecialWinner: participant.previousSpecialWinner,
+    previousWinnerWeightPercent: participant.previousWinnerWeightPercent,
     createdAt: participant.createdAt,
   };
 }
@@ -585,7 +658,7 @@ function rowToDrawResult(
 
 export function listSpecialEventsForTelegram(db: Database.Database) {
   const events = db.prepare(`
-    SELECT id, slug, title, format_label, venue_name
+    SELECT id, slug, title, format_label, venue_name, previous_winner_weight_percent
     FROM special_events
     ORDER BY created_at ASC, id ASC
   `).all() as SpecialEventRow[];
@@ -701,6 +774,8 @@ export function runSpecialDraw(
       score: winner.score,
       stampCount: winner.stampCount,
       noShowCount: winner.noShowCount,
+      previousSpecialWinner: winner.previousSpecialWinner,
+      previousWinnerWeightPercent: winner.previousWinnerWeightPercent,
       selectedTicket: winner.selectedTicket,
       ticketRangeStart: winner.ticketRangeStart,
       ticketRangeEnd: winner.ticketRangeEnd,
@@ -759,6 +834,12 @@ export function getLatestSpecialDrawResult(
     return null;
   }
 
+  const otherEventWinnerProfileIds = getPublishedWinnerProfileIds(
+    db,
+    showing.id,
+    showing.special_event_id,
+    'other_events',
+  );
   const allRows = db.prepare(`
     SELECT a.*
     FROM special_applications a
@@ -766,8 +847,18 @@ export function getLatestSpecialDrawResult(
     WHERE aps.showing_id = ?
     ORDER BY a.created_at ASC, a.id ASC
   `).all(showing.id) as SpecialApplicationRow[];
+  const decoratedRows = allRows.map((application) => {
+    const previousSpecialWinner = Boolean(
+      application.participant_profile_id && otherEventWinnerProfileIds.has(application.participant_profile_id),
+    );
+    return {
+      ...application,
+      previous_special_winner: previousSpecialWinner ? 1 : 0,
+      previous_winner_weight_percent: previousSpecialWinner ? event.previous_winner_weight_percent : 100,
+    } satisfies SpecialCandidateRow;
+  });
 
-  return rowToDrawResult(row, event, showing, mapParticipants(allRows, privateKeyPemBase64));
+  return rowToDrawResult(row, event, showing, mapParticipants(decoratedRows, privateKeyPemBase64));
 }
 
 export function listSpecialApplicationPhotos(db: Database.Database, applicationId: number) {
@@ -842,8 +933,9 @@ export function formatSpecialShowingApplicants(item: NonNullable<ReturnType<type
     `   Баллы: ${candidate.score}, штампы: ${candidate.stampCount}, неявки: ${candidate.noShowCount}`,
     `   Фото: ${candidate.acceptedPhotoCount}/${candidate.uniquePhotoCount}/${candidate.uploadedPhotoCount}`,
     `   Выбрано дат: ${candidate.selectedShowingCount}, вес на этот показ: ${formatShowingWeight(candidate.score, candidate.selectedShowingCount)} (${getDistributedDrawWeight(candidate, weightScale)} тех. билетиков)`,
+    candidate.previousSpecialWinner ? `   Уже выигрывал спецрозыгрыш: да, коэффициент веса ${candidate.previousWinnerWeightPercent}%` : null,
     `   Код заявки: ${candidate.applicationCode}`,
-  ].join('\n'));
+  ].filter(Boolean).join('\n'));
 
   if (item.candidates.length > 40) {
     lines.push(`… и ещё ${item.candidates.length - 40} заявителей.`);
@@ -877,11 +969,12 @@ export function formatSpecialDrawResult(result: SpecialDrawResult) {
     `${winner.position}. ${winner.fullName}`,
     `   Баллы: ${winner.score}, штампы: ${winner.stampCount}, неявки: ${winner.noShowCount}`,
     `   Выбрано дат: ${winner.selectedShowingCount}, вес на этот показ: ${formatShowingWeight(winner.showingWeightNumerator, winner.showingWeightDenominator)} (${winner.drawWeight} тех. билетиков)`,
+    winner.previousSpecialWinner ? `   Уже выигрывал спецрозыгрыш: да, коэффициент веса ${winner.previousWinnerWeightPercent}%` : null,
     `   Раунд: выпал билет №${winner.selectedTicket} из ${winner.poolWeightBeforeDraw}`,
     `   Билетики участника в раунде: №${winner.ticketRangeStart}–${winner.ticketRangeEnd}`,
     `   ${maskEmail(winner.email)}, ${maskPhone(winner.phone)}`,
     `   Код заявки: ${winner.applicationCode}`,
-  ].join('\n'));
+  ].filter(Boolean).join('\n'));
 
   if (result.winners.length > 30) {
     winners.push(`… и ещё ${result.winners.length - 30} победителей.`);
@@ -906,6 +999,8 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
     { header: 'Выбрано дат', key: 'selectedShowingCount', width: 14 },
     { header: 'Вес на показ', key: 'showingWeight', width: 18 },
     { header: 'Тех. билетики участника', key: 'drawWeight', width: 22 },
+    { header: 'Выигрывал спецрозыгрыш', key: 'previousSpecialWinner', width: 24 },
+    { header: 'Коэффициент веса', key: 'previousWinnerWeightPercent', width: 20 },
     { header: 'Выпавший билет', key: 'selectedTicket', width: 18 },
     { header: 'Всего тех. билетиков в раунде', key: 'poolWeightBeforeDraw', width: 30 },
     { header: 'Диапазон билетов победителя', key: 'ticketRange', width: 30 },
@@ -926,6 +1021,8 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
       selectedShowingCount: winner.selectedShowingCount,
       showingWeight: formatShowingWeight(winner.showingWeightNumerator, winner.showingWeightDenominator),
       drawWeight: winner.drawWeight,
+      previousSpecialWinner: winner.previousSpecialWinner ? 'да' : '',
+      previousWinnerWeightPercent: `${winner.previousWinnerWeightPercent}%`,
       selectedTicket: winner.selectedTicket,
       poolWeightBeforeDraw: winner.poolWeightBeforeDraw,
       ticketRange: `№${winner.ticketRangeStart}–№${winner.ticketRangeEnd}`,
@@ -946,6 +1043,8 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
     { header: 'Выбрано дат', key: 'selectedShowingCount', width: 14 },
     { header: 'Вес на этот показ', key: 'showingWeight', width: 18 },
     { header: 'Тех. билетики на этот показ', key: 'drawWeight', width: 26 },
+    { header: 'Выигрывал спецрозыгрыш', key: 'previousSpecialWinner', width: 24 },
+    { header: 'Коэффициент веса', key: 'previousWinnerWeightPercent', width: 20 },
     { header: 'Штампы', key: 'stampCount', width: 10 },
     { header: 'Неявки', key: 'noShowCount', width: 10 },
     { header: 'Зачтено фото', key: 'acceptedPhotoCount', width: 14 },
@@ -963,6 +1062,8 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
       selectedShowingCount: candidate.selectedShowingCount,
       showingWeight: formatShowingWeight(candidate.score, candidate.selectedShowingCount),
       drawWeight: getDistributedDrawWeight(candidate, weightScale),
+      previousSpecialWinner: candidate.previousSpecialWinner ? 'да' : '',
+      previousWinnerWeightPercent: `${candidate.previousWinnerWeightPercent}%`,
       stampCount: candidate.stampCount,
       noShowCount: candidate.noShowCount,
       acceptedPhotoCount: candidate.acceptedPhotoCount,
@@ -980,6 +1081,8 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
     { header: 'Выбрано дат', key: 'selectedShowingCount', width: 14 },
     { header: 'Вес на показ', key: 'showingWeight', width: 18 },
     { header: 'Тех. билетики участника', key: 'drawWeight', width: 22 },
+    { header: 'Выигрывал спецрозыгрыш', key: 'previousSpecialWinner', width: 24 },
+    { header: 'Коэффициент веса', key: 'previousWinnerWeightPercent', width: 20 },
     { header: 'Диапазон билетов', key: 'ticketRange', width: 24 },
     { header: 'Победитель', key: 'winner', width: 14 },
     { header: 'Источник случайности', key: 'randomSource', width: 28 },
@@ -999,6 +1102,8 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
           range.showingWeightDenominator ?? 1,
         ),
         drawWeight: range.drawWeight ?? range.score,
+        previousSpecialWinner: range.previousSpecialWinner ? 'да' : '',
+        previousWinnerWeightPercent: `${range.previousWinnerWeightPercent ?? 100}%`,
         ticketRange: `№${range.ticketRangeStart}–№${range.ticketRangeEnd}`,
         winner: range.applicationId === round.winnerApplicationId ? 'да' : '',
         randomSource: round.randomSource,

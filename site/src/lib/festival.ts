@@ -906,7 +906,7 @@ function parseExactDate(dateLabel: string, timeLabel: string) {
 }
 
 function parseRangeStart(heading: string) {
-  const match = heading.match(/(?:с\s+)?(\d{1,2})\s+([а-я]+)(?:\s+по|\s*-\s*)(\d{1,2})?\s*([а-я]+)?\s+2026/i);
+  const match = heading.match(/(?:с\s+)?(\d{1,2})\s+([а-я]+)(?:\s+по|\s*[-—–]\s*)(\d{1,2})?\s*([а-я]+)?\s+2026/i);
   if (!match) {
     return null;
   }
@@ -1359,10 +1359,10 @@ function createProvisionalZooExcursion(events: FestivalEvent[]) {
     publicationStatus: '',
     hiddenFromPublic: false,
     accessLabel: '',
-    dateLabel: 'Июнь 2026',
-    monthLabel: 'Скоро',
-    monthAnchor: 'soon',
-    timeLabel: 'Точное время будет объявлено',
+    dateLabel: '28 июня 2026 (воскресенье)',
+    monthLabel: 'Июнь',
+    monthAnchor: 'june',
+    timeLabel: '14:00',
     durationLabel: 'Продолжительность уточняется',
     venue: 'Калининградский зоопарк',
     address: 'проспект Мира, 26',
@@ -1373,18 +1373,64 @@ function createProvisionalZooExcursion(events: FestivalEvent[]) {
     whyGo: 'Экскурсия задумывается как весёлая и полная необычных зоопарковых историй прогулка по советскому слою Калининградского зоопарка.',
     speakerAbout: '',
     questions: [],
-    registrationUrl: undefined,
+    registrationUrl: '/special/zoo-excursion/',
     calendarReady: false,
     googleCalendarUrl: undefined,
     icsUrl: undefined,
-    calendarNote: 'Точная дата и время экскурсии будут объявлены позже.',
+    calendarNote: 'Участие в экскурсии — по итогам розыгрыша спецмероприятия.',
     kind: 'special' as const,
-    isoStart: undefined,
-    showingsLabel: 'Премьера экскурсии в июне',
+    isoStart: '2026-06-28T14:00:00',
+    showingsLabel: '28 июня 14:00 · 10 мест в розыгрыше',
     speakerImages: [],
     dialogueParticipants: [],
     speakerLectureLinks: [],
   } satisfies FestivalEvent;
+}
+
+function createYantarExcursion(): FestivalEvent {
+  const title = 'Экскурсия на судостроительный завод ОСК «Янтарь»';
+
+  return {
+    slug: 'yantar-excursion',
+    title,
+    format: 'Экскурсия',
+    formatLabel: 'Экскурсия',
+    publicationStatus: '',
+    hiddenFromPublic: false,
+    accessLabel: 'для участников с 5 и более событиями фестиваля',
+    dateLabel: '16 июля 2026 (четверг)',
+    monthLabel: 'Июль',
+    monthAnchor: 'july',
+    timeLabel: '17:00',
+    durationLabel: 'Продолжительность уточняется',
+    venue: 'ПСЗ «Янтарь»',
+    address: 'площадь Гуськова, 1',
+    city: DEFAULT_CITY,
+    speakerLabel: '',
+    affiliation: '',
+    heroRole: '',
+    showingsLabel: '16 июля 17:00 · 12 мест в розыгрыше · 10 мест резерв',
+    summary: 'Экскурсия соединяет музей калининградского кораблестроения и живое производство судостроительного завода — «город в городе», где корабль проходит путь от металла до готового судна.',
+    whyGo: 'Это редкая возможность увидеть масштаб судостроения Калининграда: музей, цеха, док, достроочную набережную и заводскую среду, обычно закрытую для свободного посещения.',
+    speakerAbout: '',
+    questions: [],
+    registrationUrl: '/special/yantar-excursion/',
+    publicInfoNotice: undefined,
+    publicRegistrationStateOverride: undefined,
+    calendarReady: false,
+    googleCalendarUrl: undefined,
+    icsUrl: undefined,
+    calendarNote: 'Участие в экскурсии — по итогам розыгрыша спецмероприятия.',
+    image: '/generated/special/yantar-excursion.webp',
+    speakerImages: [],
+    dialogueParticipants: [],
+    kind: 'special',
+    isoStart: '2026-07-16T17:00:00',
+    relatedEvent: undefined,
+    speakerLectureLinks: [],
+    recording: undefined,
+    recordingNotice: undefined,
+  };
 }
 
 function attachRelatedEvents(events: FestivalEvent[]) {
@@ -1515,10 +1561,8 @@ function parseSections() {
     );
 
     const exactDate = parseExactDate(dateLabel, timeLabel);
-    const rangeDate = kind === 'range' ? parseRangeStart(heading) : null;
-    const monthInfo = kind === 'special'
-      ? { monthLabel: 'Скоро', monthAnchor: 'soon' }
-      : exactDate || rangeDate || { monthLabel: 'Скоро', monthAnchor: 'soon' };
+    const rangeDate = kind === 'range' ? parseRangeStart(dateLabel) : null;
+    const monthInfo = exactDate || rangeDate || { monthLabel: 'Скоро', monthAnchor: 'soon' };
     const durationMinutes = parseDurationMinutes(durationLabel);
     const isIcaePublicHoldback = kind === 'dated' && isIcaePublicHoldbackLocation(normalizedLocation);
     const publicVenue = isIcaePublicHoldback ? '' : normalizedLocation.venue;
@@ -1593,6 +1637,7 @@ function parseSections() {
   if (provisionalZooExcursion) {
     events.push(provisionalZooExcursion);
   }
+  events.push(createYantarExcursion());
 
   return sortEvents(attachRelatedEvents(events));
 }

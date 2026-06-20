@@ -37,9 +37,15 @@ const speakerShowcase = allSpeakerShowcase.slice(0, SPEAKER_SHOWCASE_LIMIT);
 const speakerLoadHref = '/data/speakers-more.json';
 const openDialogues = getOpenDialogues(events);
 const SPECIAL_HERO_IMAGE = '/generated/special/etudy-toy-vesny-immersive-hero.webp';
+const YANTAR_HERO_IMAGE = '/generated/special/yantar-excursion.webp';
+const ZOO_HERO_IMAGE = '/generated/events/zoopark-sokolova.webp';
 const SPECIAL_API_BASE_URL = (import.meta.env.PUBLIC_REGISTRATION_API_BASE_URL || 'https://znanie-kgd80-fest.fly.dev').replace(/\/+$/u, '');
 const SPECIAL_EVENT_SLUG = 'etudy-toy-vesny';
 const SPECIAL_EVENT_TOKEN = 'etudy-toy-vesny-debug-20260606';
+const YANTAR_EVENT_SLUG = 'yantar-excursion';
+const YANTAR_EVENT_TOKEN = 'yantar-excursion-20260716';
+const ZOO_EVENT_SLUG = 'zoo-excursion';
+const ZOO_EVENT_TOKEN = 'zoo-excursion-20260628';
 type RelatedEventCard = NonNullable<(typeof events)[number]['relatedEvent']>;
 type HeroQuoteType = 'festival' | 'lecture';
 type HeroVariantBase = {
@@ -767,7 +773,47 @@ const specialHeroVariant: HeroMythVariant = {
   priority: 1000,
   fixedFirst: true,
 };
-const heroStoryVariants = [specialHeroVariant, ...(heroVariants.length ? heroVariants : [fallbackHeroVariant])];
+const yantarHeroVariant: HeroMythVariant = {
+  id: 'special-yantar-excursion',
+  kind: 'myth',
+  className: 'hero-showcase--special-event',
+  prompt: 'Новый спецпроект',
+  label: 'Новый спецпроект',
+  title: 'Экскурсия на судостроительный завод ОСК «Янтарь»',
+  body: 'Музей кораблестроения и производственные площадки завода — город в городе, куда можно попасть через розыгрыш.',
+  eventHref: '/special/yantar-excursion/',
+  backdropImage: YANTAR_HERO_IMAGE,
+  ctaLabel: 'Подать заявку',
+  specialRegistration: {
+    apiBaseUrl: SPECIAL_API_BASE_URL,
+    eventSlug: YANTAR_EVENT_SLUG,
+    token: YANTAR_EVENT_TOKEN,
+    availableLabel: 'Подать заявку',
+    closedLabel: 'Заявки закрыты',
+  },
+  priority: 995,
+};
+const zooHeroVariant: HeroMythVariant = {
+  id: 'special-zoo-excursion',
+  kind: 'myth',
+  className: 'hero-showcase--special-event',
+  prompt: 'Открыт розыгрыш',
+  label: 'Открыт розыгрыш',
+  title: 'Экскурсия по советскому слою Калининградского зоопарка',
+  body: '28 июня в 14:00: новая тематическая экскурсия по зоопарку, 10 мест в розыгрыше.',
+  eventHref: '/special/zoo-excursion/',
+  backdropImage: ZOO_HERO_IMAGE,
+  ctaLabel: 'Подать заявку',
+  specialRegistration: {
+    apiBaseUrl: SPECIAL_API_BASE_URL,
+    eventSlug: ZOO_EVENT_SLUG,
+    token: ZOO_EVENT_TOKEN,
+    availableLabel: 'Подать заявку',
+    closedLabel: 'Заявки закрыты',
+  },
+  priority: 998,
+};
+const heroStoryVariants = [zooHeroVariant, yantarHeroVariant, specialHeroVariant, ...(heroVariants.length ? heroVariants : [fallbackHeroVariant])];
 const defaultHeroVariant = heroStoryVariants[0];
 const defaultHeroIsQuote = isHeroQuoteVariant(defaultHeroVariant);
 const defaultHeroIsMyth = isHeroMythVariant(defaultHeroVariant);

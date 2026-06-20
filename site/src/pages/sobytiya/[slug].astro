@@ -34,10 +34,35 @@ const programHref = getSmartProgramHref(allEvents, false, now);
 const recordingsHref = '/zapisi/';
 const canonicalPath = getFestivalEventHref(event.slug);
 const siteOrigin = (import.meta.env.PUBLIC_SITE_ORIGIN || 'https://kgd80.ru').replace(/\/+$/u, '');
-const specialRegistrationHref = '/special/etudy-toy-vesny/';
 const specialApiBaseUrl = (import.meta.env.PUBLIC_REGISTRATION_API_BASE_URL || 'https://znanie-kgd80-fest.fly.dev').replace(/\/+$/u, '');
-const specialEventToken = 'etudy-toy-vesny-debug-20260606';
-const isEtudySpecialEvent = event.slug === 'etyudy-toy-vesny';
+const specialApplicationConfigs: Record<string, { href: string; eventSlug: string; token: string; accessTitle: string; accessCopy: string; closedCopy: string }> = {
+  'etyudy-toy-vesny': {
+    href: '/special/etudy-toy-vesny/',
+    eventSlug: 'etudy-toy-vesny',
+    token: 'etudy-toy-vesny-debug-20260606',
+    accessTitle: 'Как попасть на спектакль',
+    accessCopy: 'На розыгрыш приглашений могут подать заявку участники, которые посетили не меньше 5 событий фестиваля и собрали штампы в паспорте участника. Заявка не является билетом: победители получат приглашение на конкретный показ после розыгрыша.',
+    closedCopy: 'Заявки на все даты спектакля сейчас недоступны.',
+  },
+  'premera-novoy-tematicheskoy-ekskursii-po-kaliningradskomu-zooparku': {
+    href: '/special/zoo-excursion/',
+    eventSlug: 'zoo-excursion',
+    token: 'zoo-excursion-20260628',
+    accessTitle: 'Как попасть на экскурсию',
+    accessCopy: 'На розыгрыш 10 мест могут подать заявку участники, которые посетили не меньше 5 событий фестиваля и собрали штампы в паспорте участника. Заявка не является билетом: победители получат приглашение после розыгрыша.',
+    closedCopy: 'Заявки на экскурсию сейчас недоступны.',
+  },
+  'yantar-excursion': {
+    href: '/special/yantar-excursion/',
+    eventSlug: 'yantar-excursion',
+    token: 'yantar-excursion-20260716',
+    accessTitle: 'Как попасть на экскурсию',
+    accessCopy: 'На розыгрыш 12 мест могут подать заявку участники, которые посетили не меньше 5 событий фестиваля и собрали штампы в паспорте участника. Победители прошлых спецрозыгрышей остаются в пуле, но с меньшим весом заявки.',
+    closedCopy: 'Заявки на экскурсию сейчас недоступны.',
+  },
+};
+const currentSpecialApplication = specialApplicationConfigs[event.slug];
+const isSpecialApplicationEvent = Boolean(currentSpecialApplication);
 const absoluteEventUrl = new URL(canonicalPath, `${siteOrigin}/`).toString();
 const programMonthHref = `/programma/#month-${event.monthAnchor}`;
 const descriptionBase = event.summary || event.whyGo || `Событие фестиваля «80 историй о главном»: ${event.title}.`;
@@ -146,7 +171,7 @@ const etudyStructuredData = [
     },
   },
 ];
-const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructuredData;
+const structuredData = event.slug === 'etyudy-toy-vesny' ? etudyStructuredData : baseStructuredData;
 ---
 
 <Layout
@@ -229,13 +254,13 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
                     </nav>
                   )}
 
-                  {isEtudySpecialEvent ? (
+                  {currentSpecialApplication ? (
                     <div class="event-leaf__registration event-leaf__registration--special" data-special-event-cta-card>
                       <a
                         class="button button--primary button--disabled"
-                        href={specialRegistrationHref}
+                        href={currentSpecialApplication.href}
                         data-special-event-cta
-                        data-enabled-href={specialRegistrationHref}
+                        data-enabled-href={currentSpecialApplication.href}
                         aria-disabled="true"
                       >
                         Проверяем заявку…
@@ -307,7 +332,7 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
                       Google
                     </a>
                   </div>
-                ) : temporalState !== 'past' && !isEtudySpecialEvent && event.calendarNote ? (
+                ) : temporalState !== 'past' && !currentSpecialApplication && event.calendarNote ? (
                   <p class="event-leaf__notice">{event.calendarNote}</p>
                 ) : null}
               </div>
@@ -369,17 +394,16 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
                 </section>
               )}
 
-              {isEtudySpecialEvent && (
+              {currentSpecialApplication && (
                 <section class="event-leaf__section event-leaf__section--special-access" aria-labelledby="event-leaf-special-access">
-                  <h2 id="event-leaf-special-access">Как попасть на спектакль</h2>
-                  <p class="event-leaf__section-copy">На розыгрыш приглашений могут подать заявку участники, которые посетили не меньше 5 событий фестиваля и собрали штампы в паспорте участника. Если пяти посещений пока нет, ещё не поздно выбрать события в программе, прийти на них и вернуться к заявке после пятого штампа.</p>
-                  <p class="event-leaf__section-copy">Заявку на розыгрыш спектакля «Этюды той весны» можно подать до 24 июня 2026. Заявка не является билетом: победители получат приглашение на конкретный показ после розыгрыша.</p>
+                  <h2 id="event-leaf-special-access">{currentSpecialApplication.accessTitle}</h2>
+                  <p class="event-leaf__section-copy">{currentSpecialApplication.accessCopy}</p>
                   <div class="event-leaf__actions">
                     <a
                       class="button button--primary button--disabled"
-                      href={specialRegistrationHref}
+                      href={currentSpecialApplication.href}
                       data-special-event-cta
-                      data-enabled-href={specialRegistrationHref}
+                      data-enabled-href={currentSpecialApplication.href}
                       aria-disabled="true"
                     >
                       Проверяем заявку…
@@ -436,8 +460,8 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
     <RegistrationClient />
   </div>
 
-  {isEtudySpecialEvent && (
-    <script define:vars={{ specialApiBaseUrl, specialEventToken }} is:inline>
+  {currentSpecialApplication && (
+    <script define:vars={{ specialApiBaseUrl, currentSpecialApplication }} is:inline>
       const specialCtas = Array.from(document.querySelectorAll('[data-special-event-cta]'));
       const specialNotice = document.querySelector('[data-special-event-notice]');
 
@@ -474,7 +498,7 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
 
         setSpecialCta(true, 'Проверяем заявку…', '');
         try {
-          const response = await fetch(`${specialApiBaseUrl}/api/v1/special/events/etudy-toy-vesny?token=${encodeURIComponent(specialEventToken)}`, {
+          const response = await fetch(`${specialApiBaseUrl}/api/v1/special/events/${currentSpecialApplication.eventSlug}?token=${encodeURIComponent(currentSpecialApplication.token)}`, {
             cache: 'no-store',
           });
           if (!response.ok) {
@@ -486,7 +510,7 @@ const structuredData = isEtudySpecialEvent ? etudyStructuredData : baseStructure
           if (data?.applicationAvailable && availableShowings.length) {
             setSpecialCta(false, 'Подать заявку на розыгрыш', `Доступно дат для заявки: ${availableShowings.length}. Заявка не является билетом.`);
           } else {
-            setSpecialCta(true, 'Заявки закрыты', 'Заявки на все даты спектакля сейчас недоступны.');
+            setSpecialCta(true, 'Заявки закрыты', currentSpecialApplication.closedCopy || 'Заявки сейчас недоступны.');
           }
         } catch {
           setSpecialCta(true, 'Статус заявки недоступен', 'Не удалось проверить доступность заявки. Обновите страницу чуть позже.');

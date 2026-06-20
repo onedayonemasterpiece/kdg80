@@ -26,6 +26,7 @@ type SpecialEventRow = {
   extra_stamp_points: number;
   no_show_grace_count: number;
   no_show_penalty_points: number;
+  previous_winner_weight_percent: number;
 };
 
 type SpecialShowingRow = {
@@ -196,6 +197,7 @@ function publicSpecialEventView(event: SpecialEventRow, showings: SpecialShowing
       extraStampPoints: event.extra_stamp_points,
       noShowGraceCount: event.no_show_grace_count,
       noShowPenaltyPoints: event.no_show_penalty_points,
+      previousWinnerWeightPercent: event.previous_winner_weight_percent,
     },
     showings: publicShowings,
   };

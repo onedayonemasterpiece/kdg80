@@ -1,0 +1,203 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import SiteFooter from '../../components/SiteFooter.astro';
+import SiteHeader from '../../components/SiteHeader.astro';
+import { getFestivalEvents } from '../../lib/festival';
+import { getRouteNavItems, getSmartProgramHref } from '../../lib/routes';
+
+const events = getFestivalEvents();
+const now = new Date();
+const routeItems = getRouteNavItems();
+const programHref = getSmartProgramHref(events, false, now);
+const title = 'Спецмероприятия фестиваля | 80 историй о главном';
+const description = 'Розыгрыши и специальные форматы фестиваля: экскурсии, спектакли и события с отдельной заявкой по паспорту участника.';
+const specialCards = [
+  {
+    title: 'Премьера новой тематической экскурсии по Калининградскому зоопарку',
+    kicker: 'Открыта заявка',
+    meta: '28 июня 14:00 · 10 мест в розыгрыше',
+    text: 'Экскурсия по советскому периоду зоопарка: послевоенное восстановление, городская культура, зоопросвещение и живые истории о мирной жизни.',
+    href: '/special/zoo-excursion/',
+    image: '/generated/events/zoopark-sokolova.webp',
+    imageAlt: 'Зебра в Калининградском зоопарке',
+    imageWidth: 900,
+    imageHeight: 1200,
+    cta: 'Подать заявку',
+  },
+  {
+    title: 'Экскурсия на судостроительный завод ОСК «Янтарь»',
+    kicker: 'Новый спецпроект',
+    meta: '16 июля 17:00 · 12 мест в розыгрыше · 10 мест резерв',
+    text: 'Музей калининградского кораблестроения и производственные площадки завода — редкий маршрут в «город в городе».',
+    href: '/special/yantar-excursion/',
+    image: '/generated/special/yantar-excursion.webp',
+    imageAlt: 'Корпус судна и краны на территории завода «Янтарь»',
+    imageWidth: 1800,
+    imageHeight: 1350,
+    cta: 'Подать заявку',
+  },
+  {
+    title: 'Этюды той весны',
+    kicker: 'Иммерсивный спектакль',
+    meta: '11, 23 и 25 июня · Южный вокзал',
+    text: 'Спектакль на основе реальных историй первых переселенцев в Калининградскую область.',
+    href: '/special/etudy-toy-vesny/',
+    image: '/generated/special/etudy-toy-vesny-immersive-hero.webp',
+    imageAlt: 'Герои иммерсивного спектакля «Этюды той весны»',
+    imageWidth: 1800,
+    imageHeight: 1350,
+    cta: 'Подробнее',
+  },
+];
+---
+
+<Layout title={title} description={description} canonicalPath="/special/" ogImage="/generated/special/yantar-excursion.webp">
+  <div class="page page--special-index">
+    <SiteHeader routeItems={routeItems} programHref={programHref} />
+    <main class="special-index">
+      <section class="special-index__hero">
+        <div class="container special-index__hero-grid">
+          <div>
+            <p class="section__eyebrow">Спецмероприятия</p>
+            <h1>Розыгрыши, экскурсии и специальные форматы фестиваля</h1>
+            <p>Здесь собраны события, куда нельзя просто зарегистрироваться как на лекцию: нужно подать заявку на розыгрыш, подтвердить посещения фестиваля паспортом участника и дождаться результатов.</p>
+          </div>
+          <a class="button button--primary" href="/programma/">Вернуться к программе</a>
+        </div>
+      </section>
+
+      <section class="special-index__list" aria-label="Список спецмероприятий">
+        <div class="container special-index__cards">
+          {specialCards.map((card) => (
+            <article class="special-index-card">
+              <a class="special-index-card__image" href={card.href} aria-label={card.title}>
+                <img src={card.image} alt={card.imageAlt} width={card.imageWidth} height={card.imageHeight} loading="eager" decoding="async" />
+              </a>
+              <div class="special-index-card__body">
+                <p>{card.kicker}</p>
+                <h2>{card.title}</h2>
+                <strong>{card.meta}</strong>
+                <span>{card.text}</span>
+                <a class="button button--primary" href={card.href}>{card.cta}</a>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    </main>
+    <SiteFooter routeItems={routeItems} programHref={programHref} />
+  </div>
+</Layout>
+
+<style>
+  .special-index {
+    padding-block: calc(var(--site-header-height, 5rem) + 1.5rem) 4rem;
+    background: linear-gradient(180deg, #fff8ef 0%, #f2e6d9 100%);
+    min-height: 100dvh;
+  }
+
+  .special-index__hero-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1.5rem;
+    align-items: end;
+  }
+
+  .special-index__hero h1 {
+    max-width: 13ch;
+    margin: 0.2rem 0 0.9rem;
+    font-family: var(--font-display);
+    font-size: clamp(3rem, 7vw, 6.5rem);
+    line-height: 0.9;
+    overflow-wrap: break-word;
+  }
+
+  .special-index__hero p:not(.section__eyebrow) {
+    max-width: 42rem;
+    color: var(--ink-soft);
+    font-size: clamp(1.05rem, 2vw, 1.28rem);
+    line-height: 1.55;
+  }
+
+  .special-index__cards {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    margin-top: 2rem;
+  }
+
+  .special-index-card {
+    overflow: hidden;
+    border: 1px solid rgba(94, 57, 30, 0.12);
+    border-radius: 1.4rem;
+    background: rgba(255, 252, 247, 0.9);
+    box-shadow: 0 1rem 2.8rem rgba(77, 41, 22, 0.09);
+  }
+
+  .special-index-card__image {
+    display: block;
+    aspect-ratio: 4 / 3;
+    background: #eadbca;
+  }
+
+  .special-index-card__image img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .special-index-card__body {
+    display: grid;
+    gap: 0.72rem;
+    padding: 1.1rem;
+  }
+
+  .special-index-card__body p {
+    margin: 0;
+    color: var(--accent-deep);
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .special-index-card__body h2 {
+    margin: 0;
+    font-size: clamp(1.35rem, 2vw, 1.95rem);
+    line-height: 1.02;
+  }
+
+  .special-index-card__body strong,
+  .special-index-card__body span {
+    color: var(--ink-soft);
+    line-height: 1.45;
+  }
+
+  .special-index-card__body .button {
+    width: fit-content;
+    margin-top: 0.2rem;
+  }
+
+  @media (max-width: 900px) {
+    .special-index__hero-grid,
+    .special-index__cards {
+      grid-template-columns: 1fr;
+    }
+
+    .special-index__hero-grid > .button {
+      width: fit-content;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .special-index {
+      padding-block-start: calc(var(--site-header-height, 4rem) + 1rem);
+    }
+
+    .special-index__hero h1 {
+      max-width: none;
+      font-size: clamp(2.35rem, 13vw, 3.8rem);
+    }
+  }
+</style>

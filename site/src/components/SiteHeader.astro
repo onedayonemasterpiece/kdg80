@@ -7,6 +7,8 @@ interface Props {
   speakersHref?: string;
   dialoguesHref?: string;
   pressHref?: string;
+  recordingsHref?: string;
+  specialHref?: string;
   routeItems: RouteNavItem[];
   currentRouteSlug?: string;
 }
@@ -17,6 +19,8 @@ const {
   speakersHref = isHome ? '#speakers' : '/#speakers',
   dialoguesHref = isHome ? '#dialogues' : '/#dialogues',
   pressHref = isHome ? '#press' : '/#press',
+  recordingsHref = '/zapisi/',
+  specialHref = '/special/',
   routeItems,
   currentRouteSlug,
 } = Astro.props;
@@ -49,11 +53,15 @@ const headerKind = isHome ? 'home' : (currentRouteSlug ? 'route' : 'default');
               {item.isShortcut && <small>На главной странице</small>}
             </a>
           ))}
+          <a class="site-header__route-link" href={specialHref}><span>Спецмероприятия</span><small>Розыгрыши и спецформаты</small></a>
+          <a class="site-header__route-link" href={recordingsHref}><span>Записи</span><small>Прошедшие лекции</small></a>
         </div>
       </details>
       <a href={speakersHref}>Спикеры</a>
       <a href={programHref}>Программа</a>
       <a href={dialoguesHref}>Открытые диалоги</a>
+      <a href={specialHref}>Спецмероприятия</a>
+      <a href={recordingsHref}>Записи</a>
       <a href={pressHref}>СМИ</a>
     </nav>
 

@@ -1,12 +1,16 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import SiteHeader from '../../components/SiteHeader.astro';
-import { getRouteNavItems } from '../../lib/routes';
+import { getFestivalEvents } from '../../lib/festival';
+import { getRouteNavItems, getSmartProgramHref } from '../../lib/routes';
 
 const apiBaseUrl = (import.meta.env.PUBLIC_REGISTRATION_API_BASE_URL || 'https://znanie-kgd80-fest.fly.dev').replace(/\/+$/u, '');
 const token = 'yantar-excursion-20260716';
 const eventSlug = 'yantar-excursion';
 const routeItems = getRouteNavItems();
+const events = getFestivalEvents();
+const now = new Date();
+const programHref = getSmartProgramHref(events, false, now);
 const canonicalPath = '/special/yantar-excursion/';
 const title = 'Заявка на розыгрыш — экскурсия на завод ОСК Янтарь';
 const description = 'Заявка на розыгрыш мест на экскурсию в Музей калининградского кораблестроения и на производственные площадки судостроительного завода ОСК «Янтарь».';
@@ -21,7 +25,7 @@ const ogImage = '/generated/special/yantar-excursion.webp';
   ogImage={ogImage}
 >
   <div class="special-page">
-    <SiteHeader programHref="/programma/" routeItems={routeItems} />
+    <SiteHeader programHref={programHref} routeItems={routeItems} />
     <main class="special-page__main">
       <section class="special-intro" aria-labelledby="special-title">
         <p class="special-kicker">Заявка на розыгрыш</p>

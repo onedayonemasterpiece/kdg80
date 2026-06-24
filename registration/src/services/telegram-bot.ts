@@ -1175,15 +1175,29 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
     await ctx.answerCallbackQuery({
       text: 'Отправляю VK-сообщения победителям.',
     });
+    const chatId = ctx.chat?.id;
+    await ctx.reply('Запустил повторную отправку VK-сообщений по опубликованному розыгрышу. Уже отправленные сообщения не дублируются.');
 
-    const vkNotificationSummary = await sendSpecialDrawWinnerVkMessages({
-      db: deps.db,
-      result,
-      vkToken: deps.vkAuthToken,
-      logger: app.log,
+    setImmediate(() => {
+      void (async () => {
+        const vkNotificationSummary = await sendSpecialDrawWinnerVkMessages({
+          db: deps.db,
+          result,
+          vkToken: deps.vkAuthToken,
+          logger: app.log,
+        });
+        if (chatId) {
+          await bot.api.sendMessage(chatId, formatSpecialWinnerVkNotificationSummary(vkNotificationSummary));
+        }
+      })().catch((error) => {
+        app.log.error({ err: error, showingId }, 'special_winner_vk_resend_failed');
+        if (chatId) {
+          void bot.api.sendMessage(chatId, 'Не удалось завершить повторную отправку VK-сообщений победителям. Ошибка записана в лог сервера.').catch((sendError: unknown) => {
+            app.log.error({ err: sendError, showingId }, 'special_winner_vk_resend_failure_report_failed');
+          });
+        }
+      });
     });
-    await ctx.reply(formatSpecialWinnerVkNotificationSummary(vkNotificationSummary));
-    await sendSpecialShowingPanel(ctx, deps.db, admin.role, showingId, deps.privateKeyPemBase64);
   });
 
   bot.callbackQuery(/^sph:(\d+)$/u, async (ctx) => {

@@ -6,8 +6,10 @@ import type { SpecialDrawResult } from './special-draws';
 const VK_API_BASE_URL = 'https://api.vk.com/method/';
 const VK_API_VERSION = process.env.VK_API_VERSION?.trim() || '5.199';
 const MATCH_CONFIDENCE_MIN = 0.85;
+const DEFAULT_WINNER_SUBSCRIBER_GROUP_IDS = [231920894, 231828790];
 
 type WinnerVkNotificationStatus = 'sent' | 'failed' | 'skipped';
+type WinnerVkRecipientSource = 'social_activity_match' | 'vk_group_subscriber_exact_name';
 
 type WinnerVkNotificationResult = {
   applicationId: number;
@@ -15,6 +17,7 @@ type WinnerVkNotificationResult = {
   fullName: string;
   status: WinnerVkNotificationStatus;
   vkUserId: number | null;
+  source?: WinnerVkRecipientSource;
   reason?: string;
   error?: string;
 };
@@ -29,6 +32,20 @@ export type SpecialWinnerVkNotificationSummary = {
 function readPositiveInteger(value: string | undefined, fallback: number) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function readIntegerList(value: string | undefined, fallback: number[]) {
+  const parsed = String(value ?? '')
+    .split(/[,;\s]+/u)
+    .map((item) => Number.parseInt(item.trim(), 10))
+    .filter((item) => Number.isFinite(item) && item > 0);
+  return parsed.length ? Array.from(new Set(parsed)) : fallback;
 }
 
 function tableExists(db: Database.Database, tableName: string) {
@@ -57,6 +74,33 @@ function firstNameFromFullName(value: string) {
   return parts[0] || '';
 }
 
+function normalizeNamePart(value: string) {
+  return value
+    .trim()
+    .toLocaleLowerCase('ru-RU')
+    .replace(/ё/gu, 'е')
+    .replace(/[^a-zа-я0-9-]+/giu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
+function buildPersonKey(lastName: string, firstName: string) {
+  const normalizedLastName = normalizeNamePart(lastName);
+  const normalizedFirstName = normalizeNamePart(firstName);
+  if (!normalizedLastName || !normalizedFirstName) {
+    return null;
+  }
+  return `${normalizedLastName}\u0000${normalizedFirstName}`;
+}
+
+function winnerNameKey(fullName: string) {
+  const parts = fullName.trim().split(/\s+/u).filter(Boolean);
+  if (parts.length < 2) {
+    return null;
+  }
+  return buildPersonKey(parts[0], parts[1]);
+}
+
 function buildWinnerMessage(result: SpecialDrawResult, winner: SpecialDrawResult['winners'][number]) {
   const firstName = firstNameFromFullName(winner.fullName);
   const greeting = firstName ? `${firstName}, поздравляем!` : 'Поздравляем!';
@@ -72,6 +116,17 @@ function buildWinnerMessage(result: SpecialDrawResult, winner: SpecialDrawResult
     'Сообщение создано автоматически.',
   ].join('\n');
 }
+
+type RecipientLookupResult = {
+  status: 'found';
+  vkUserId: number;
+  source: WinnerVkRecipientSource;
+  reason?: string;
+} | {
+  status: 'skipped';
+  reason: string;
+  vkUserId: null;
+};
 
 function findConfidentVkRecipient(db: Database.Database, applicationId: number) {
   if (!tableExists(db, 'vk_social_actors')) {
@@ -100,32 +155,180 @@ function findConfidentVkRecipient(db: Database.Database, applicationId: number) 
   }
 
   return {
-    status: 'sent' as const,
+    status: 'found' as const,
     vkUserId: rows[0].vk_user_id,
+    source: 'social_activity_match' as const,
     displayName: rows[0].display_name,
     confidence: rows[0].match_confidence,
   };
 }
 
-async function sendVkMessage(token: string, vkUserId: number, message: string) {
+async function callVkApi<T>(
+  token: string,
+  method: string,
+  params: Record<string, string>,
+  timeoutMs: number,
+) {
   const body = new URLSearchParams();
   body.set('access_token', token);
   body.set('v', VK_API_VERSION);
-  body.set('user_id', String(vkUserId));
-  body.set('random_id', String(crypto.randomInt(1, 2_147_483_647)));
-  body.set('message', message);
-
-  const response = await fetch(`${VK_API_BASE_URL}messages.send`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body,
-    signal: AbortSignal.timeout(readPositiveInteger(process.env.VK_WINNER_MESSAGE_TIMEOUT_MS, 25_000)),
-  });
-  const json = await response.json() as { response?: number; error?: { error_code: number; error_msg: string } };
-  if (json.error) {
-    throw new Error(`VK messages.send ${json.error.error_code}: ${json.error.error_msg}`);
+  for (const [key, value] of Object.entries(params)) {
+    body.set(key, value);
   }
-  return json.response ?? 0;
+
+  const maxRetries = readPositiveInteger(process.env.VK_WINNER_API_MAX_RETRIES, 4);
+  const retryBaseMs = readPositiveInteger(process.env.VK_WINNER_API_RETRY_BASE_MS, 1_100);
+
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const response = await fetch(`${VK_API_BASE_URL}${method}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const json = await response.json() as { response?: T; error?: { error_code: number; error_msg: string } };
+    if (!json.error) {
+      return json.response as T;
+    }
+
+    if (json.error.error_code === 6 && attempt < maxRetries) {
+      await sleep(retryBaseMs * (attempt + 1));
+      continue;
+    }
+
+    throw new Error(`VK ${method} ${json.error.error_code}: ${json.error.error_msg}`);
+  }
+
+  throw new Error(`VK ${method}: retries exhausted.`);
+}
+
+async function sendVkMessage(token: string, vkUserId: number, message: string) {
+  return callVkApi<number>(
+    token,
+    'messages.send',
+    {
+      user_id: String(vkUserId),
+      random_id: String(crypto.randomInt(1, 2_147_483_647)),
+      message,
+    },
+    readPositiveInteger(process.env.VK_WINNER_MESSAGE_TIMEOUT_MS, 25_000),
+  );
+}
+
+type VkGroupMember = {
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  deactivated?: string;
+};
+
+type VkGroupMembersResponse = {
+  count: number;
+  items: VkGroupMember[];
+};
+
+type SubscriberMatch = {
+  vkUserId: number;
+  firstName: string;
+  lastName: string;
+  groupIds: Set<number>;
+};
+
+type SubscriberIndex = Map<string, Map<number, SubscriberMatch>>;
+
+async function fetchWinnerSubscriberIndex(token: string, logger?: FastifyBaseLogger) {
+  const groupIds = readIntegerList(
+    process.env.VK_WINNER_FOLLOWER_GROUP_IDS,
+    DEFAULT_WINNER_SUBSCRIBER_GROUP_IDS,
+  );
+  const pageSize = Math.min(readPositiveInteger(process.env.VK_WINNER_FOLLOWER_PAGE_SIZE, 1000), 1000);
+  const maxMembersPerGroup = readPositiveInteger(process.env.VK_WINNER_FOLLOWER_MAX_MEMBERS_PER_GROUP, 50_000);
+  const minIntervalMs = readPositiveInteger(process.env.VK_WINNER_FOLLOWER_API_MIN_INTERVAL_MS, 1_100);
+  const index: SubscriberIndex = new Map();
+
+  for (const groupId of groupIds) {
+    let offset = 0;
+    let total = Number.POSITIVE_INFINITY;
+    while (offset < total && offset < maxMembersPerGroup) {
+      const response = await callVkApi<VkGroupMembersResponse>(
+        token,
+        'groups.getMembers',
+        {
+          group_id: String(groupId),
+          count: String(Math.min(pageSize, maxMembersPerGroup - offset)),
+          offset: String(offset),
+          fields: 'screen_name',
+        },
+        readPositiveInteger(process.env.VK_WINNER_FOLLOWER_TIMEOUT_MS, 25_000),
+      );
+      total = Number.isFinite(response.count) ? response.count : offset + response.items.length;
+
+      for (const item of response.items ?? []) {
+        if (!item || !item.id || item.deactivated) {
+          continue;
+        }
+        const key = buildPersonKey(item.last_name ?? '', item.first_name ?? '');
+        if (!key) {
+          continue;
+        }
+        let byUserId = index.get(key);
+        if (!byUserId) {
+          byUserId = new Map();
+          index.set(key, byUserId);
+        }
+        const existing = byUserId.get(item.id);
+        if (existing) {
+          existing.groupIds.add(groupId);
+        } else {
+          byUserId.set(item.id, {
+            vkUserId: item.id,
+            firstName: item.first_name ?? '',
+            lastName: item.last_name ?? '',
+            groupIds: new Set([groupId]),
+          });
+        }
+      }
+
+      offset += response.items?.length ?? 0;
+      if (!response.items?.length) {
+        break;
+      }
+      if (offset < total && offset < maxMembersPerGroup) {
+        await sleep(minIntervalMs);
+      }
+    }
+
+    if (total > maxMembersPerGroup) {
+      logger?.warn({ groupId, total, maxMembersPerGroup }, 'special_winner_vk_subscribers_truncated');
+    }
+  }
+
+  return index;
+}
+
+function findUniqueSubscriberRecipient(
+  index: SubscriberIndex,
+  winner: SpecialDrawResult['winners'][number],
+): RecipientLookupResult {
+  const key = winnerNameKey(winner.fullName);
+  if (!key) {
+    return { status: 'skipped', reason: 'winner_name_not_matchable', vkUserId: null };
+  }
+
+  const matches = Array.from(index.get(key)?.values() ?? []);
+  if (!matches.length) {
+    return { status: 'skipped', reason: 'no_vk_subscriber_name_match', vkUserId: null };
+  }
+  if (matches.length !== 1) {
+    return { status: 'skipped', reason: 'multiple_vk_subscriber_name_matches', vkUserId: null };
+  }
+
+  return {
+    status: 'found',
+    vkUserId: matches[0].vkUserId,
+    source: 'vk_group_subscriber_exact_name',
+    reason: `groups:${Array.from(matches[0].groupIds).sort((a, b) => a - b).join(',')}`,
+  };
 }
 
 function ensurePendingNotification(
@@ -216,8 +419,28 @@ export async function sendSpecialDrawWinnerVkMessages(deps: {
     return summary;
   }
 
+  let subscriberIndex: SubscriberIndex | null = null;
+  let subscriberLookupError: string | null = null;
+  const findSubscriberRecipient = async (winner: SpecialDrawResult['winners'][number]) => {
+    if (subscriberLookupError) {
+      return { status: 'skipped' as const, reason: subscriberLookupError, vkUserId: null };
+    }
+    try {
+      subscriberIndex ??= await fetchWinnerSubscriberIndex(deps.vkToken as string, deps.logger);
+      return findUniqueSubscriberRecipient(subscriberIndex, winner);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      subscriberLookupError = `vk_subscriber_lookup_failed: ${message.slice(0, 180)}`;
+      deps.logger?.warn({ err: error }, 'special_winner_vk_subscriber_lookup_failed');
+      return { status: 'skipped' as const, reason: subscriberLookupError, vkUserId: null };
+    }
+  };
+
   for (const winner of deps.result.winners) {
-    const recipient = findConfidentVkRecipient(deps.db, winner.applicationId);
+    const socialRecipient = findConfidentVkRecipient(deps.db, winner.applicationId);
+    const recipient: RecipientLookupResult = socialRecipient.status === 'found'
+      ? socialRecipient
+      : await findSubscriberRecipient(winner);
     if (recipient.status === 'skipped' || !recipient.vkUserId) {
       summary.skipped += 1;
       summary.results.push({
@@ -241,6 +464,7 @@ export async function sendSpecialDrawWinnerVkMessages(deps: {
         fullName: winner.fullName,
         status: 'skipped',
         vkUserId: recipient.vkUserId,
+        source: recipient.source,
         reason: 'already_sent',
       });
       continue;
@@ -256,6 +480,8 @@ export async function sendSpecialDrawWinnerVkMessages(deps: {
         fullName: winner.fullName,
         status: 'sent',
         vkUserId: recipient.vkUserId,
+        source: recipient.source,
+        reason: recipient.reason,
       });
     } catch (error) {
       const messageText = error instanceof Error ? error.message : String(error);
@@ -268,6 +494,7 @@ export async function sendSpecialDrawWinnerVkMessages(deps: {
         fullName: winner.fullName,
         status: 'failed',
         vkUserId: recipient.vkUserId,
+        source: recipient.source,
         error: messageText,
       });
     }
@@ -282,6 +509,7 @@ export function formatSpecialWinnerVkNotificationSummary(summary: SpecialWinnerV
     ...summary.results.slice(0, 20).map((item) => [
       `• ${item.fullName}: ${item.status}`,
       item.vkUserId ? `VK id ${item.vkUserId}` : null,
+      item.source ? `источник: ${item.source}` : null,
       item.reason ? `причина: ${item.reason}` : null,
       item.error ? `ошибка: ${item.error}` : null,
     ].filter(Boolean).join('; ')),

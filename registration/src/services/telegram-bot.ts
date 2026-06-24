@@ -366,6 +366,9 @@ function buildSpecialShowingKeyboard(
 
   if (latestPublished) {
     keyboard.text('XLSX победителей', `spx:${showingId}`).row();
+    if (role === 'superadmin') {
+      keyboard.text('VK победителям', `spv:${showingId}`).row();
+    }
     for (const winner of latestPublished.winners.slice(0, 10)) {
       keyboard.text(`Фото: ${truncateLabel(winner.fullName, 28)}`, `sph:${winner.applicationId}`).row();
     }
@@ -1138,6 +1141,49 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
         caption: `XLSX победителей: ${result.event.title}, ${result.showing.display_label}`,
       },
     );
+  });
+
+  bot.callbackQuery(/^spv:(\d+)$/u, async (ctx) => {
+    const admin = requireAdminRole(String(ctx.from?.id ?? ''));
+    if (!admin || admin.role !== 'superadmin') {
+      await ctx.answerCallbackQuery({
+        text: 'VK-уведомления может запускать только суперадмин.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    if (!deps.privateKeyPemBase64) {
+      await ctx.answerCallbackQuery({
+        text: 'Нужен приватный ключ, чтобы прочитать опубликованный розыгрыш.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    const [, showingIdRaw] = ctx.match;
+    const showingId = Number(showingIdRaw);
+    const result = getLatestSpecialDrawResult(deps.db, showingId, 'published', deps.privateKeyPemBase64);
+    if (!result) {
+      await ctx.answerCallbackQuery({
+        text: 'Опубликованного результата пока нет.',
+        show_alert: true,
+      });
+      return;
+    }
+
+    await ctx.answerCallbackQuery({
+      text: 'Отправляю VK-сообщения победителям.',
+    });
+
+    const vkNotificationSummary = await sendSpecialDrawWinnerVkMessages({
+      db: deps.db,
+      result,
+      vkToken: deps.vkAuthToken,
+      logger: app.log,
+    });
+    await ctx.reply(formatSpecialWinnerVkNotificationSummary(vkNotificationSummary));
+    await sendSpecialShowingPanel(ctx, deps.db, admin.role, showingId, deps.privateKeyPemBase64);
   });
 
   bot.callbackQuery(/^sph:(\d+)$/u, async (ctx) => {

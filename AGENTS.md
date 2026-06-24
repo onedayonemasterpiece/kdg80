@@ -2,21 +2,29 @@
 
 - `Opus` always means `Claude Opus`, never a generic quality level, mode name, or informal nickname.
 - The aliases `Opus`, `Опус`, `Claude Opus`, and `Claude Opus latest` all mean: run Claude with the `opus` model alias.
-- Gemini CLI may be used in this workspace as a consultation model for implementation planning, code review, debugging, second opinions, and strategy checks.
-- Prefer Gemini for routine consultations and quick external validation more often than Opus. Use it proactively for ordinary consulting passes unless the user explicitly asks for Opus or there is a clear reason to escalate beyond Gemini.
+- Antigravity CLI (`agy`) may be used in this workspace as a consultation model runner for implementation planning, code review, debugging, second opinions, and strategy checks.
+- Prefer Antigravity-hosted Gemini for routine consultations and quick external validation more often than Opus. Use it proactively for ordinary consulting passes unless the user explicitly asks for Opus or there is a clear reason to escalate beyond Gemini.
 - If the user asks to "use Opus", "launch Opus", "run Opus", "call Opus", or uses the Russian equivalents, interpret that as a concrete instruction to use the Claude model alias `opus`.
 - In this workspace, when the user references `Opus`, prefer `claude --model opus --effort high` or an equivalent default configuration that resolves to the latest available Claude Opus model.
-- When a command, script, or workflow needs an explicit Gemini consultation invocation, prefer headless Gemini CLI via `gemini -m gemini-3-pro-preview -p "<prompt>" --output-format text` for routine Gemini consultations in this workspace.
-- Do not rely on the Gemini CLI default model here for headless consultations unless you have just verified it is healthy in the current session.
+- When a command, script, or workflow needs an explicit Gemini consultation invocation, prefer headless Antigravity CLI via `a-gemini "<prompt>"` (wrapper for `agy --model "Gemini 3.1 Pro (High)" -p ...`) for routine Gemini consultations in this workspace.
+- Do not rely on the Antigravity CLI default model for headless consultations unless you have just verified it is healthy in the current session.
 - Do not downgrade to Gemini 2.5 or switch to a Flash model unless the user explicitly approves that downgrade.
-- Use another Gemini 3 Pro model alias only when the user explicitly asks for it or when you have just validated that the alias is available and behaving correctly in this installed CLI.
-- Do not guess Gemini model ids from UI copy alone; use the exact alias names supported by the installed Gemini CLI build.
+- Use another Gemini 3 model alias only when the user explicitly asks for it or when you have just validated that the alias is available and behaving correctly in the installed Antigravity CLI (`agy models`).
+- Do not guess Antigravity model names from UI copy alone; use the exact names returned by `agy models`.
 - Keep Gemini prompts compact. Summarize repository context instead of pasting large raw documents by default.
 - For large context, prefer piping via stdin or using a temporary file/heredoc over building very large inline shell strings.
 - For website work, use Claude Opus with high effort as a consulting and support model for interface design, UX decisions, frontend implementation, and code-level problem solving.
 - Treat Opus as the specialist assistant for site UI review, interface improvement work, deeper UX validation, and website-specific implementation consultation when the user asks for Opus or when a Gemini pass is not enough.
 - For general-purpose consultation, second opinions, implementation validation, and non-visual code strategy, prefer Gemini first and use Opus as a follow-up when the user requests it or Gemini's answer is insufficient.
 - When a command, script, or workflow needs an explicit Claude invocation for site-related UI or code tasks, prefer `claude --model opus --effort high`.
+- If the user explicitly asks for Antigravity-hosted Opus, `a-opus`, or `Antigravity Opus`, use `a-opus "<prompt>"` (wrapper for `agy --model "Claude Opus 4.6 (Thinking)" -p ...`). Keep this separate from plain `Opus`, which still means Claude Code / `claude --model opus`.
+- If the user asks for OSS / open-weight model consultation, use `a-oss "<prompt>"` (wrapper for `agy --model "GPT-OSS 120B (Medium)" -p ...`) after a quick health check when possible.
+- Available local Antigravity wrappers:
+  - `a-gemini` → `Gemini 3.1 Pro (High)` via Antigravity CLI.
+  - `a-opus` → `Claude Opus 4.6 (Thinking)` via Antigravity CLI; intentionally not the same as plain `Opus`.
+  - `a-sonnet` → `Claude Sonnet 4.6 (Thinking)` via Antigravity CLI.
+  - `a-oss` → `GPT-OSS 120B (Medium)` via Antigravity CLI.
+  - `a-agy-model "Exact Model Name" "<prompt>"` → arbitrary model from `agy models`.
 - Do not ask the user to clarify what `Opus` means unless they explicitly contrast it with another model.
 - If a tool, script, or agent needs a model name, map `Opus` directly to `opus`.
 
@@ -29,17 +37,17 @@
 - Avoid repeated paid consultation attempts that are unlikely to finish. Make one deliberate request, wait properly, and only launch another run if the previous result is clearly unusable or the user asks for another angle.
 - If `Opus` appears blocked or unhealthy, report that transparently to the user, including the actual timeout used, instead of silently replacing the consultation with the agent's own opinion.
 
-## Gemini Consultation Wait Policy
+## Antigravity / Gemini Consultation Wait Policy
 
 - When the user asks to use `Gemini` for consultation, do not use short exploratory timeouts that are likely to cut off a valid answer.
 - Prefer a single deliberate headless request over multiple quick retries. Improve the prompt before rerunning; do not spam Gemini with repeated partial attempts.
-- For lightweight validation or second-opinion checks, allow enough time for Gemini CLI initialization and response generation instead of treating the first silent seconds as failure.
+- For lightweight validation or second-opinion checks, allow enough time for Antigravity CLI initialization and response generation instead of treating the first silent seconds as failure.
 - For substantial implementation, debugging, code review, or strategy consultations, prefer a wait budget in the several-minutes range before treating the run as stalled.
 - Treat `MODEL_CAPACITY_EXHAUSTED` or `No capacity available for model ...` as a model-availability problem first, not as evidence that the prompt was too large.
-- If a Gemini 3 Pro request fails on the default or preview route, retry only with another validated Gemini 3 Pro alias for this installed CLI, not with Flash or 2.5 unless the user explicitly approves.
+- If a Gemini 3.1 Pro request fails on the Antigravity route, retry only with another validated Gemini 3.1/3 model alias for this installed CLI, not with Flash or 2.5 unless the user explicitly approves.
 - If prompt size might still matter, test that hypothesis separately with the same task on a working Gemini 3 Pro route instead of inferring it from a preview-model 429.
 - When the prompt is large, pass it through stdin or a temp file and trim it to the minimum context needed before retrying.
-- If Gemini fails because of auth, model selection, CLI initialization, or environment issues, report the actual command pattern and the concrete error instead of silently replacing the consultation with the agent's own opinion.
+- If Antigravity/Gemini fails because of auth, model selection, CLI initialization, or environment issues, report the actual command pattern and the concrete error instead of silently replacing the consultation with the agent's own opinion.
 
 
 ## Skill Usage Policy

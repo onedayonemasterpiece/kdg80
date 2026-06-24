@@ -14,6 +14,7 @@
     "telegram:e2e:polling": "tsx scripts/run-telegram-e2e-polling.ts",
     "vk:social:dry-run": "tsx scripts/run-vk-social-sync.ts --dry-run",
     "vk:social:write": "tsx scripts/run-vk-social-sync.ts --write",
+    "vk:social:personal-reports": "tsx scripts/send-vk-social-personal-reports.ts",
     "test:special-social": "tsx --test src/services/special-social-scoring.test.ts",
     "test:winner-vk": "tsx --test src/services/special-winner-vk-notifications.test.ts",
     "test:social": "tsx --test src/services/vk-social-monitoring.test.ts",

@@ -2,6 +2,11 @@ import crypto from 'node:crypto';
 import ExcelJS from 'exceljs';
 import type Database from 'better-sqlite3';
 import { decryptPii } from '../lib/crypto';
+import {
+  formatSocialRaffleActionCounts,
+  loadSocialRaffleBonuses,
+  type SocialRaffleActionCounts,
+} from './special-social-scoring';
 
 type SpecialEventRow = {
   id: number;
@@ -90,6 +95,12 @@ export type SpecialParticipant = {
   email: string;
   phone: string;
   status: string;
+  baseScore: number;
+  socialBonusScore: number;
+  socialBonusRawPoints: number;
+  socialActivityCount: number;
+  socialActiveDays: number;
+  socialActivityCounts: SocialRaffleActionCounts;
   score: number;
   stampCount: number;
   ordinaryRegistrationCount: number;
@@ -119,6 +130,8 @@ export type SpecialDrawTicketRange = {
   applicationId: number;
   applicationCode: string;
   score: number;
+  baseScore?: number;
+  socialBonusScore?: number;
   selectedShowingCount: number;
   previousSpecialWinner?: boolean;
   previousWinnerWeightPercent?: number;
@@ -151,7 +164,10 @@ export type SpecialDrawResult = {
   candidates: SpecialParticipant[];
   drawMechanism: {
     algorithm: 'weighted_ticket_draw_without_replacement' | 'distributed_weighted_ticket_draw_without_replacement';
-    ticketRule: '1_score_point_equals_1_ticket' | 'score_divided_by_selected_showing_count';
+    ticketRule:
+      | '1_score_point_equals_1_ticket'
+      | 'score_divided_by_selected_showing_count'
+      | 'base_score_damped_social_bonus_undamped_divided_by_selected_showing_count';
     weightScale?: number;
     randomSource: string;
     audit: SpecialDrawAuditEntry[];
@@ -279,12 +295,27 @@ function computeWeightScale(candidates: SpecialParticipant[]) {
   }, 1);
 }
 
-function getDistributedDrawWeight(candidate: Pick<SpecialParticipant, 'score' | 'selectedShowingCount'>, weightScale: number) {
+function getCandidateBaseScore(candidate: Pick<SpecialParticipant, 'score'> & Partial<Pick<SpecialParticipant, 'baseScore'>>) {
+  return Math.max(0, Math.trunc(Number(candidate.baseScore ?? candidate.score)));
+}
+
+function getCandidateSocialBonusScore(candidate: Partial<Pick<SpecialParticipant, 'socialBonusScore'>>) {
+  return Math.max(0, Math.trunc(Number(candidate.socialBonusScore ?? 0)));
+}
+
+function getDistributedDrawWeight(
+  candidate: Pick<SpecialParticipant, 'score' | 'selectedShowingCount'>
+    & Partial<Pick<SpecialParticipant, 'baseScore' | 'socialBonusScore' | 'previousWinnerWeightPercent'>>,
+  weightScale: number,
+) {
   const selectedShowingCount = normalizeSelectedShowingCount(candidate.selectedShowingCount);
   const previousWinnerWeightPercent = 'previousWinnerWeightPercent' in candidate
     ? normalizeWeightPercent(Number(candidate.previousWinnerWeightPercent))
     : 100;
-  return Math.max(0, Math.trunc(candidate.score * (weightScale / selectedShowingCount) * previousWinnerWeightPercent / 100));
+  const showingScale = weightScale / selectedShowingCount;
+  const dampedBaseWeight = getCandidateBaseScore(candidate) * showingScale * previousWinnerWeightPercent / 100;
+  const undampedSocialWeight = getCandidateSocialBonusScore(candidate) * showingScale;
+  return Math.max(0, Math.trunc(dampedBaseWeight + undampedSocialWeight));
 }
 
 function formatShowingWeight(score: number, selectedShowingCount: number) {
@@ -469,9 +500,11 @@ function listCandidateRows(
   });
 }
 
-function mapParticipants(rows: SpecialCandidateRow[], privateKeyPemBase64: string) {
+function mapParticipants(db: Database.Database, rows: SpecialCandidateRow[], privateKeyPemBase64: string) {
+  const socialBonuses = loadSocialRaffleBonuses(db, rows.map((row) => row.id));
   return rows.flatMap((row) => {
     try {
+      const socialBonus = socialBonuses.get(row.id);
       const pii = decryptPii(privateKeyPemBase64, {
         piiCiphertext: row.pii_ciphertext,
         piiWrappedKey: row.pii_wrapped_key,
@@ -487,7 +520,13 @@ function mapParticipants(rows: SpecialCandidateRow[], privateKeyPemBase64: strin
         email: pii.email ?? '',
         phone: pii.phone ?? '',
         status: row.status,
-        score: row.score,
+        baseScore: row.score,
+        socialBonusScore: socialBonus?.bonusPoints ?? 0,
+        socialBonusRawPoints: socialBonus?.rawPoints ?? 0,
+        socialActivityCount: socialBonus?.eligibleActivityCount ?? 0,
+        socialActiveDays: socialBonus?.activeDays ?? 0,
+        socialActivityCounts: socialBonus?.actions ?? {},
+        score: row.score + (socialBonus?.bonusPoints ?? 0),
         stampCount: row.stamp_count,
         ordinaryRegistrationCount: row.ordinary_registration_count,
         noShowCount: row.no_show_count,
@@ -532,6 +571,8 @@ function weightedDraw(candidates: SpecialParticipant[], limit: number) {
         applicationId: candidate.applicationId,
         applicationCode: candidate.applicationCode,
         score: candidate.score,
+        baseScore: candidate.baseScore,
+        socialBonusScore: candidate.socialBonusScore,
         selectedShowingCount,
         previousSpecialWinner: candidate.previousSpecialWinner,
         previousWinnerWeightPercent: candidate.previousWinnerWeightPercent,
@@ -584,6 +625,12 @@ function snapshotParticipant(participant: SpecialParticipant) {
     applicationCode: participant.applicationCode,
     participantProfileId: participant.participantProfileId,
     score: participant.score,
+    baseScore: participant.baseScore,
+    socialBonusScore: participant.socialBonusScore,
+    socialBonusRawPoints: participant.socialBonusRawPoints,
+    socialActivityCount: participant.socialActivityCount,
+    socialActiveDays: participant.socialActiveDays,
+    socialActivityCounts: participant.socialActivityCounts,
     stampCount: participant.stampCount,
     ordinaryRegistrationCount: participant.ordinaryRegistrationCount,
     noShowCount: participant.noShowCount,
@@ -609,6 +656,13 @@ function rowToDrawResult(
     winners: Array<{
       applicationId: number;
       position: number;
+      score?: number;
+      baseScore?: number;
+      socialBonusScore?: number;
+      socialBonusRawPoints?: number;
+      socialActivityCount?: number;
+      socialActiveDays?: number;
+      socialActivityCounts?: SocialRaffleActionCounts;
       selectedTicket?: number;
       ticketRangeStart?: number;
       ticketRangeEnd?: number;
@@ -625,6 +679,13 @@ function rowToDrawResult(
     const participant = byId.get(winner.applicationId);
     return participant ? [{
       ...participant,
+      score: winner.score ?? participant.score,
+      baseScore: winner.baseScore ?? participant.baseScore,
+      socialBonusScore: winner.socialBonusScore ?? participant.socialBonusScore,
+      socialBonusRawPoints: winner.socialBonusRawPoints ?? participant.socialBonusRawPoints,
+      socialActivityCount: winner.socialActivityCount ?? participant.socialActivityCount,
+      socialActiveDays: winner.socialActiveDays ?? participant.socialActiveDays,
+      socialActivityCounts: winner.socialActivityCounts ?? participant.socialActivityCounts,
       position: winner.position,
       selectedTicket: winner.selectedTicket ?? 0,
       ticketRangeStart: winner.ticketRangeStart ?? 0,
@@ -711,7 +772,7 @@ export function getSpecialShowingForTelegram(
   }
 
   const acceptedRows = listCandidateRows(db, showing);
-  const candidates = privateKeyPemBase64 ? mapParticipants(acceptedRows, privateKeyPemBase64) : [];
+  const candidates = privateKeyPemBase64 ? mapParticipants(db, acceptedRows, privateKeyPemBase64) : [];
   const latestDraft = getLatestDrawRow(db, showing.id, 'draft');
   const latestPublished = getLatestDrawRow(db, showing.id, 'published');
 
@@ -742,7 +803,7 @@ export function runSpecialDraw(
     throw new Error('special_event_not_found');
   }
 
-  const candidates = mapParticipants(listCandidateRows(db, showing), privateKeyPemBase64);
+  const candidates = mapParticipants(db, listCandidateRows(db, showing), privateKeyPemBase64);
   const draw = weightedDraw(candidates, showing.lottery_quota);
   const winners = draw.winners;
   const totalWeight = candidates.reduce((sum, candidate) => sum + getDistributedDrawWeight(candidate, draw.weightScale), 0);
@@ -761,7 +822,7 @@ export function runSpecialDraw(
     quota: showing.lottery_quota,
     drawMechanism: {
       algorithm: 'distributed_weighted_ticket_draw_without_replacement',
-      ticketRule: 'score_divided_by_selected_showing_count',
+      ticketRule: 'base_score_damped_social_bonus_undamped_divided_by_selected_showing_count',
       weightScale: draw.weightScale,
       randomSource: draw.randomSource,
       audit: draw.audit,
@@ -772,6 +833,12 @@ export function runSpecialDraw(
       applicationCode: winner.applicationCode,
       participantProfileId: winner.participantProfileId,
       score: winner.score,
+      baseScore: winner.baseScore,
+      socialBonusScore: winner.socialBonusScore,
+      socialBonusRawPoints: winner.socialBonusRawPoints,
+      socialActivityCount: winner.socialActivityCount,
+      socialActiveDays: winner.socialActiveDays,
+      socialActivityCounts: winner.socialActivityCounts,
       stampCount: winner.stampCount,
       noShowCount: winner.noShowCount,
       previousSpecialWinner: winner.previousSpecialWinner,
@@ -858,7 +925,7 @@ export function getLatestSpecialDrawResult(
     } satisfies SpecialCandidateRow;
   });
 
-  return rowToDrawResult(row, event, showing, mapParticipants(decoratedRows, privateKeyPemBase64));
+  return rowToDrawResult(row, event, showing, mapParticipants(db, decoratedRows, privateKeyPemBase64));
 }
 
 export function listSpecialApplicationPhotos(db: Database.Database, applicationId: number) {
@@ -930,7 +997,10 @@ export function formatSpecialShowingApplicants(item: NonNullable<ReturnType<type
 
   const lines = item.candidates.slice(0, 40).map((candidate, index) => [
     `${index + 1}. ФИО: ${candidate.fullName}`,
-    `   Баллы: ${candidate.score}, штампы: ${candidate.stampCount}, неявки: ${candidate.noShowCount}`,
+    `   Баллы: ${candidate.score} (паспорт/штампы: ${candidate.baseScore}, соцбонус: +${candidate.socialBonusScore}), штампы: ${candidate.stampCount}, неявки: ${candidate.noShowCount}`,
+    candidate.socialActivityCount > 0
+      ? `   Соцактивность: ${formatSocialRaffleActionCounts(candidate.socialActivityCounts)}; активных дней: ${candidate.socialActiveDays}; сырой соцвес: ${candidate.socialBonusRawPoints}`
+      : null,
     `   Фото: ${candidate.acceptedPhotoCount}/${candidate.uniquePhotoCount}/${candidate.uploadedPhotoCount}`,
     `   Выбрано дат: ${candidate.selectedShowingCount}, вес на этот показ: ${formatShowingWeight(candidate.score, candidate.selectedShowingCount)} (${getDistributedDrawWeight(candidate, weightScale)} тех. билетиков)`,
     candidate.previousSpecialWinner ? `   Уже выигрывал спецрозыгрыш: да, коэффициент веса ${candidate.previousWinnerWeightPercent}%` : null,
@@ -953,7 +1023,9 @@ export function formatSpecialDrawResult(result: SpecialDrawResult) {
     `Кандидатов: ${result.totalCandidates}`,
     `Технических билетиков в барабане: ${result.totalWeight}`,
     `Победителей: ${result.winners.length} из ${result.showing.lottery_quota}`,
-    result.drawMechanism.ticketRule === 'score_divided_by_selected_showing_count'
+    result.drawMechanism.ticketRule === 'base_score_damped_social_bonus_undamped_divided_by_selected_showing_count'
+      ? 'Механика: паспортные баллы и соцбонус делятся между выбранными датами; прошлым победителям понижается только паспортная часть, соцбонус не понижается.'
+      : result.drawMechanism.ticketRule === 'score_divided_by_selected_showing_count'
       ? 'Механика: баллы участника делятся между выбранными датами; на этом показе вес = баллы / количество выбранных дат.'
       : 'Механика: 1 балл = 1 билет; выбирается один случайный номер билета в раунде.',
     result.drawMechanism.weightScale ? `Технический масштаб весов: ${result.drawMechanism.weightScale}` : null,
@@ -967,7 +1039,10 @@ export function formatSpecialDrawResult(result: SpecialDrawResult) {
 
   const winners = result.winners.slice(0, 30).map((winner) => [
     `${winner.position}. ${winner.fullName}`,
-    `   Баллы: ${winner.score}, штампы: ${winner.stampCount}, неявки: ${winner.noShowCount}`,
+    `   Баллы: ${winner.score} (паспорт/штампы: ${winner.baseScore}, соцбонус: +${winner.socialBonusScore}), штампы: ${winner.stampCount}, неявки: ${winner.noShowCount}`,
+    winner.socialActivityCount > 0
+      ? `   Соцактивность: ${formatSocialRaffleActionCounts(winner.socialActivityCounts)}; активных дней: ${winner.socialActiveDays}; сырой соцвес: ${winner.socialBonusRawPoints}`
+      : null,
     `   Выбрано дат: ${winner.selectedShowingCount}, вес на этот показ: ${formatShowingWeight(winner.showingWeightNumerator, winner.showingWeightDenominator)} (${winner.drawWeight} тех. билетиков)`,
     winner.previousSpecialWinner ? `   Уже выигрывал спецрозыгрыш: да, коэффициент веса ${winner.previousWinnerWeightPercent}%` : null,
     `   Раунд: выпал билет №${winner.selectedTicket} из ${winner.poolWeightBeforeDraw}`,
@@ -996,6 +1071,9 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
     { header: 'Телефон', key: 'phone', width: 20 },
     { header: 'Код заявки', key: 'applicationCode', width: 42 },
     { header: 'Баллы', key: 'score', width: 10 },
+    { header: 'Паспортные баллы', key: 'baseScore', width: 18 },
+    { header: 'Соцбонус', key: 'socialBonusScore', width: 12 },
+    { header: 'Соцактивность', key: 'socialActivityCounts', width: 36 },
     { header: 'Выбрано дат', key: 'selectedShowingCount', width: 14 },
     { header: 'Вес на показ', key: 'showingWeight', width: 18 },
     { header: 'Тех. билетики участника', key: 'drawWeight', width: 22 },
@@ -1018,6 +1096,9 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
       phone: winner.phone,
       applicationCode: winner.applicationCode,
       score: winner.score,
+      baseScore: winner.baseScore,
+      socialBonusScore: winner.socialBonusScore,
+      socialActivityCounts: formatSocialRaffleActionCounts(winner.socialActivityCounts),
       selectedShowingCount: winner.selectedShowingCount,
       showingWeight: formatShowingWeight(winner.showingWeightNumerator, winner.showingWeightDenominator),
       drawWeight: winner.drawWeight,
@@ -1040,6 +1121,9 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
     { header: 'Телефон', key: 'phone', width: 20 },
     { header: 'Код заявки', key: 'applicationCode', width: 42 },
     { header: 'Баллы', key: 'score', width: 10 },
+    { header: 'Паспортные баллы', key: 'baseScore', width: 18 },
+    { header: 'Соцбонус', key: 'socialBonusScore', width: 12 },
+    { header: 'Соцактивность', key: 'socialActivityCounts', width: 36 },
     { header: 'Выбрано дат', key: 'selectedShowingCount', width: 14 },
     { header: 'Вес на этот показ', key: 'showingWeight', width: 18 },
     { header: 'Тех. билетики на этот показ', key: 'drawWeight', width: 26 },
@@ -1059,6 +1143,9 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
       phone: candidate.phone,
       applicationCode: candidate.applicationCode,
       score: candidate.score,
+      baseScore: candidate.baseScore,
+      socialBonusScore: candidate.socialBonusScore,
+      socialActivityCounts: formatSocialRaffleActionCounts(candidate.socialActivityCounts),
       selectedShowingCount: candidate.selectedShowingCount,
       showingWeight: formatShowingWeight(candidate.score, candidate.selectedShowingCount),
       drawWeight: getDistributedDrawWeight(candidate, weightScale),
@@ -1078,6 +1165,8 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
     { header: 'Выпавший билет', key: 'selectedTicket', width: 18 },
     { header: 'Код заявки', key: 'applicationCode', width: 42 },
     { header: 'Баллы участника', key: 'score', width: 18 },
+    { header: 'Паспортные баллы', key: 'baseScore', width: 18 },
+    { header: 'Соцбонус', key: 'socialBonusScore', width: 12 },
     { header: 'Выбрано дат', key: 'selectedShowingCount', width: 14 },
     { header: 'Вес на показ', key: 'showingWeight', width: 18 },
     { header: 'Тех. билетики участника', key: 'drawWeight', width: 22 },
@@ -1096,6 +1185,8 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
         selectedTicket: round.selectedTicket,
         applicationCode: range.applicationCode,
         score: range.score,
+        baseScore: range.baseScore ?? '',
+        socialBonusScore: range.socialBonusScore ?? '',
         selectedShowingCount: range.selectedShowingCount ?? '',
         showingWeight: formatShowingWeight(
           range.showingWeightNumerator ?? range.score,

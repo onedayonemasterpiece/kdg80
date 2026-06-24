@@ -4,6 +4,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import type { Bot, Context } from 'grammy';
 import { decryptPii } from '../lib/crypto';
 import { LlmProviderError, runLlmLimited } from '../lib/llm-rate-limiter';
+import { formatSocialRaffleActionCounts, loadSocialRaffleBonuses } from './special-social-scoring';
 import { listTelegramAdmins } from './telegram-admins';
 
 const VK_API_BASE_URL = 'https://api.vk.com/method/';
@@ -1761,6 +1762,7 @@ export function buildVkSocialDailyReport(
       .map((row) => Number(row.matchedSpecialApplicationId)),
   ])];
   const applicants = loadSpecialApplicantNames(db, privateKeyPemBase64, matchedIds);
+  const socialBonuses = loadSocialRaffleBonuses(db, matchedIds);
   const people = new Map<number, {
     specialApplicationId: number;
     applicationCode: string;
@@ -1772,6 +1774,10 @@ export function buildVkSocialDailyReport(
     totalActions: number;
     actions: Record<string, number>;
     sources: Record<string, number>;
+    currentSocialBonusPoints: number;
+    currentSocialBonusRawPoints: number;
+    currentSocialActivityCounts: Record<string, number>;
+    currentSocialActiveDays: number;
     latestActivityAt: string | null;
   }>();
 
@@ -1809,6 +1815,7 @@ export function buildVkSocialDailyReport(
     }
     const applicant = applicants.get(row.matchedSpecialApplicationId);
     if (!applicant) continue;
+    const socialBonus = socialBonuses.get(row.matchedSpecialApplicationId);
     const current = people.get(row.matchedSpecialApplicationId) ?? {
       specialApplicationId: row.matchedSpecialApplicationId,
       applicationCode: applicant.applicationCode,
@@ -1820,6 +1827,10 @@ export function buildVkSocialDailyReport(
       totalActions: 0,
       actions: {},
       sources: {},
+      currentSocialBonusPoints: socialBonus?.bonusPoints ?? 0,
+      currentSocialBonusRawPoints: socialBonus?.rawPoints ?? 0,
+      currentSocialActivityCounts: socialBonus?.actions ?? {},
+      currentSocialActiveDays: socialBonus?.activeDays ?? 0,
       latestActivityAt: null,
     };
     current.matchStatus = current.matchStatus === 'matched' || row.matchStatus === 'matched' ? 'matched' : row.matchStatus;
@@ -1856,6 +1867,10 @@ export function buildVkSocialDailyReport(
     vkDisplayNames: Set<string>;
     totalActions: number;
     actions: Record<string, number>;
+    currentSocialBonusPoints: number;
+    currentSocialBonusRawPoints: number;
+    currentSocialActivityCounts: Record<string, number>;
+    currentSocialActiveDays: number;
     latestDetectedAt: string | null;
   }>();
 
@@ -1866,6 +1881,7 @@ export function buildVkSocialDailyReport(
     }
     const applicant = applicants.get(row.matchedSpecialApplicationId);
     if (!applicant) continue;
+    const socialBonus = socialBonuses.get(row.matchedSpecialApplicationId);
     const current = firstSeenPeople.get(row.matchedSpecialApplicationId) ?? {
       specialApplicationId: row.matchedSpecialApplicationId,
       applicationCode: applicant.applicationCode,
@@ -1876,6 +1892,10 @@ export function buildVkSocialDailyReport(
       vkDisplayNames: new Set<string>(),
       totalActions: 0,
       actions: {},
+      currentSocialBonusPoints: socialBonus?.bonusPoints ?? 0,
+      currentSocialBonusRawPoints: socialBonus?.rawPoints ?? 0,
+      currentSocialActivityCounts: socialBonus?.actions ?? {},
+      currentSocialActiveDays: socialBonus?.activeDays ?? 0,
       latestDetectedAt: null,
     };
     current.matchStatus = current.matchStatus === 'matched' || row.matchStatus === 'matched' ? 'matched' : row.matchStatus;
@@ -1931,6 +1951,7 @@ export function buildVkSocialDailyReport(
 
   const lines = [
     title,
+    'Сообщение создано автоматически.',
     `${formatKaliningradDateTime(sinceIso)} — ${formatKaliningradDateTime(untilIso)} Калининград`,
     intervalHint,
     '',
@@ -1961,6 +1982,7 @@ export function buildVkSocialDailyReport(
       const weakMark = person.matchStatus === 'weak' ? ' ⚠️ weak' : '';
       lines.push(`${index + 1}. ${person.fullName}${weakMark}`);
       lines.push(`   ${actions}; всего ${person.totalActions}; VK: ${person.vkDisplayNames.join(', ')}`);
+      lines.push(`   сейчас добавлено к розыгрышу: +${person.currentSocialBonusPoints} балл(ов); всего зафиксировано: ${formatSocialRaffleActionCounts(person.currentSocialActivityCounts)}; активных дней: ${person.currentSocialActiveDays}; сырой соцвес: ${person.currentSocialBonusRawPoints}`);
       if (person.eventTitle) lines.push(`   спец: ${person.eventTitle}; код: ${person.applicationCode}`);
       if (person.latestActivityAt) lines.push(`   последнее: ${formatKaliningradDateTime(person.latestActivityAt)}`);
     });
@@ -1979,6 +2001,7 @@ export function buildVkSocialDailyReport(
       const weakMark = person.matchStatus === 'weak' ? ' ⚠️ weak' : '';
       lines.push(`${index + 1}. ${person.fullName}${weakMark}`);
       lines.push(`   ${actions}; всего ${person.totalActions}; VK: ${person.vkDisplayNames.join(', ')}`);
+      lines.push(`   сейчас добавлено к розыгрышу: +${person.currentSocialBonusPoints} балл(ов); всего зафиксировано: ${formatSocialRaffleActionCounts(person.currentSocialActivityCounts)}; активных дней: ${person.currentSocialActiveDays}; сырой соцвес: ${person.currentSocialBonusRawPoints}`);
       if (person.eventTitle) lines.push(`   спец: ${person.eventTitle}; код: ${person.applicationCode}`);
       if (person.latestDetectedAt) lines.push(`   обнаружено: ${formatKaliningradDateTime(person.latestDetectedAt)}`);
     });
@@ -1987,7 +2010,7 @@ export function buildVkSocialDailyReport(
     }
   }
 
-  lines.push('', 'Баллы не изменялись: отчётный режим v1.');
+  lines.push('', 'Социальные баллы учитываются в розыгрыше только для уверенно сопоставленных VK-профилей; weak/ambiguous не доначисляются автоматически.');
 
   return {
     generatedAt: untilIso,

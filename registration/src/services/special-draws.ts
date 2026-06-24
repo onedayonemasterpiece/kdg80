@@ -23,6 +23,7 @@ type SpecialShowingRow = {
   slug: string;
   starts_at: string;
   display_label: string;
+  meeting_place: string | null;
   time_is_final: number;
   physical_quota: number;
   reserved_seats: number;
@@ -359,6 +360,7 @@ export function listSpecialShowingsDueForAutoDraw(
       s.slug AS showing_slug,
       s.starts_at AS showing_starts_at,
       s.display_label AS showing_display_label,
+      s.meeting_place AS showing_meeting_place,
       s.time_is_final AS showing_time_is_final,
       s.physical_quota AS showing_physical_quota,
       s.reserved_seats AS showing_reserved_seats,
@@ -389,6 +391,7 @@ export function listSpecialShowingsDueForAutoDraw(
     showing_slug: string;
     showing_starts_at: string;
     showing_display_label: string;
+    showing_meeting_place: string | null;
     showing_time_is_final: number;
     showing_physical_quota: number;
     showing_reserved_seats: number;
@@ -411,6 +414,7 @@ export function listSpecialShowingsDueForAutoDraw(
       slug: row.showing_slug,
       starts_at: row.showing_starts_at,
       display_label: row.showing_display_label,
+      meeting_place: row.showing_meeting_place,
       time_is_final: row.showing_time_is_final,
       physical_quota: row.showing_physical_quota,
       reserved_seats: row.showing_reserved_seats,

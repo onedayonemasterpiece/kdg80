@@ -44,6 +44,10 @@ import {
   runSpecialDraw,
   type SpecialDrawResult,
 } from './special-draws';
+import {
+  formatSpecialWinnerVkNotificationSummary,
+  sendSpecialDrawWinnerVkMessages,
+} from './special-winner-vk-notifications';
 import type { StoragePublisher } from '../lib/storage';
 
 type TelegramBotDeps = {
@@ -53,6 +57,7 @@ type TelegramBotDeps = {
   appBaseUrl: string;
   webhookPath: string;
   privateKeyPemBase64: string | null;
+  vkAuthToken: string | null;
   storagePublisher: StoragePublisher;
   syncPublicStateManifest: (reason: string) => Promise<boolean>;
   skipWebhook?: boolean;
@@ -1070,6 +1075,14 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
       await ctx.reply(formatSpecialDrawResult(result));
 
       if (runType === 'published') {
+        const vkNotificationSummary = await sendSpecialDrawWinnerVkMessages({
+          db: deps.db,
+          result,
+          vkToken: deps.vkAuthToken,
+          logger: app.log,
+        });
+        await ctx.reply(formatSpecialWinnerVkNotificationSummary(vkNotificationSummary));
+
         const buffer = await buildSpecialDrawXlsxBuffer(result);
         await ctx.replyWithDocument(
           new InputFile(buffer, `${safeXlsxName(result.event.slug)}-${safeXlsxName(result.showing.slug)}-winners.xlsx`),

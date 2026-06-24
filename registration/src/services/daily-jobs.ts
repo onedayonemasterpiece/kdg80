@@ -8,6 +8,10 @@ import {
   listSpecialShowingsDueForAutoDraw,
   runSpecialDraw,
 } from './special-draws';
+import {
+  formatSpecialWinnerVkNotificationSummary,
+  sendSpecialDrawWinnerVkMessages,
+} from './special-winner-vk-notifications';
 import { listTelegramAdmins } from './telegram-admins';
 
 type DailyJobDeps = {
@@ -15,6 +19,7 @@ type DailyJobDeps = {
   bot: Bot<Context>;
   logger: FastifyBaseLogger;
   privateKeyPemBase64: string | null;
+  vkAuthToken: string | null;
   timeZone: string;
   syncPublicStateManifest: (reason: string) => Promise<boolean>;
 };
@@ -187,6 +192,12 @@ async function runDueSpecialDraws(deps: DailyJobDeps, now: Date) {
       }, 'special_auto_draw_started');
 
       const result = runSpecialDraw(deps.db, item.showing.id, 'published', deps.privateKeyPemBase64);
+      const vkNotificationSummary = await sendSpecialDrawWinnerVkMessages({
+        db: deps.db,
+        result,
+        vkToken: deps.vkAuthToken,
+        logger: deps.logger,
+      });
       try {
         const text = [
           'Автоматический опубликованный розыгрыш за сутки до показа.',
@@ -198,6 +209,8 @@ async function runDueSpecialDraws(deps: DailyJobDeps, now: Date) {
           `Технических билетиков в барабане: ${result.totalWeight}`,
           `Механика: баллы делятся между выбранными датами; полный аудит в XLSX.`,
           `Источник случайности: ${result.drawMechanism.randomSource}`,
+          '',
+          formatSpecialWinnerVkNotificationSummary(vkNotificationSummary),
         ].join('\n');
         await sendMessageToSuperadmins(deps.db, deps.bot, text);
 

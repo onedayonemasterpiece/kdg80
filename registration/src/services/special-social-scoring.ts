@@ -23,21 +23,21 @@ const MATCH_CONFIDENCE_MIN = 0.85;
 
 const ACTION_WEIGHTS: Record<VkSocialAction, number> = {
   repost_post: 0.6,
-  comment_post: 0.2,
-  reply_comment: 0.2,
-  like_post: 0.1,
-  like_video: 0.1,
+  comment_post: 0.25,
+  reply_comment: 0.25,
+  like_post: 0.15,
+  like_video: 0.15,
   like_comment: 0.05,
 };
 
 const DAILY_CATEGORY_CAPS = {
-  repost: 0.6,
-  comment: 0.4,
-  postLike: 0.15,
-  commentLike: 0.05,
+  repost: 1,
+  comment: 0.5,
+  postLike: 0.5,
+  commentLike: 0.1,
 } as const;
 
-const DAILY_TOTAL_CAP = 1;
+const DAILY_TOTAL_CAP = 1.2;
 
 function isVkSocialAction(value: string): value is VkSocialAction {
   return value in ACTION_WEIGHTS;
@@ -125,7 +125,7 @@ export function computeSocialRaffleBonusFromActivities(
   const roundedRawPoints = Number(rawPoints.toFixed(4));
   bonus.activeDays = perDay.size;
   bonus.rawPoints = roundedRawPoints;
-  bonus.bonusPoints = roundedRawPoints < 1 ? 0 : Math.ceil(roundedRawPoints - 1e-9);
+  bonus.bonusPoints = Math.max(0, Math.floor(roundedRawPoints + 1e-9));
   return bonus;
 }
 

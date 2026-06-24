@@ -67,6 +67,7 @@ const telegramBot = config.telegramBotToken && config.telegramWebhookSecret
       appBaseUrl: config.appBaseUrl,
       webhookPath: config.telegramWebhookPath,
       privateKeyPemBase64: config.piiPrivateKeyPemBase64,
+      vkAuthToken: config.vkAuthToken,
       storagePublisher,
       syncPublicStateManifest,
     })
@@ -178,6 +179,7 @@ if (telegramBot) {
     bot: telegramBot.bot,
     logger: app.log,
     privateKeyPemBase64: config.piiPrivateKeyPemBase64,
+    vkAuthToken: config.vkAuthToken,
     timeZone: config.timeZone,
     syncPublicStateManifest,
   });

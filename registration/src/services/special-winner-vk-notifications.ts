@@ -421,6 +421,7 @@ export async function sendSpecialDrawWinnerVkMessages(deps: {
 
   let subscriberIndex: SubscriberIndex | null = null;
   let subscriberLookupError: string | null = null;
+  let lastMessageAttemptAt = 0;
   const findSubscriberRecipient = async (winner: SpecialDrawResult['winners'][number]) => {
     if (subscriberLookupError) {
       return { status: 'skipped' as const, reason: subscriberLookupError, vkUserId: null };
@@ -434,6 +435,16 @@ export async function sendSpecialDrawWinnerVkMessages(deps: {
       deps.logger?.warn({ err: error }, 'special_winner_vk_subscriber_lookup_failed');
       return { status: 'skipped' as const, reason: subscriberLookupError, vkUserId: null };
     }
+  };
+  const waitBeforeMessageAttempt = async () => {
+    const minIntervalMs = readPositiveInteger(process.env.VK_WINNER_MESSAGE_MIN_INTERVAL_MS, 3_000);
+    if (lastMessageAttemptAt > 0) {
+      const elapsedMs = Date.now() - lastMessageAttemptAt;
+      if (elapsedMs < minIntervalMs) {
+        await sleep(minIntervalMs - elapsedMs);
+      }
+    }
+    lastMessageAttemptAt = Date.now();
   };
 
   for (const winner of deps.result.winners) {
@@ -471,6 +482,7 @@ export async function sendSpecialDrawWinnerVkMessages(deps: {
     }
 
     try {
+      await waitBeforeMessageAttempt();
       await sendVkMessage(deps.vkToken, recipient.vkUserId, message);
       markNotification(deps.db, deps.result, winner, recipient.vkUserId, 'sent', null);
       summary.sent += 1;

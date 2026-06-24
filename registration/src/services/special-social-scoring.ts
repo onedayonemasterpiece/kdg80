@@ -122,9 +122,10 @@ export function computeSocialRaffleBonusFromActivities(
     rawPoints += cappedDayScore;
   }
 
+  const roundedRawPoints = Number(rawPoints.toFixed(4));
   bonus.activeDays = perDay.size;
-  bonus.rawPoints = Number(rawPoints.toFixed(4));
-  bonus.bonusPoints = Math.max(0, Math.floor(rawPoints + 1e-9));
+  bonus.rawPoints = roundedRawPoints;
+  bonus.bonusPoints = roundedRawPoints < 1 ? 0 : Math.ceil(roundedRawPoints - 1e-9);
   return bonus;
 }
 

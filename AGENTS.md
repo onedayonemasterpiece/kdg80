@@ -6,7 +6,8 @@
 - Prefer Antigravity-hosted Gemini for routine consultations and quick external validation more often than Opus. Use it proactively for ordinary consulting passes unless the user explicitly asks for Opus or there is a clear reason to escalate beyond Gemini.
 - If the user asks to "use Opus", "launch Opus", "run Opus", "call Opus", or uses the Russian equivalents, interpret that as a concrete instruction to use the Claude model alias `opus`.
 - In this workspace, when the user references `Opus`, prefer `claude --model opus --effort high` or an equivalent default configuration that resolves to the latest available Claude Opus model.
-- When a command, script, or workflow needs an explicit Gemini consultation invocation, prefer headless Antigravity CLI via `a-gemini "<prompt>"` (wrapper for `agy --model "Gemini 3.1 Pro (High)" -p ...`) for routine Gemini consultations in this workspace.
+- When a command, script, or workflow needs an explicit Gemini consultation invocation, use `gemini "<prompt>"`. In this workspace `gemini` is intentionally a local wrapper for Antigravity-hosted `Gemini 3.1 Pro (High)`, not the legacy Google Gemini CLI.
+- The old Google Gemini CLI is no longer the default because its previous auth/model route is unavailable here; if it must be inspected for debugging, call `gemini-legacy` explicitly.
 - Do not rely on the Antigravity CLI default model for headless consultations unless you have just verified it is healthy in the current session.
 - Do not downgrade to Gemini 2.5 or switch to a Flash model unless the user explicitly approves that downgrade.
 - Use another Gemini 3 model alias only when the user explicitly asks for it or when you have just validated that the alias is available and behaving correctly in the installed Antigravity CLI (`agy models`).
@@ -20,7 +21,8 @@
 - If the user explicitly asks for Antigravity-hosted Opus, `a-opus`, or `Antigravity Opus`, use `a-opus "<prompt>"` (wrapper for `agy --model "Claude Opus 4.6 (Thinking)" -p ...`). Keep this separate from plain `Opus`, which still means Claude Code / `claude --model opus`.
 - If the user asks for OSS / open-weight model consultation, use `a-oss "<prompt>"` (wrapper for `agy --model "GPT-OSS 120B (Medium)" -p ...`) after a quick health check when possible.
 - Available local Antigravity wrappers:
-  - `a-gemini` → `Gemini 3.1 Pro (High)` via Antigravity CLI.
+  - `gemini` → `Gemini 3.1 Pro (High)` via Antigravity CLI; this is the default Gemini command.
+  - `a-gemini` → compatibility alias for the same Antigravity Gemini route.
   - `a-opus` → `Claude Opus 4.6 (Thinking)` via Antigravity CLI; intentionally not the same as plain `Opus`.
   - `a-sonnet` → `Claude Sonnet 4.6 (Thinking)` via Antigravity CLI.
   - `a-oss` → `GPT-OSS 120B (Medium)` via Antigravity CLI.

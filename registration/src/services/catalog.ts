@@ -45,7 +45,7 @@ type CatalogSyncOverride = {
 };
 
 const EVENT_OVERBOOKING_PERCENT_OVERRIDES: Record<string, number> = {
-  'kak-govorit-o-sovetskom-kaliningrade-bez-nostalgicheskogo-tumana-i-bez-styda': 80,
+  'kak-govorit-o-sovetskom-kaliningrade-bez-nostalgicheskogo-tumana-i-bez-styda': 82,
   'pamyatniki-iskusstva-i-istorii-v-landshafte-kaliningradskogo-zooparka': 20,
   'velikie-uchitelya-preemstvennost-hudozhestvennyh-pokoleniy': 20,
 };

@@ -1,0 +1,4 @@
+interface:
+  display_name: "KGD80 Add Places Social Publish"
+  short_description: "Publish KGD80 add-place announcements"
+  default_prompt: "Use $kgd80-add-places-social-publish to add KGD80 places and publish the required VK and Telegram announcement."

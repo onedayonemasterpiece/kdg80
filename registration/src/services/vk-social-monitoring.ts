@@ -52,6 +52,7 @@ export type SpecialApplicant = {
   applicationCode: string;
   status: string;
   fullName: string;
+  fullNameFingerprint: string;
   tokens: string[];
 };
 
@@ -74,6 +75,7 @@ type Candidate = {
   score: number;
   reason: string;
   exactSurnameGiven: boolean;
+  duplicateApplicationCount: number;
 };
 
 type VkSocialRunDeps = {
@@ -413,6 +415,7 @@ function scoreVkAgainstApplicant(vkFirst: string, vkLast: string, applicant: Spe
       score: 1,
       reason: 'vk_first_last_matches_application_surname_given_name',
       exactSurnameGiven: true,
+      duplicateApplicationCount: 1,
     };
   }
 
@@ -438,7 +441,26 @@ function scoreVkAgainstApplicant(vkFirst: string, vkLast: string, applicant: Spe
     score,
     reason: 'vk_name_approximately_matches_application_tokens',
     exactSurnameGiven: false,
+    duplicateApplicationCount: 1,
   };
+}
+
+function collapseSamePersonCandidates(candidates: Candidate[]) {
+  const byFingerprint = new Map<string, Candidate>();
+  for (const candidate of candidates) {
+    const key = candidate.applicant.fullNameFingerprint || candidate.applicant.tokens.join(' ');
+    const current = byFingerprint.get(key);
+    if (!current || candidate.score > current.score) {
+      byFingerprint.set(key, {
+        ...candidate,
+        duplicateApplicationCount: (current?.duplicateApplicationCount ?? 0) + 1,
+      });
+      continue;
+    }
+    current.duplicateApplicationCount += 1;
+  }
+  return [...byFingerprint.values()]
+    .sort((left, right) => right.score - left.score || left.applicant.id - right.applicant.id);
 }
 
 export function deterministicMatchActor(
@@ -465,9 +487,10 @@ export function deterministicMatchActor(
   const candidates = applicants
     .map((applicant) => scoreVkAgainstApplicant(first, last, applicant))
     .filter((item): item is Candidate => Boolean(item))
-    .sort((left, right) => right.score - left.score);
-  const top = candidates[0];
-  const runner = candidates[1];
+    .sort((left, right) => right.score - left.score || left.applicant.id - right.applicant.id);
+  const personCandidates = collapseSamePersonCandidates(candidates);
+  const top = personCandidates[0];
+  const runner = personCandidates[1];
   if (!top) {
     return {
       verdict: {
@@ -491,8 +514,10 @@ export function deterministicMatchActor(
         method: 'deterministic',
         confidence: 1,
         matchedSpecialApplicationId: top.applicant.id,
-        candidateCount: candidates.length,
-        reason: top.reason,
+        candidateCount: personCandidates.length,
+        reason: top.duplicateApplicationCount > 1
+          ? `${top.reason}; same_person_special_applications=${top.duplicateApplicationCount}`
+          : top.reason,
         llmModel: null,
       },
       candidates,
@@ -506,11 +531,11 @@ export function deterministicMatchActor(
       method: 'deterministic',
       confidence: Number(top.score.toFixed(2)),
       matchedSpecialApplicationId: status === 'weak' ? top.applicant.id : null,
-      candidateCount: candidates.length,
+      candidateCount: personCandidates.length,
       reason: runner ? `${top.reason}; runner_up=${runner.score.toFixed(2)}` : top.reason,
       llmModel: null,
     },
-    candidates,
+    candidates: personCandidates,
   };
 }
 
@@ -1030,12 +1055,15 @@ async function collectMatchedUserWallReposts(
 function loadSpecialApplicants(db: Database.Database, privateKeyPemBase64: string) {
   const rows = db.prepare(`
     SELECT id, application_code, status, pii_ciphertext, pii_wrapped_key, pii_iv, pii_alg
+           , full_name_fingerprint
     FROM special_applications
+    WHERE status = 'accepted'
     ORDER BY id ASC
   `).all() as Array<{
     id: number;
     application_code: string;
     status: string;
+    full_name_fingerprint: string;
     pii_ciphertext: Buffer;
     pii_wrapped_key: Buffer;
     pii_iv: Buffer;
@@ -1055,6 +1083,7 @@ function loadSpecialApplicants(db: Database.Database, privateKeyPemBase64: strin
       applicationCode: row.application_code,
       status: row.status,
       fullName,
+      fullNameFingerprint: row.full_name_fingerprint,
       tokens: nameTokens(fullName),
     };
   });
@@ -1076,7 +1105,12 @@ function getCachedMatch(db: Database.Database, actor: VkSocialActor) {
     llm_model: string | null;
   } | undefined;
 
-  return row ? {
+  if (!row) return null;
+  if (row.status === 'unmatched' || row.status === 'ambiguous') {
+    return null;
+  }
+
+  return {
     status: row.status,
     method: row.method,
     confidence: row.confidence,
@@ -1084,7 +1118,7 @@ function getCachedMatch(db: Database.Database, actor: VkSocialActor) {
     candidateCount: row.candidate_count,
     reason: row.reason ?? '',
     llmModel: row.llm_model,
-  } satisfies MatchVerdict : null;
+  } satisfies MatchVerdict;
 }
 
 function saveMatchCache(db: Database.Database, actor: VkSocialActor, verdict: MatchVerdict) {
@@ -1508,6 +1542,35 @@ function sourceLabel(source: string) {
   }
 }
 
+type ReportSpecialApplication = {
+  id: number;
+  applicationCode: string;
+  eventTitle: string | null;
+  eventSlug: string | null;
+};
+
+function formatSpecialApplications(applications: ReportSpecialApplication[]) {
+  return applications
+    .map((application) => `${application.eventTitle ?? application.eventSlug ?? 'спецмероприятие'}; код: ${application.applicationCode}`)
+    .join(' | ');
+}
+
+function countPeopleBySpecialEvent(people: Array<{ specialApplications: ReportSpecialApplication[] }>) {
+  const counters = new Map<string, Set<number>>();
+  people.forEach((person, personIndex) => {
+    for (const application of person.specialApplications) {
+      const label = application.eventTitle ?? application.eventSlug ?? 'спецмероприятие';
+      const set = counters.get(label) ?? new Set<number>();
+      set.add(personIndex);
+      counters.set(label, set);
+    }
+  });
+  return [...counters.entries()]
+    .sort((left, right) => right[1].size - left[1].size || left[0].localeCompare(right[0], 'ru'))
+    .map(([title, set]) => `${title}: ${set.size}`)
+    .join(', ') || 'нет';
+}
+
 function parseHours(value: unknown, fallback = 24) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 && parsed <= 168 ? parsed : fallback;
@@ -1709,7 +1772,12 @@ function loadSpecialApplicantNames(
       id: number;
       applicationCode: string;
       fullName: string;
-      eventTitle: string | null;
+      specialApplications: Array<{
+        id: number;
+        applicationCode: string;
+        eventTitle: string | null;
+        eventSlug: string | null;
+      }>;
     }>();
   }
 
@@ -1717,29 +1785,77 @@ function loadSpecialApplicantNames(
     SELECT
       a.id,
       a.application_code,
+      a.full_name_fingerprint,
       a.pii_ciphertext,
       a.pii_wrapped_key,
       a.pii_iv,
       a.pii_alg,
-      e.title AS event_title
+      e.title AS event_title,
+      e.slug AS event_slug
     FROM special_applications a
     LEFT JOIN special_events e ON e.id = a.special_event_id
     WHERE a.id IN (${ids.map(() => '?').join(',')})
   `).all(...ids) as Array<{
     id: number;
     application_code: string;
+    full_name_fingerprint: string;
     pii_ciphertext: Buffer;
     pii_wrapped_key: Buffer;
     pii_iv: Buffer;
     pii_alg: string;
     event_title: string | null;
+    event_slug: string | null;
   }>;
+
+  const fingerprints = [...new Set(rows.map((row) => row.full_name_fingerprint).filter(Boolean))];
+  const applicationRows = fingerprints.length
+    ? db.prepare(`
+      SELECT
+        a.id,
+        a.application_code,
+        a.full_name_fingerprint,
+        e.title AS event_title,
+        e.slug AS event_slug
+      FROM special_applications a
+      LEFT JOIN special_events e ON e.id = a.special_event_id
+      WHERE a.status = 'accepted'
+        AND a.full_name_fingerprint IN (${fingerprints.map(() => '?').join(',')})
+      ORDER BY a.id ASC
+    `).all(...fingerprints) as Array<{
+      id: number;
+      application_code: string;
+      full_name_fingerprint: string;
+      event_title: string | null;
+      event_slug: string | null;
+    }>
+    : [];
+  const applicationsByFingerprint = new Map<string, Array<{
+    id: number;
+    applicationCode: string;
+    eventTitle: string | null;
+    eventSlug: string | null;
+  }>>();
+  for (const row of applicationRows) {
+    const current = applicationsByFingerprint.get(row.full_name_fingerprint) ?? [];
+    current.push({
+      id: row.id,
+      applicationCode: row.application_code,
+      eventTitle: row.event_title,
+      eventSlug: row.event_slug,
+    });
+    applicationsByFingerprint.set(row.full_name_fingerprint, current);
+  }
 
   const out = new Map<number, {
     id: number;
     applicationCode: string;
     fullName: string;
-    eventTitle: string | null;
+    specialApplications: Array<{
+      id: number;
+      applicationCode: string;
+      eventTitle: string | null;
+      eventSlug: string | null;
+    }>;
   }>();
   for (const row of rows) {
     const pii = decryptPii(privateKeyPemBase64, {
@@ -1752,7 +1868,12 @@ function loadSpecialApplicantNames(
       id: row.id,
       applicationCode: row.application_code,
       fullName: String(pii.fullName ?? '').trim() || `Заявка #${row.id}`,
-      eventTitle: row.event_title,
+      specialApplications: applicationsByFingerprint.get(row.full_name_fingerprint) ?? [{
+        id: row.id,
+        applicationCode: row.application_code,
+        eventTitle: row.event_title,
+        eventSlug: row.event_slug,
+      }],
     });
   }
   return out;
@@ -1868,7 +1989,12 @@ export function buildVkSocialDailyReport(
     specialApplicationId: number;
     applicationCode: string;
     fullName: string;
-    eventTitle: string | null;
+    specialApplications: Array<{
+      id: number;
+      applicationCode: string;
+      eventTitle: string | null;
+      eventSlug: string | null;
+    }>;
     matchStatus: MatchStatus;
     matchConfidence: number;
     vkDisplayNames: Set<string>;
@@ -1921,7 +2047,7 @@ export function buildVkSocialDailyReport(
       specialApplicationId: row.matchedSpecialApplicationId,
       applicationCode: applicant.applicationCode,
       fullName: applicant.fullName,
-      eventTitle: applicant.eventTitle,
+      specialApplications: applicant.specialApplications,
       matchStatus: row.matchStatus,
       matchConfidence: Number(row.matchConfidence ?? 0),
       vkDisplayNames: new Set<string>(),
@@ -1962,7 +2088,12 @@ export function buildVkSocialDailyReport(
     specialApplicationId: number;
     applicationCode: string;
     fullName: string;
-    eventTitle: string | null;
+    specialApplications: Array<{
+      id: number;
+      applicationCode: string;
+      eventTitle: string | null;
+      eventSlug: string | null;
+    }>;
     matchStatus: MatchStatus;
     matchConfidence: number;
     vkDisplayNames: Set<string>;
@@ -1987,7 +2118,7 @@ export function buildVkSocialDailyReport(
       specialApplicationId: row.matchedSpecialApplicationId,
       applicationCode: applicant.applicationCode,
       fullName: applicant.fullName,
-      eventTitle: applicant.eventTitle,
+      specialApplications: applicant.specialApplications,
       matchStatus: row.matchStatus,
       matchConfidence: Number(row.matchConfidence ?? 0),
       vkDisplayNames: new Set<string>(),
@@ -2034,6 +2165,8 @@ export function buildVkSocialDailyReport(
     .sort((left, right) => right[1] - left[1])
     .map(([action, count]) => `${actionLabel(action)}: ${count}`)
     .join(', ') || 'нет';
+  const personEventStats = countPeopleBySpecialEvent(peopleRows);
+  const firstSeenPersonEventStats = countPeopleBySpecialEvent(firstSeenPeopleRows);
 
   const title = interval.mode === 'delta'
     ? 'VK социальная активность без нахлёста'
@@ -2063,7 +2196,9 @@ export function buildVkSocialDailyReport(
     `• по типам: ${actionStats}`,
     `• по источникам: ${sourceStats}`,
     `• по качеству матчинга VK-акторов: ${matchStats}`,
+    `• по спецмероприятиям (точные действия, люди): ${personEventStats}`,
     `• ${firstSeenLabel}: ${stats.firstSeenWallScanActivities}; по типам: ${firstSeenActionStats}; людей с ФИО: ${stats.firstSeenWallScanMatchedPeople}`,
+    `• по спецмероприятиям (скан без точного времени, люди): ${firstSeenPersonEventStats}`,
     interval.mode === 'delta'
       ? '• Важно: отчёт показывает только дельту после прошлого отчёта/запуска, без повторного rolling-нахлёста.'
       : '• Важно: это rolling-аудит; при запуске каждые 12 часов соседние 24-часовые окна пересекаются.',
@@ -2084,7 +2219,7 @@ export function buildVkSocialDailyReport(
       lines.push(`${index + 1}. ${person.fullName}${weakMark}`);
       lines.push(`   ${actions}; всего ${person.totalActions}; VK: ${person.vkDisplayNames.join(', ')}`);
       lines.push(`   сейчас добавлено к розыгрышу: +${person.currentSocialBonusPoints} балл(ов); всего зафиксировано: ${formatSocialRaffleActionCounts(person.currentSocialActivityCounts)}; активных дней: ${person.currentSocialActiveDays}; сырой соцвес: ${person.currentSocialBonusRawPoints}`);
-      if (person.eventTitle) lines.push(`   спец: ${person.eventTitle}; код: ${person.applicationCode}`);
+      lines.push(`   спец: ${formatSpecialApplications(person.specialApplications)}`);
       if (person.latestActivityAt) lines.push(`   последнее: ${formatKaliningradDateTime(person.latestActivityAt)}`);
     });
     if (peopleRows.length > 60) {
@@ -2103,7 +2238,7 @@ export function buildVkSocialDailyReport(
       lines.push(`${index + 1}. ${person.fullName}${weakMark}`);
       lines.push(`   ${actions}; всего ${person.totalActions}; VK: ${person.vkDisplayNames.join(', ')}`);
       lines.push(`   сейчас добавлено к розыгрышу: +${person.currentSocialBonusPoints} балл(ов); всего зафиксировано: ${formatSocialRaffleActionCounts(person.currentSocialActivityCounts)}; активных дней: ${person.currentSocialActiveDays}; сырой соцвес: ${person.currentSocialBonusRawPoints}`);
-      if (person.eventTitle) lines.push(`   спец: ${person.eventTitle}; код: ${person.applicationCode}`);
+      lines.push(`   спец: ${formatSpecialApplications(person.specialApplications)}`);
       if (person.latestDetectedAt) lines.push(`   обнаружено: ${formatKaliningradDateTime(person.latestDetectedAt)}`);
     });
     if (firstSeenPeopleRows.length > 40) {

@@ -15,6 +15,7 @@ function applicant(id: number, fullName: string): SpecialApplicant {
     applicationCode: `SP-${id}`,
     status: 'submitted',
     fullName,
+    fullNameFingerprint: fullName.toLowerCase().replaceAll('ё', 'е'),
     tokens: fullName
       .toLowerCase()
       .replaceAll('ё', 'е')
@@ -194,6 +195,22 @@ test('deterministicMatchActor matches swapped first/last display order', () => {
 
   assert.equal(result.verdict.status, 'matched');
   assert.equal(result.verdict.matchedSpecialApplicationId, 1);
+});
+
+test('deterministicMatchActor treats same person in several special events as one candidate', () => {
+  const result = deterministicMatchActor({
+    firstName: 'Сергей',
+    lastName: 'Четвериков',
+    displayName: 'Сергей Четвериков',
+  }, [
+    applicant(1, 'Четвериков Сергей Александрович'),
+    applicant(2, 'Четвериков Сергей Александрович'),
+  ]);
+
+  assert.equal(result.verdict.status, 'matched');
+  assert.equal(result.verdict.matchedSpecialApplicationId, 1);
+  assert.equal(result.verdict.candidateCount, 1);
+  assert.match(result.verdict.reason, /same_person_special_applications=2/u);
 });
 
 test('deterministicMatchActor keeps patronymic-only profile below high-confidence', () => {

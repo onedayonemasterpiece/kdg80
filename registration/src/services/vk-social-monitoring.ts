@@ -139,6 +139,55 @@ function sleep(ms: number) {
   });
 }
 
+function readDelayRange(minValue: string | undefined, maxValue: string | undefined, fallbackMin: number, fallbackMax: number) {
+  const min = readPositiveInteger(minValue, fallbackMin);
+  const max = readPositiveInteger(maxValue, fallbackMax);
+  return {
+    min: Math.min(min, max),
+    max: Math.max(min, max),
+  };
+}
+
+function randomDelayMs(min: number, max: number) {
+  if (max <= min) {
+    return min;
+  }
+  return crypto.randomInt(min, max + 1);
+}
+
+function createPersonalSocialMessagePacer() {
+  const base = readDelayRange(
+    process.env.VK_SOCIAL_PERSONAL_MESSAGE_MIN_INTERVAL_MS,
+    process.env.VK_SOCIAL_PERSONAL_MESSAGE_MAX_INTERVAL_MS,
+    7_000,
+    18_000,
+  );
+  const batchSize = readPositiveInteger(process.env.VK_SOCIAL_PERSONAL_MESSAGE_BATCH_SIZE, 5);
+  const longPause = readDelayRange(
+    process.env.VK_SOCIAL_PERSONAL_MESSAGE_LONG_PAUSE_MIN_MS,
+    process.env.VK_SOCIAL_PERSONAL_MESSAGE_LONG_PAUSE_MAX_MS,
+    45_000,
+    90_000,
+  );
+  let attemptedCount = 0;
+
+  return async () => {
+    if (attemptedCount > 0) {
+      let delayMs = randomDelayMs(base.min, base.max);
+      if (batchSize > 0 && attemptedCount % batchSize === 0) {
+        delayMs += randomDelayMs(longPause.min, longPause.max);
+      }
+      await sleep(delayMs);
+    }
+    attemptedCount += 1;
+  };
+}
+
+function isVkCaptchaError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\bVK\s+messages\.send\s+14:/u.test(message);
+}
+
 function isoFromUnix(value: unknown) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) {
@@ -2419,10 +2468,15 @@ export async function sendVkSocialPersonalReports(deps: {
   }>;
 
   const bonuses = loadSocialRaffleBonuses(deps.db, actors.map((actor) => actor.applicationId));
-  let lastMessageAttemptAt = 0;
-  const minIntervalMs = readPositiveInteger(process.env.VK_SOCIAL_PERSONAL_MESSAGE_MIN_INTERVAL_MS, 3_000);
+  const waitBeforeMessageAttempt = createPersonalSocialMessagePacer();
+  let stoppedAfterCaptcha = false;
 
   for (const actor of actors) {
+    if (stoppedAfterCaptcha) {
+      summary.skipped += 1;
+      continue;
+    }
+
     const lastReport = lastSuccessfulPersonalReport(deps.db, actor.vkUserId);
     const allRows = deps.db.prepare(`
       SELECT id, action, COALESCE(activity_date, created_at) AS occurredAt
@@ -2478,13 +2532,7 @@ export async function sendVkSocialPersonalReports(deps: {
     }
 
     try {
-      if (lastMessageAttemptAt > 0) {
-        const elapsedMs = Date.now() - lastMessageAttemptAt;
-        if (elapsedMs < minIntervalMs) {
-          await sleep(minIntervalMs - elapsedMs);
-        }
-      }
-      lastMessageAttemptAt = Date.now();
+      await waitBeforeMessageAttempt();
       await sendVkPersonalMessage(deps.token, actor.vkUserId, message);
       markPersonalSocialReport(deps.db, actor.vkUserId, untilActivityId, 'sent', null);
       summary.sent += 1;
@@ -2492,6 +2540,9 @@ export async function sendVkSocialPersonalReports(deps: {
       const messageText = error instanceof Error ? error.message : String(error);
       markPersonalSocialReport(deps.db, actor.vkUserId, untilActivityId, 'failed', messageText.slice(0, 500));
       deps.logger?.warn({ err: error, vkUserId: actor.vkUserId, applicationId: actor.applicationId }, 'vk_social_personal_report_failed');
+      if (isVkCaptchaError(error)) {
+        stoppedAfterCaptcha = true;
+      }
       summary.failed += 1;
     }
   }

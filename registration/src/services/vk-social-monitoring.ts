@@ -4,6 +4,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import type { Bot, Context } from 'grammy';
 import { decryptPii } from '../lib/crypto';
 import { LlmProviderError, runLlmLimited } from '../lib/llm-rate-limiter';
+import { formatSocialRaffleActionCounts, loadSocialRaffleBonuses } from './special-social-scoring';
 import { listTelegramAdmins } from './telegram-admins';
 
 const VK_API_BASE_URL = 'https://api.vk.com/method/';
@@ -88,6 +89,7 @@ type VkSocialRunDeps = {
   bot?: Bot<Context>;
   sendTelegramReport?: boolean;
   reportHours?: number;
+  sendPersonalReports?: boolean;
 };
 
 type VkSocialRunResult = {
@@ -104,6 +106,9 @@ type VkSocialRunResult = {
   llmRequestCount: number;
   sourceSummary: Record<string, unknown>;
   telegramReportSent: boolean;
+  personalReportsSent: number;
+  personalReportsFailed: number;
+  personalReportsSkipped: number;
   actors: Array<{
     vkUserId: number;
     displayName: string;
@@ -1430,6 +1435,54 @@ function actionLabel(action: string) {
   }
 }
 
+async function callVkApi<T>(
+  token: string,
+  method: string,
+  params: Record<string, string>,
+  timeoutMs: number,
+) {
+  const body = new URLSearchParams();
+  body.set('access_token', token);
+  body.set('v', VK_API_VERSION);
+  for (const [key, value] of Object.entries(params)) {
+    body.set(key, value);
+  }
+
+  const maxRetries = readPositiveInteger(process.env.VK_SOCIAL_PERSONAL_API_MAX_RETRIES, 4);
+  const retryBaseMs = readPositiveInteger(process.env.VK_SOCIAL_PERSONAL_API_RETRY_BASE_MS, 1_100);
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const response = await fetch(`${VK_API_BASE_URL}${method}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const json = await response.json() as { response?: T; error?: { error_code: number; error_msg: string } };
+    if (!json.error) {
+      return json.response as T;
+    }
+    if (json.error.error_code === 6 && attempt < maxRetries) {
+      await sleep(retryBaseMs * (attempt + 1));
+      continue;
+    }
+    throw new Error(`VK ${method} ${json.error.error_code}: ${json.error.error_msg}`);
+  }
+  throw new Error(`VK ${method}: retries exhausted.`);
+}
+
+async function sendVkPersonalMessage(token: string, vkUserId: number, message: string) {
+  return callVkApi<number>(
+    token,
+    'messages.send',
+    {
+      user_id: String(vkUserId),
+      random_id: String(crypto.randomInt(1, 2_147_483_647)),
+      message,
+    },
+    readPositiveInteger(process.env.VK_SOCIAL_PERSONAL_MESSAGE_TIMEOUT_MS, 25_000),
+  );
+}
+
 function sourceLabel(source: string) {
   switch (source) {
     case 'notifications': return 'уведомления';
@@ -2273,6 +2326,291 @@ export async function sendVkSocialDailyReportToTelegram(deps: {
   }
 }
 
+type PersonalSocialReportActivityRow = {
+  id: number;
+  action: VkSocialAction;
+  occurredAt: string;
+};
+
+type PersonalSocialReportSummary = {
+  sent: number;
+  failed: number;
+  skipped: number;
+};
+
+function lastSuccessfulPersonalReport(db: Database.Database, vkUserId: number) {
+  if (!tableExists(db, 'vk_social_personal_reports')) {
+    return null;
+  }
+  return db.prepare(`
+    SELECT until_activity_id AS untilActivityId
+    FROM vk_social_personal_reports
+    WHERE vk_user_id = ?
+      AND status = 'sent'
+    ORDER BY until_activity_id DESC, id DESC
+    LIMIT 1
+  `).get(vkUserId) as { untilActivityId: number } | undefined ?? null;
+}
+
+function countActions(rows: PersonalSocialReportActivityRow[]) {
+  const out: Partial<Record<VkSocialAction, number>> = {};
+  for (const row of rows) {
+    out[row.action] = (out[row.action] ?? 0) + 1;
+  }
+  return out;
+}
+
+function firstNameFromFullName(value: string) {
+  const parts = value.trim().split(/\s+/u).filter(Boolean);
+  if (parts.length >= 2) return parts[1];
+  return parts[0] || '';
+}
+
+function buildPersonalSocialReportMessage(params: {
+  fullName: string;
+  reportKind: 'first' | 'delta';
+  newActions: Partial<Record<VkSocialAction, number>>;
+  allActions: Partial<Record<VkSocialAction, number>>;
+  bonusPoints: number;
+  rawPoints: number;
+  activeDays: number;
+}) {
+  const firstName = firstNameFromFullName(params.fullName);
+  const greeting = firstName ? `${firstName}, добрый вечер!` : 'Добрый вечер!';
+  const lines = [
+    greeting,
+    '',
+    'Это автоматический отчёт по вашей социальной активности в VK для фестиваля «80 историй о главном».',
+  ];
+
+  if (params.reportKind === 'first') {
+    lines.push(
+      '',
+      `За весь период мы зафиксировали: ${formatSocialRaffleActionCounts(params.allActions)}.`,
+    );
+  } else {
+    lines.push(
+      '',
+      `С прошлого отчёта мы зафиксировали: ${formatSocialRaffleActionCounts(params.newActions)}.`,
+      `Всего за весь период: ${formatSocialRaffleActionCounts(params.allActions)}.`,
+    );
+  }
+
+  lines.push(
+    `Сейчас к весу розыгрыша добавлено: +${params.bonusPoints} балл(ов) социальной активности.`,
+    `Активных дней: ${params.activeDays}; сырой соцвес: ${params.rawPoints}.`,
+    '',
+    'Социальные баллы учитываются только при уверенном сопоставлении VK-профиля с заявкой.',
+    'Сообщение создано автоматически.',
+  );
+  return lines.join('\n');
+}
+
+function ensurePendingPersonalSocialReport(
+  db: Database.Database,
+  params: {
+    vkUserId: number;
+    applicationId: number;
+    runId: number | null;
+    reportKind: 'first' | 'delta';
+    sinceActivityId: number | null;
+    untilActivityId: number;
+    activityCount: number;
+    bonusPoints: number;
+    rawPoints: number;
+    message: string;
+  },
+) {
+  if (!tableExists(db, 'vk_social_personal_reports')) {
+    return { shouldSend: false, reason: 'vk_social_personal_reports_missing' };
+  }
+  const reportKey = `${params.vkUserId}:${params.untilActivityId}`;
+  const existing = db.prepare(`
+    SELECT status
+    FROM vk_social_personal_reports
+    WHERE report_key = ?
+    LIMIT 1
+  `).get(reportKey) as { status: string } | undefined;
+  if (existing?.status === 'sent') {
+    return { shouldSend: false, reason: 'already_sent' };
+  }
+  db.prepare(`
+    INSERT INTO vk_social_personal_reports(
+      report_key,
+      vk_user_id,
+      application_id,
+      run_id,
+      status,
+      report_kind,
+      since_activity_id,
+      until_activity_id,
+      activity_count,
+      social_bonus_points,
+      social_bonus_raw_points,
+      message_text
+    ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(report_key) DO UPDATE SET
+      run_id = excluded.run_id,
+      status = 'pending',
+      report_kind = excluded.report_kind,
+      since_activity_id = excluded.since_activity_id,
+      activity_count = excluded.activity_count,
+      social_bonus_points = excluded.social_bonus_points,
+      social_bonus_raw_points = excluded.social_bonus_raw_points,
+      message_text = excluded.message_text,
+      error = NULL,
+      updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  `).run(
+    reportKey,
+    params.vkUserId,
+    params.applicationId,
+    params.runId,
+    params.reportKind,
+    params.sinceActivityId,
+    params.untilActivityId,
+    params.activityCount,
+    params.bonusPoints,
+    params.rawPoints,
+    params.message,
+  );
+  return { shouldSend: true, reason: null };
+}
+
+function markPersonalSocialReport(
+  db: Database.Database,
+  vkUserId: number,
+  untilActivityId: number,
+  status: 'sent' | 'failed',
+  error: string | null,
+) {
+  if (!tableExists(db, 'vk_social_personal_reports')) return;
+  db.prepare(`
+    UPDATE vk_social_personal_reports
+    SET status = ?,
+        error = ?,
+        sent_at = CASE WHEN ? = 'sent' THEN (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) ELSE sent_at END,
+        updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    WHERE report_key = ?
+  `).run(status, error, status, `${vkUserId}:${untilActivityId}`);
+}
+
+export async function sendVkSocialPersonalReports(deps: {
+  db: Database.Database;
+  token: string;
+  privateKeyPemBase64: string;
+  runId?: number | null;
+  logger?: FastifyBaseLogger;
+}) {
+  const summary: PersonalSocialReportSummary = { sent: 0, failed: 0, skipped: 0 };
+  if (!tableExists(deps.db, 'vk_social_personal_reports')) {
+    return summary;
+  }
+
+  const actors = deps.db.prepare(`
+    SELECT
+      actor.vk_user_id AS vkUserId,
+      actor.matched_special_application_id AS applicationId,
+      app.application_code AS applicationCode,
+      app.pii_ciphertext AS piiCiphertext,
+      app.pii_wrapped_key AS piiWrappedKey,
+      app.pii_iv AS piiIv,
+      app.pii_alg AS piiAlg
+    FROM vk_social_actors actor
+    INNER JOIN special_applications app ON app.id = actor.matched_special_application_id
+    WHERE actor.match_status = 'matched'
+      AND actor.match_confidence >= 0.85
+      AND actor.matched_special_application_id IS NOT NULL
+    ORDER BY actor.vk_user_id ASC
+  `).all() as Array<{
+    vkUserId: number;
+    applicationId: number;
+    applicationCode: string;
+    piiCiphertext: Buffer;
+    piiWrappedKey: Buffer;
+    piiIv: Buffer;
+    piiAlg: string;
+  }>;
+
+  const bonuses = loadSocialRaffleBonuses(deps.db, actors.map((actor) => actor.applicationId));
+  let lastMessageAttemptAt = 0;
+  const minIntervalMs = readPositiveInteger(process.env.VK_SOCIAL_PERSONAL_MESSAGE_MIN_INTERVAL_MS, 3_000);
+
+  for (const actor of actors) {
+    const lastReport = lastSuccessfulPersonalReport(deps.db, actor.vkUserId);
+    const allRows = deps.db.prepare(`
+      SELECT id, action, COALESCE(activity_date, created_at) AS occurredAt
+      FROM vk_social_activities
+      WHERE vk_user_id = ?
+      ORDER BY id ASC
+    `).all(actor.vkUserId) as PersonalSocialReportActivityRow[];
+    if (!allRows.length) {
+      summary.skipped += 1;
+      continue;
+    }
+
+    const sinceActivityId = lastReport?.untilActivityId ?? null;
+    const newRows = sinceActivityId ? allRows.filter((row) => row.id > sinceActivityId) : allRows;
+    if (!newRows.length) {
+      summary.skipped += 1;
+      continue;
+    }
+
+    const untilActivityId = allRows[allRows.length - 1].id;
+    const bonus = bonuses.get(actor.applicationId);
+    const pii = decryptPii(deps.privateKeyPemBase64, {
+      piiCiphertext: actor.piiCiphertext,
+      piiWrappedKey: actor.piiWrappedKey,
+      piiIv: actor.piiIv,
+      piiAlg: actor.piiAlg,
+    });
+    const message = buildPersonalSocialReportMessage({
+      fullName: pii.fullName ?? '',
+      reportKind: lastReport ? 'delta' : 'first',
+      newActions: countActions(newRows),
+      allActions: bonus?.actions ?? countActions(allRows),
+      bonusPoints: bonus?.bonusPoints ?? 0,
+      rawPoints: bonus?.rawPoints ?? 0,
+      activeDays: bonus?.activeDays ?? 0,
+    });
+
+    const pending = ensurePendingPersonalSocialReport(deps.db, {
+      vkUserId: actor.vkUserId,
+      applicationId: actor.applicationId,
+      runId: deps.runId ?? null,
+      reportKind: lastReport ? 'delta' : 'first',
+      sinceActivityId,
+      untilActivityId,
+      activityCount: newRows.length,
+      bonusPoints: bonus?.bonusPoints ?? 0,
+      rawPoints: bonus?.rawPoints ?? 0,
+      message,
+    });
+    if (!pending.shouldSend) {
+      summary.skipped += 1;
+      continue;
+    }
+
+    try {
+      if (lastMessageAttemptAt > 0) {
+        const elapsedMs = Date.now() - lastMessageAttemptAt;
+        if (elapsedMs < minIntervalMs) {
+          await sleep(minIntervalMs - elapsedMs);
+        }
+      }
+      lastMessageAttemptAt = Date.now();
+      await sendVkPersonalMessage(deps.token, actor.vkUserId, message);
+      markPersonalSocialReport(deps.db, actor.vkUserId, untilActivityId, 'sent', null);
+      summary.sent += 1;
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : String(error);
+      markPersonalSocialReport(deps.db, actor.vkUserId, untilActivityId, 'failed', messageText.slice(0, 500));
+      deps.logger?.warn({ err: error, vkUserId: actor.vkUserId, applicationId: actor.applicationId }, 'vk_social_personal_report_failed');
+      summary.failed += 1;
+    }
+  }
+  return summary;
+}
+
 export async function runVkSocialMonitoring(deps: VkSocialRunDeps): Promise<VkSocialRunResult> {
   const dryRun = deps.dryRun ?? false;
   const trigger = deps.trigger ?? (dryRun ? 'dry_run' : 'manual');
@@ -2315,6 +2653,9 @@ export async function runVkSocialMonitoring(deps: VkSocialRunDeps): Promise<VkSo
       unmatchedCount: countByStatus(matchResult.results, 'unmatched'),
       llmRequestCount: matchResult.llmRequestCount,
       telegramReportSent: false,
+      personalReportsSent: 0,
+      personalReportsFailed: 0,
+      personalReportsSkipped: 0,
       sourceSummary: {
         groups: DEFAULT_GROUPS,
         wallPostCount,
@@ -2348,6 +2689,22 @@ export async function runVkSocialMonitoring(deps: VkSocialRunDeps): Promise<VkSo
         deps.logger?.error({ err: telegramError, runKey }, 'vk_social_telegram_report_failed');
       }
     }
+    if (!dryRun && deps.sendPersonalReports) {
+      try {
+        const personalSummary = await sendVkSocialPersonalReports({
+          db: deps.db,
+          token: deps.token,
+          privateKeyPemBase64: deps.privateKeyPemBase64,
+          runId,
+          logger: deps.logger,
+        });
+        result.personalReportsSent = personalSummary.sent;
+        result.personalReportsFailed = personalSummary.failed;
+        result.personalReportsSkipped = personalSummary.skipped;
+      } catch (personalError) {
+        deps.logger?.error({ err: personalError, runKey }, 'vk_social_personal_reports_failed');
+      }
+    }
     deps.logger?.info({
       runKey,
       actorCount: result.actorCount,
@@ -2356,6 +2713,9 @@ export async function runVkSocialMonitoring(deps: VkSocialRunDeps): Promise<VkSo
       weakCount: result.weakCount,
       ambiguousCount: result.ambiguousCount,
       unmatchedCount: result.unmatchedCount,
+      personalReportsSent: result.personalReportsSent,
+      personalReportsFailed: result.personalReportsFailed,
+      personalReportsSkipped: result.personalReportsSkipped,
     }, 'vk_social_monitoring_completed');
     return result;
   } catch (error) {
@@ -2373,6 +2733,9 @@ export async function runVkSocialMonitoring(deps: VkSocialRunDeps): Promise<VkSo
         unmatchedCount: 0,
         llmRequestCount: 0,
         telegramReportSent: false,
+        personalReportsSent: 0,
+        personalReportsFailed: 0,
+        personalReportsSkipped: 0,
         sourceSummary: {},
       };
       persistRun(deps.db, runId, empty, 'failed', error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500));
@@ -2454,6 +2817,7 @@ export function startVkSocialMonitoring(deps: {
         runKey,
         bot: deps.bot,
         sendTelegramReport: Boolean(deps.bot),
+        sendPersonalReports: runKey.endsWith('-21'),
         reportHours: 24,
       });
     } catch (error) {

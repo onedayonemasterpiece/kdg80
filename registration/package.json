@@ -15,7 +15,9 @@
     "vk:social:dry-run": "tsx scripts/run-vk-social-sync.ts --dry-run",
     "vk:social:write": "tsx scripts/run-vk-social-sync.ts --write",
     "test:social": "tsx --test src/services/vk-social-monitoring.test.ts",
-    "vk:social:write:telegram": "tsx scripts/run-vk-social-sync.ts --write --telegram"
+    "vk:social:write:telegram": "tsx scripts/run-vk-social-sync.ts --write --telegram",
+    "vk:social:personal-reports": "tsx scripts/send-vk-social-personal-reports.ts",
+    "test:special-social": "tsx --test src/services/special-social-scoring.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.888.0",

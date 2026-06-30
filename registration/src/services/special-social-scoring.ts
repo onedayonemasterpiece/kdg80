@@ -145,41 +145,61 @@ export function loadSocialRaffleBonuses(
 ): Map<number, SocialRaffleBonus> {
   const uniqueIds = [...new Set(applicationIds.map((id) => Math.trunc(Number(id))).filter((id) => Number.isFinite(id) && id > 0))];
   const out = new Map<number, SocialRaffleBonus>(uniqueIds.map((id) => [id, emptyBonus(id)]));
-  if (!uniqueIds.length || !tableExists(db, 'vk_social_actors') || !tableExists(db, 'vk_social_activities')) {
+  if (!uniqueIds.length || !tableExists(db, 'vk_social_actors') || !tableExists(db, 'vk_social_activities') || !tableExists(db, 'special_applications')) {
     return out;
   }
 
   const placeholders = uniqueIds.map(() => '?').join(', ');
+  const requestedRows = db.prepare(`
+    SELECT id, full_name_fingerprint AS fullNameFingerprint
+    FROM special_applications
+    WHERE id IN (${placeholders})
+  `).all(...uniqueIds) as Array<{ id: number; fullNameFingerprint: string | null }>;
+  const fingerprintByApplicationId = new Map<number, string>();
+  for (const row of requestedRows) {
+    const fingerprint = String(row.fullNameFingerprint ?? '').trim();
+    if (fingerprint) {
+      fingerprintByApplicationId.set(row.id, fingerprint);
+    }
+  }
+  const fingerprints = [...new Set(fingerprintByApplicationId.values())];
+  if (!fingerprints.length) {
+    return out;
+  }
+
+  const fingerprintPlaceholders = fingerprints.map(() => '?').join(', ');
   const rows = db.prepare(`
     SELECT
-      actor.matched_special_application_id AS applicationId,
+      matched.full_name_fingerprint AS fullNameFingerprint,
       act.action AS action,
       COALESCE(act.activity_date, act.created_at) AS occurredAt
     FROM vk_social_activities act
     INNER JOIN vk_social_actors actor ON actor.vk_user_id = act.vk_user_id
-    WHERE actor.matched_special_application_id IN (${placeholders})
+    INNER JOIN special_applications matched ON matched.id = actor.matched_special_application_id
+    WHERE matched.full_name_fingerprint IN (${fingerprintPlaceholders})
       AND actor.match_status = 'matched'
       AND actor.match_confidence >= ?
     ORDER BY occurredAt ASC, act.id ASC
-  `).all(...uniqueIds, MATCH_CONFIDENCE_MIN) as Array<{
-    applicationId: number;
+  `).all(...fingerprints, MATCH_CONFIDENCE_MIN) as Array<{
+    fullNameFingerprint: string;
     action: string;
     occurredAt: string | null;
   }>;
 
-  const grouped = new Map<number, SocialRaffleActivityInput[]>();
+  const grouped = new Map<string, SocialRaffleActivityInput[]>();
   for (const row of rows) {
-    const applicationId = Number(row.applicationId);
-    if (!out.has(applicationId)) {
+    const fingerprint = String(row.fullNameFingerprint ?? '').trim();
+    if (!fingerprint) {
       continue;
     }
-    const list = grouped.get(applicationId) ?? [];
+    const list = grouped.get(fingerprint) ?? [];
     list.push({ action: row.action, occurredAt: row.occurredAt });
-    grouped.set(applicationId, list);
+    grouped.set(fingerprint, list);
   }
 
   for (const applicationId of uniqueIds) {
-    out.set(applicationId, computeSocialRaffleBonusFromActivities(applicationId, grouped.get(applicationId) ?? []));
+    const fingerprint = fingerprintByApplicationId.get(applicationId);
+    out.set(applicationId, computeSocialRaffleBonusFromActivities(applicationId, fingerprint ? grouped.get(fingerprint) ?? [] : []));
   }
   return out;
 }

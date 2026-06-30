@@ -1157,6 +1157,76 @@ function saveMatchCache(db: Database.Database, actor: VkSocialActor, verdict: Ma
   );
 }
 
+const SOCIAL_ACTIONS = new Set<VkSocialAction>([
+  'like_post',
+  'comment_post',
+  'reply_comment',
+  'like_comment',
+  'repost_post',
+  'like_video',
+]);
+
+function parseActionSummary(value: string | null): Set<VkSocialAction> {
+  try {
+    const parsed = JSON.parse(value || '[]');
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((item): item is VkSocialAction => SOCIAL_ACTIONS.has(item)));
+  } catch {
+    return new Set();
+  }
+}
+
+function addExistingDeterministicMatchesForNewApplicants(
+  db: Database.Database,
+  actors: Map<number, VkSocialActor>,
+  applicants: SpecialApplicant[],
+) {
+  const rows = db.prepare(`
+    SELECT
+      vk_user_id AS vkUserId,
+      first_name AS firstName,
+      last_name AS lastName,
+      display_name AS displayName,
+      is_closed AS isClosed,
+      action_summary_json AS actionSummaryJson,
+      activity_count AS activityCount,
+      last_seen_at AS lastSeenAt
+    FROM vk_social_actors
+    WHERE activity_count > 0
+      AND match_status IN ('unmatched', 'ambiguous')
+    ORDER BY updated_at ASC, vk_user_id ASC
+  `).all() as Array<{
+    vkUserId: number;
+    firstName: string | null;
+    lastName: string | null;
+    displayName: string;
+    isClosed: number | null;
+    actionSummaryJson: string | null;
+    activityCount: number;
+    lastSeenAt: string | null;
+  }>;
+
+  let added = 0;
+  for (const row of rows) {
+    if (actors.has(row.vkUserId)) continue;
+    const actor: VkSocialActor = {
+      vkUserId: row.vkUserId,
+      firstName: row.firstName,
+      lastName: row.lastName,
+      displayName: row.displayName,
+      isClosed: row.isClosed == null ? null : Boolean(row.isClosed),
+      actions: parseActionSummary(row.actionSummaryJson),
+      activityCount: Math.max(0, Number(row.activityCount ?? 0)),
+      lastSeenAt: row.lastSeenAt,
+    };
+    const deterministic = deterministicMatchActor(actor, applicants);
+    if (deterministic.verdict.status !== 'matched') continue;
+    actors.set(actor.vkUserId, actor);
+    added += 1;
+  }
+  return added;
+}
+
 function parseJsonFromText(value: string) {
   const trimmed = value.trim();
   const match = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/u);
@@ -2706,6 +2776,7 @@ export async function runVkSocialMonitoring(deps: VkSocialRunDeps): Promise<VkSo
     const notificationsCount = await collectNotifications(client, actors, activities, futureSignatures);
     const wallPostCount = await collectWallBackfill(client, actors, activities, futureSignatures);
     const applicants = loadSpecialApplicants(deps.db, deps.privateKeyPemBase64);
+    const existingDeterministicMatchCount = addExistingDeterministicMatchesForNewApplicants(deps.db, actors, applicants);
     let actorList = [...actors.values()].sort((left, right) => right.activityCount - left.activityCount);
     const matchResult = await matchActors(deps.db, actorList, applicants, dryRun);
     const userWallStats = await collectMatchedUserWallReposts(client, actors, activities, matchResult.results, futureSignatures);
@@ -2734,6 +2805,7 @@ export async function runVkSocialMonitoring(deps: VkSocialRunDeps): Promise<VkSo
         wallPostCount,
         notificationsCount,
         futureEventSignatureCount: futureSignatures.length,
+        existingDeterministicMatchCount,
         userWallRepostCount: userWallStats.userWallRepostCount,
         scannedUserWallPosts: userWallStats.scannedUserWallPosts,
       },

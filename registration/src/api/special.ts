@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import type { FastifyInstance } from 'fastify';
 import type { StoragePublisher } from '../lib/storage';
 import type { EmailNotificationService } from '../services/email-notifications';
+import { recordEmailNotification } from '../services/email-stats';
 import {
   checkSpecialApplicationPhotos,
   createSpecialApplication,
@@ -21,6 +22,7 @@ type SpecialApiDeps = {
   privateKeyPemBase64: string | null;
   storagePublisher: StoragePublisher;
   emailNotifications: EmailNotificationService;
+  postboxConfigurationSetName: string | null;
 };
 
 type MultipartPart = {
@@ -1148,6 +1150,16 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
       let emailNotification;
       try {
         emailNotification = await deps.emailNotifications.sendSpecialApplicationCreated(created);
+        recordEmailNotification(deps.db, {
+          entityType: 'special_application',
+          entityId: created.applicationId,
+          template: 'special_application_created',
+          recipientEmail: created.email,
+          subject: emailNotification.subject || `Заявка на спецмероприятие: ${created.event.title}`,
+          configurationSetName: deps.postboxConfigurationSetName,
+          fingerprintSecret: deps.fingerprintSecret,
+          result: emailNotification,
+        });
         request.log.info({
           applicationId: created.applicationId,
           status: created.status,
@@ -1240,6 +1252,16 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
       let emailNotification;
       try {
         emailNotification = await deps.emailNotifications.sendSpecialApplicationCreated(created);
+        recordEmailNotification(deps.db, {
+          entityType: 'special_application',
+          entityId: created.applicationId,
+          template: 'special_application_created',
+          recipientEmail: created.email,
+          subject: emailNotification.subject || `Заявка на спецмероприятие: ${created.event.title}`,
+          configurationSetName: deps.postboxConfigurationSetName,
+          fingerprintSecret: deps.fingerprintSecret,
+          result: emailNotification,
+        });
         request.log.info({
           route: 'applications-multipart',
           applicationId: created.applicationId,

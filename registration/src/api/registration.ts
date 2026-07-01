@@ -5,6 +5,7 @@ import type { StoragePublisher } from '../lib/storage';
 import { createRegistration, RegistrationError } from '../services/registrations';
 import { listPublicEventStates } from '../services/catalog';
 import type { EmailNotificationService } from '../services/email-notifications';
+import { recordEmailNotification } from '../services/email-stats';
 
 type RegistrationApiDeps = {
   db: Database.Database;
@@ -18,6 +19,7 @@ type RegistrationApiDeps = {
   storagePublisher: StoragePublisher;
   syncPublicStateManifest: (reason: string) => Promise<boolean>;
   emailNotifications: EmailNotificationService;
+  postboxConfigurationSetName: string | null;
 };
 
 function trimTrailingSlash(value: string) {
@@ -100,6 +102,16 @@ export async function registerRegistrationApi(app: FastifyInstance, deps: Regist
       let emailNotification;
       try {
         emailNotification = await deps.emailNotifications.sendRegistrationCreated(created);
+        recordEmailNotification(deps.db, {
+          entityType: 'registration',
+          entityId: created.registrationId,
+          template: 'registration_created',
+          recipientEmail: created.email,
+          subject: emailNotification.subject || `Вы зарегистрированы: ${created.eventTitle}`,
+          configurationSetName: deps.postboxConfigurationSetName,
+          fingerprintSecret: deps.fingerprintSecret,
+          result: emailNotification,
+        });
         request.log.info({
           eventSlug: created.eventSlug,
           emailSent: emailNotification.sent,
@@ -117,8 +129,9 @@ export async function registerRegistrationApi(app: FastifyInstance, deps: Regist
       }
 
       reply.code(201);
+      const { registrationId: _registrationId, email: _email, phone: _phone, ...publicCreated } = created;
       return {
-        ...created,
+        ...publicCreated,
         emailNotification,
       };
     } catch (error) {

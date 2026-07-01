@@ -20,6 +20,7 @@ import { startTelegramOutboxWorker } from './services/telegram-outbox';
 import { publishPublicStateManifest } from './services/state-manifest';
 import { startVkSocialMonitoring } from './services/vk-social-monitoring';
 import { createEmailNotificationService } from './services/email-notifications';
+import { startPostboxEventStreamConsumer } from './services/postbox-event-stream';
 
 const config = loadConfig();
 const db = createDatabase(config.sqlitePath);
@@ -154,6 +155,7 @@ await registerSpecialApi(app, {
   privateKeyPemBase64: config.piiPrivateKeyPemBase64,
   storagePublisher,
   emailNotifications,
+  postboxConfigurationSetName: config.postboxConfigurationSetName,
 });
 await registerRegistrationApi(app, {
   db,
@@ -167,9 +169,22 @@ await registerRegistrationApi(app, {
   storagePublisher,
   syncPublicStateManifest,
   emailNotifications,
+  postboxConfigurationSetName: config.postboxConfigurationSetName,
 });
 
 await syncPublicStateManifest('startup');
+await startPostboxEventStreamConsumer({
+  enabled: config.postboxEventStreamEnabled,
+  endpoint: config.postboxEventStreamEndpoint,
+  region: config.postboxRegion,
+  streamName: config.postboxEventStreamName,
+  accessKeyId: config.postboxEventStreamAccessKeyId,
+  secretAccessKey: config.postboxEventStreamSecretAccessKey,
+  pollIntervalMs: config.postboxEventStreamPollIntervalMs,
+}, {
+  db,
+  logger: app.log,
+});
 
 if (config.vkSocialMonitoringEnabled) {
   startVkSocialMonitoring({

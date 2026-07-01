@@ -15,11 +15,12 @@ export type PostboxConfig = {
   sendTimeoutMs: number;
 };
 
-type EmailSendResult = {
+export type EmailSendResult = {
   sent: boolean;
   provider: 'yandex-postbox';
   messageId: string | null;
   reason?: string;
+  subject?: string;
 };
 
 export type EmailNotificationService = {
@@ -252,6 +253,7 @@ async function sendPostboxEmail(config: PostboxConfig, message: {
       provider: 'yandex-postbox' as const,
       messageId: null,
       reason: 'email_notifications_disabled',
+      subject: message.subject,
     };
   }
 
@@ -261,6 +263,7 @@ async function sendPostboxEmail(config: PostboxConfig, message: {
       provider: 'yandex-postbox' as const,
       messageId: null,
       reason: 'postbox_credentials_missing',
+      subject: message.subject,
     };
   }
 
@@ -365,6 +368,7 @@ async function sendPostboxEmail(config: PostboxConfig, message: {
     sent: true,
     provider: 'yandex-postbox' as const,
     messageId,
+    subject: message.subject,
   };
 }
 

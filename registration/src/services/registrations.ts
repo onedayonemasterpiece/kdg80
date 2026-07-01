@@ -311,6 +311,11 @@ export async function createRegistration(payload: RegistrationPayload, deps: Reg
 
   return {
     eventSlug: event.slug,
+    eventTitle: event.title,
+    startsAt: event.starts_at,
+    venueName: event.venue_name,
+    hallName: event.hall_name,
+    address: event.address,
     fullName,
     email,
     phone,

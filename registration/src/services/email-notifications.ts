@@ -1,0 +1,388 @@
+import crypto from 'node:crypto';
+
+export type PostboxConfig = {
+  enabled: boolean;
+  endpoint: string;
+  region: string;
+  accessKeyId: string | null;
+  secretAccessKey: string | null;
+  fromEmail: string;
+  fromName: string | null;
+  replyToEmail: string | null;
+  configurationSetName: string | null;
+  archiveBccEmail: string | null;
+  timeZone: string;
+  sendTimeoutMs: number;
+};
+
+type EmailSendResult = {
+  sent: boolean;
+  provider: 'yandex-postbox';
+  messageId: string | null;
+  reason?: string;
+};
+
+export type EmailNotificationService = {
+  sendRegistrationCreated(input: RegistrationEmailInput): Promise<EmailSendResult>;
+  sendSpecialApplicationCreated(input: SpecialApplicationEmailInput): Promise<EmailSendResult>;
+};
+
+export type RegistrationEmailInput = {
+  eventSlug: string;
+  eventTitle: string;
+  startsAt: string;
+  venueName: string;
+  hallName: string | null;
+  address: string;
+  fullName: string;
+  email: string;
+  shortTicketId: string;
+  ticketUrl: string;
+  pdfUrl: string;
+  icsUrl: string;
+};
+
+export type SpecialApplicationEmailInput = {
+  applicationCode: string;
+  status: 'accepted' | 'rejected';
+  rejectionReason: string | null;
+  event: {
+    slug: string;
+    title: string;
+    venueName: string;
+  };
+  selectedShowings: Array<{
+    slug: string;
+    displayLabel: string;
+    startsAt: string;
+  }>;
+  scoring: {
+    stampCount: number;
+    score: number;
+  };
+  fullName: string;
+  email: string;
+};
+
+const FOOTER_LINES = [
+  'Фестиваль',
+  '«80 историй о главном»',
+  'к 80-летию Калининградской области',
+  'Российское общество «Знание»',
+];
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/gu, '&amp;')
+    .replace(/</gu, '&lt;')
+    .replace(/>/gu, '&gt;')
+    .replace(/"/gu, '&quot;')
+    .replace(/'/gu, '&#39;');
+}
+
+function normalizeEndpoint(value: string) {
+  return value.replace(/\/+$/u, '');
+}
+
+function hmac(key: crypto.BinaryLike | crypto.KeyObject, value: string) {
+  return crypto.createHmac('sha256', key).update(value, 'utf8').digest();
+}
+
+function sha256Hex(value: string) {
+  return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+function awsDate(now = new Date()) {
+  const iso = now.toISOString().replace(/[:-]|\.\d{3}/gu, '');
+  return {
+    amzDate: iso,
+    dateStamp: iso.slice(0, 8),
+  };
+}
+
+function signingKey(secret: string, dateStamp: string, region: string, service: string) {
+  const kDate = hmac(`AWS4${secret}`, dateStamp);
+  const kRegion = hmac(kDate, region);
+  const kService = hmac(kRegion, service);
+  return hmac(kService, 'aws4_request');
+}
+
+function formatFrom(config: PostboxConfig) {
+  if (!config.fromName) {
+    return config.fromEmail;
+  }
+
+  const escapedName = config.fromName.replace(/(["\\])/gu, '\\$1');
+  return `"${escapedName}" <${config.fromEmail}>`;
+}
+
+function formatDateTime(value: string, timeZone: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone,
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function footerText() {
+  return FOOTER_LINES.join('\n');
+}
+
+function footerHtml() {
+  return FOOTER_LINES.map(escapeHtml).join('<br>');
+}
+
+function paragraphsHtml(lines: string[]) {
+  return lines.map((line) => `<p>${escapeHtml(line)}</p>`).join('\n');
+}
+
+export function renderRegistrationEmail(input: RegistrationEmailInput, timeZone: string) {
+  const startsAt = formatDateTime(input.startsAt, timeZone);
+  const place = [input.venueName, input.hallName, input.address].filter(Boolean).join(', ');
+  const subject = `Вы зарегистрированы: ${input.eventTitle}`;
+  const text = [
+    `Здравствуйте, ${input.fullName}!`,
+    '',
+    `Вы зарегистрированы на событие «${input.eventTitle}».`,
+    `Дата и время: ${startsAt}.`,
+    `Место: ${place}.`,
+    '',
+    `Ваш номер приглашения: ${input.shortTicketId}.`,
+    `Приглашение: ${input.ticketUrl}`,
+    `PDF: ${input.pdfUrl}`,
+    `Календарь: ${input.icsUrl}`,
+    '',
+    'Если планы изменятся или возникнут вопросы, ответьте на это письмо — мы получим ваш ответ в info@kgd80.ru.',
+    '',
+    footerText(),
+  ].join('\n');
+  const html = `<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>${escapeHtml(subject)}</title></head>
+<body style="margin:0;padding:24px;background:#f7f1e8;color:#12110e;font-family:Arial,Helvetica,sans-serif;line-height:1.5;">
+  <main style="max-width:640px;margin:0 auto;background:#fffaf2;border-radius:18px;padding:28px;border:1px solid #eadfce;">
+    <h1 style="margin:0 0 18px;font-size:24px;line-height:1.2;">${escapeHtml('Вы зарегистрированы')}</h1>
+    ${paragraphsHtml([
+      `Здравствуйте, ${input.fullName}!`,
+      `Вы зарегистрированы на событие «${input.eventTitle}».`,
+      `Дата и время: ${startsAt}.`,
+      `Место: ${place}.`,
+      `Ваш номер приглашения: ${input.shortTicketId}.`,
+    ])}
+    <p><a href="${escapeHtml(input.ticketUrl)}" style="color:#b83f2f;font-weight:bold;">Открыть приглашение</a></p>
+    <p style="font-size:14px;color:#554f48;">PDF: <a href="${escapeHtml(input.pdfUrl)}">${escapeHtml(input.pdfUrl)}</a><br>Календарь: <a href="${escapeHtml(input.icsUrl)}">${escapeHtml(input.icsUrl)}</a></p>
+    <p>Если планы изменятся или возникнут вопросы, ответьте на это письмо — мы получим ваш ответ в info@kgd80.ru.</p>
+    <hr style="border:0;border-top:1px solid #eadfce;margin:24px 0;">
+    <p style="margin:0;color:#554f48;">${footerHtml()}</p>
+  </main>
+</body>
+</html>`;
+
+  return { subject, text, html };
+}
+
+export function renderSpecialApplicationEmail(input: SpecialApplicationEmailInput, timeZone: string) {
+  const statusText = input.status === 'accepted'
+    ? 'Заявка принята и участвует в розыгрыше.'
+    : 'Заявка получена, но пока не участвует в розыгрыше.';
+  const selectedShowingsText = input.selectedShowings
+    .map((showing) => `${showing.displayLabel} (${formatDateTime(showing.startsAt, timeZone)})`)
+    .join('; ');
+  const subject = `Заявка на спецмероприятие: ${input.event.title}`;
+  const rejectionLine = input.status === 'rejected' && input.rejectionReason
+    ? `Причина: ${input.rejectionReason}`
+    : null;
+  const text = [
+    `Здравствуйте, ${input.fullName}!`,
+    '',
+    `Мы получили вашу заявку на спецмероприятие «${input.event.title}».`,
+    statusText,
+    `Код заявки: ${input.applicationCode}.`,
+    `Выбранные даты: ${selectedShowingsText}.`,
+    `Распознано штампов: ${input.scoring.stampCount}. Баллы для розыгрыша: ${input.scoring.score}.`,
+    rejectionLine,
+    '',
+    'Если нужно уточнить данные или задать вопрос, ответьте на это письмо — мы получим ваш ответ в info@kgd80.ru.',
+    '',
+    footerText(),
+  ].filter((line): line is string => line !== null).join('\n');
+  const htmlLines = [
+    `Здравствуйте, ${input.fullName}!`,
+    `Мы получили вашу заявку на спецмероприятие «${input.event.title}».`,
+    statusText,
+    `Код заявки: ${input.applicationCode}.`,
+    `Выбранные даты: ${selectedShowingsText}.`,
+    `Распознано штампов: ${input.scoring.stampCount}. Баллы для розыгрыша: ${input.scoring.score}.`,
+    rejectionLine,
+    'Если нужно уточнить данные или задать вопрос, ответьте на это письмо — мы получим ваш ответ в info@kgd80.ru.',
+  ].filter((line): line is string => line !== null);
+  const html = `<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>${escapeHtml(subject)}</title></head>
+<body style="margin:0;padding:24px;background:#f7f1e8;color:#12110e;font-family:Arial,Helvetica,sans-serif;line-height:1.5;">
+  <main style="max-width:640px;margin:0 auto;background:#fffaf2;border-radius:18px;padding:28px;border:1px solid #eadfce;">
+    <h1 style="margin:0 0 18px;font-size:24px;line-height:1.2;">${escapeHtml('Заявка на спецмероприятие получена')}</h1>
+    ${paragraphsHtml(htmlLines)}
+    <hr style="border:0;border-top:1px solid #eadfce;margin:24px 0;">
+    <p style="margin:0;color:#554f48;">${footerHtml()}</p>
+  </main>
+</body>
+</html>`;
+
+  return { subject, text, html };
+}
+
+async function sendPostboxEmail(config: PostboxConfig, message: {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+}) {
+  if (!config.enabled) {
+    return {
+      sent: false,
+      provider: 'yandex-postbox' as const,
+      messageId: null,
+      reason: 'email_notifications_disabled',
+    };
+  }
+
+  if (!config.accessKeyId || !config.secretAccessKey) {
+    return {
+      sent: false,
+      provider: 'yandex-postbox' as const,
+      messageId: null,
+      reason: 'postbox_credentials_missing',
+    };
+  }
+
+  const endpoint = normalizeEndpoint(config.endpoint);
+  const url = new URL('/v2/email/outbound-emails', endpoint);
+  const destination: Record<string, string[]> = {
+    ToAddresses: [message.to],
+  };
+  if (config.archiveBccEmail) {
+    destination.BccAddresses = [config.archiveBccEmail];
+  }
+
+  const payload: Record<string, unknown> = {
+    FromEmailAddress: formatFrom(config),
+    Destination: destination,
+    Content: {
+      Simple: {
+        Subject: { Data: message.subject, Charset: 'UTF-8' },
+        Body: {
+          Text: { Data: message.text, Charset: 'UTF-8' },
+          Html: { Data: message.html, Charset: 'UTF-8' },
+        },
+      },
+    },
+  };
+  if (config.configurationSetName) {
+    payload.ConfigurationSetName = config.configurationSetName;
+  }
+  if (config.replyToEmail) {
+    payload.ReplyToAddresses = [config.replyToEmail];
+  }
+
+  const body = JSON.stringify(payload);
+  const bodyHash = sha256Hex(body);
+  const { amzDate, dateStamp } = awsDate();
+  const service = 'ses';
+  const canonicalUri = url.pathname;
+  const canonicalQuery = '';
+  const canonicalHeaders = [
+    ['content-type', 'application/json'],
+    ['host', url.host],
+    ['x-amz-content-sha256', bodyHash],
+    ['x-amz-date', amzDate],
+  ] as const;
+  const signedHeaders = canonicalHeaders.map(([name]) => name).join(';');
+  const canonicalRequest = [
+    'POST',
+    canonicalUri,
+    canonicalQuery,
+    canonicalHeaders.map(([name, value]) => `${name}:${value}\n`).join(''),
+    signedHeaders,
+    bodyHash,
+  ].join('\n');
+  const algorithm = 'AWS4-HMAC-SHA256';
+  const credentialScope = `${dateStamp}/${config.region}/${service}/aws4_request`;
+  const stringToSign = [
+    algorithm,
+    amzDate,
+    credentialScope,
+    sha256Hex(canonicalRequest),
+  ].join('\n');
+  const signature = crypto.createHmac('sha256', signingKey(config.secretAccessKey, dateStamp, config.region, service))
+    .update(stringToSign, 'utf8')
+    .digest('hex');
+  const authorization = `${algorithm} Credential=${config.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      authorization,
+      'content-type': 'application/json',
+      'x-amz-content-sha256': bodyHash,
+      'x-amz-date': amzDate,
+    },
+    body,
+    signal: AbortSignal.timeout(config.sendTimeoutMs),
+  });
+  const responseText = await response.text();
+  let parsed: Record<string, unknown> = {};
+  try {
+    parsed = responseText ? JSON.parse(responseText) as Record<string, unknown> : {};
+  } catch {
+    parsed = { raw: responseText };
+  }
+
+  if (!response.ok) {
+    const details = typeof parsed.message === 'string'
+      ? parsed.message
+      : typeof parsed.Message === 'string'
+        ? parsed.Message
+        : responseText;
+    throw new Error(`Postbox SendEmail failed with HTTP ${response.status}: ${details}`);
+  }
+
+  const messageId = typeof parsed.MessageId === 'string'
+    ? parsed.MessageId
+    : typeof parsed.MessageID === 'string'
+      ? parsed.MessageID
+      : null;
+
+  return {
+    sent: true,
+    provider: 'yandex-postbox' as const,
+    messageId,
+  };
+}
+
+export function createEmailNotificationService(config: PostboxConfig): EmailNotificationService {
+  return {
+    async sendRegistrationCreated(input) {
+      const rendered = renderRegistrationEmail(input, config.timeZone);
+      return sendPostboxEmail(config, {
+        to: input.email,
+        ...rendered,
+      });
+    },
+    async sendSpecialApplicationCreated(input) {
+      const rendered = renderSpecialApplicationEmail(input, config.timeZone);
+      return sendPostboxEmail(config, {
+        to: input.email,
+        ...rendered,
+      });
+    },
+  };
+}

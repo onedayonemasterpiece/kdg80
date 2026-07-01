@@ -47,6 +47,12 @@ export type AppConfig = {
   postboxConfigurationSetName: string | null;
   postboxArchiveBccEmail: string | null;
   postboxSendTimeoutMs: number;
+  postboxEventStreamEnabled: boolean;
+  postboxEventStreamEndpoint: string;
+  postboxEventStreamName: string;
+  postboxEventStreamAccessKeyId: string | null;
+  postboxEventStreamSecretAccessKey: string | null;
+  postboxEventStreamPollIntervalMs: number;
 };
 
 function trimTrailingSlash(value: string) {
@@ -137,6 +143,15 @@ export function loadConfig(): AppConfig {
     Boolean(postboxAccessKeyId && postboxSecretAccessKey),
   );
   const postboxSendTimeoutMs = parsePort(process.env.POSTBOX_SEND_TIMEOUT_MS, 15_000);
+  const postboxEventStreamEndpoint = trimTrailingSlash(process.env.POSTBOX_EVENT_STREAM_ENDPOINT?.trim() || '');
+  const postboxEventStreamName = process.env.POSTBOX_EVENT_STREAM_NAME?.trim() || 'postbox-events';
+  const postboxEventStreamAccessKeyId = process.env.POSTBOX_EVENT_STREAM_ACCESS_KEY_ID?.trim() || null;
+  const postboxEventStreamSecretAccessKey = process.env.POSTBOX_EVENT_STREAM_SECRET_ACCESS_KEY?.trim() || null;
+  const postboxEventStreamEnabled = parseBoolean(
+    process.env.POSTBOX_EVENT_STREAM_ENABLED,
+    Boolean(postboxEventStreamEndpoint && postboxEventStreamAccessKeyId && postboxEventStreamSecretAccessKey),
+  );
+  const postboxEventStreamPollIntervalMs = parsePort(process.env.POSTBOX_EVENT_STREAM_POLL_INTERVAL_MS, 5_000);
 
   return {
     operatingMode,
@@ -185,5 +200,11 @@ export function loadConfig(): AppConfig {
     postboxConfigurationSetName,
     postboxArchiveBccEmail,
     postboxSendTimeoutMs,
+    postboxEventStreamEnabled,
+    postboxEventStreamEndpoint,
+    postboxEventStreamName,
+    postboxEventStreamAccessKeyId,
+    postboxEventStreamSecretAccessKey,
+    postboxEventStreamPollIntervalMs,
   };
 }

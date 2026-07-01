@@ -310,6 +310,7 @@ export async function createRegistration(payload: RegistrationPayload, deps: Reg
   });
 
   return {
+    registrationId: created.registrationId,
     eventSlug: event.slug,
     eventTitle: event.title,
     startsAt: event.starts_at,

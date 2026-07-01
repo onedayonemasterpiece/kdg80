@@ -12,10 +12,11 @@ const events = getFestivalEvents();
 const now = new Date();
 const programHref = getSmartProgramHref(events, false, now);
 const canonicalPath = '/special/zoo-excursion/';
-const title = 'Перенос экскурсии по Калининградскому зоопарку | 80 историй о главном';
-const description = 'Экскурсия по Калининградскому зоопарку 28 июня переносится из-за прогнозируемой жары до +37 °C. Результаты розыгрыша сохраняются.';
+const title = 'Новая дата экскурсии по Калининградскому зоопарку | 80 историй о главном';
+const description = 'Экскурсия по Калининградскому зоопарку состоится 12 июля 2026 года в 14:00. Результаты розыгрыша сохраняются; коммерческий билет можно купить на сайте зоопарка.';
 const heroImage = '/generated/events/zoopark-sokolova.webp';
-const ogImage = '/generated/events/zoopark-sokolova.webp';
+const ogImage = '/generated/social/zoo-new-date-20260712.webp';
+const commercialTicketUrl = 'https://tickets.kldzoo.ru/event/CC87B2DFED9611E1E579E86C7D1D400FBCF4DE6F/2026-07-12/14:00';
 ---
 
 <Layout
@@ -28,7 +29,7 @@ const ogImage = '/generated/events/zoopark-sokolova.webp';
     <SiteHeader programHref={programHref} routeItems={routeItems} />
     <main class="special-page__main">
       <section class="special-intro" aria-labelledby="special-title">
-        <p class="special-kicker">Перенос экскурсии</p>
+        <p class="special-kicker">Новая дата экскурсии</p>
         <h1 id="special-title">Премьера новой тематической экскурсии по Калининградскому зоопарку</h1>
         <p class="special-lead">Новая экскурсия по Калининградскому зоопарку раскрывает советский период его истории: как зоопарк менялся после немецкой эпохи и становился одним из очагов мирной городской жизни.</p>
         <p class="special-story-copy">Маршрут задуман как живая, весёлая и содержательная прогулка по советскому слою зоопарка. Участники увидят привычную территорию как историческое пространство: послевоенное восстановление, новые смыслы городской культуры, зоопросвещение, памятные места и истории о людях и животных, которые помогали Калининграду возвращаться к мирной жизни.</p>
@@ -44,20 +45,22 @@ const ogImage = '/generated/events/zoopark-sokolova.webp';
           />
         </figure>
         <ul class="special-meta" aria-label="Дата экскурсии">
-          <li><strong>Перенос</strong><span>28 июня 14:00 · из-за прогнозируемой жары до +37 °C</span></li>
-          <li><strong>Выходной день</strong><span>новую дату и время объявим дополнительно</span></li>
+          <li><strong>12 июля</strong><span>воскресенье · 14:00 · Калининградский зоопарк</span></li>
+          <li><strong>Розыгрыш</strong><span>результаты сохраняются, повторная заявка не нужна</span></li>
         </ul>
-        <p class="special-note"><strong>Важно:</strong> результаты розыгрыша сохраняются. Победители остаются в списке и получат новую дату лично по тем же каналам.</p>
+        <p class="special-note"><strong>Важно:</strong> результаты розыгрыша сохраняются. Победителям розыгрыша покупать коммерческий билет на экскурсию не нужно.</p>
         <div class="special-postponed-panel" role="status" aria-live="polite">
-          <strong>Экскурсия переносится</strong>
-          <p>Мы переносим экскурсию, запланированную на 28 июня в 14:00, из-за прогнозируемой жары до +37 °C. Перенесённая экскурсия точно состоится в выходной день.</p>
-          <p>О новой дате и времени сообщим победителям лично и опубликуем отдельный анонс. Приносим извинения за предоставленные неудобства.</p>
+          <strong>Экскурсия состоится 12 июля</strong>
+          <p>Новая дата перенесённой экскурсии — воскресенье, 12 июля 2026 года, начало в 14:00. Победителям лучше быть у входа заранее, примерно к 13:45.</p>
+          <p>Результаты розыгрыша сохраняются: повторно подавать заявку не нужно.</p>
+          <p>Коммерческий билет на экскурсию можно купить по ссылке ниже. Эта ссылка не касается уже выигравших участников розыгрыша.</p>
+          <a class="special-panel-link" href={commercialTicketUrl} target="_blank" rel="noopener">Купить коммерческий билет на экскурсию</a>
         </div>
         <div class="special-access-note" aria-label="Как попасть на экскурсию">
-          <strong>Розыгрыш уже состоялся</strong>
-          <p>Дополнительные заявки не принимаются: результаты розыгрыша остаются действительными после переноса.</p>
-          <a href="/programma/">Посмотреть программу фестиваля</a>
-          <span>Победителям не нужно подавать заявку повторно.</span>
+          <strong>Розыгрыш уже завершён</strong>
+          <p>Дополнительные заявки на розыгрыш не принимаются: результаты остаются действительными после переноса.</p>
+          <a href={commercialTicketUrl} target="_blank" rel="noopener">Купить коммерческий билет на экскурсию</a>
+          <span>Победителям розыгрыша покупать билет по этой ссылке не нужно.</span>
         </div>
       </section>
 
@@ -1365,7 +1368,8 @@ const ogImage = '/generated/events/zoopark-sokolova.webp';
     line-height: 1.5;
   }
 
-  .special-access-note a {
+  .special-access-note a,
+  .special-panel-link {
     width: fit-content;
     color: #a33324;
     font-weight: 800;

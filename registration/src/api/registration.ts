@@ -4,6 +4,7 @@ import type { RegistrationPayload } from '../types';
 import type { StoragePublisher } from '../lib/storage';
 import { createRegistration, RegistrationError } from '../services/registrations';
 import { listPublicEventStates } from '../services/catalog';
+import type { EmailNotificationService } from '../services/email-notifications';
 
 type RegistrationApiDeps = {
   db: Database.Database;
@@ -16,6 +17,7 @@ type RegistrationApiDeps = {
   ticketsPrefix: string;
   storagePublisher: StoragePublisher;
   syncPublicStateManifest: (reason: string) => Promise<boolean>;
+  emailNotifications: EmailNotificationService;
 };
 
 function trimTrailingSlash(value: string) {
@@ -95,8 +97,30 @@ export async function registerRegistrationApi(app: FastifyInstance, deps: Regist
 
       void deps.syncPublicStateManifest(`registration:${payload.eventSlug}`);
 
+      let emailNotification;
+      try {
+        emailNotification = await deps.emailNotifications.sendRegistrationCreated(created);
+        request.log.info({
+          eventSlug: created.eventSlug,
+          emailSent: emailNotification.sent,
+          messageId: emailNotification.messageId,
+          reason: emailNotification.reason,
+        }, 'registration_email_notification_result');
+      } catch (error) {
+        request.log.error({ err: error, eventSlug: created.eventSlug }, 'registration_email_notification_failed');
+        emailNotification = {
+          sent: false,
+          provider: 'yandex-postbox' as const,
+          messageId: null,
+          reason: 'send_failed',
+        };
+      }
+
       reply.code(201);
-      return created;
+      return {
+        ...created,
+        emailNotification,
+      };
     } catch (error) {
       if (error instanceof RegistrationError) {
         reply.code(error.statusCode);

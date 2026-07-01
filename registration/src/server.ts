@@ -19,9 +19,25 @@ import { registerTelegramBot } from './services/telegram-bot';
 import { startTelegramOutboxWorker } from './services/telegram-outbox';
 import { publishPublicStateManifest } from './services/state-manifest';
 import { startVkSocialMonitoring } from './services/vk-social-monitoring';
+import { createEmailNotificationService } from './services/email-notifications';
 
 const config = loadConfig();
 const db = createDatabase(config.sqlitePath);
+const emailNotifications = createEmailNotificationService({
+  enabled: config.postboxEnabled,
+  endpoint: config.postboxEndpoint,
+  region: config.postboxRegion,
+  accessKeyId: config.postboxAccessKeyId,
+  secretAccessKey: config.postboxSecretAccessKey,
+  fromEmail: config.postboxFromEmail,
+  fromName: config.postboxFromName,
+  replyToEmail: config.postboxReplyToEmail,
+  configurationSetName: config.postboxConfigurationSetName,
+  archiveBccEmail: config.postboxArchiveBccEmail,
+  timeZone: config.timeZone,
+  sendTimeoutMs: config.postboxSendTimeoutMs,
+});
+
 const storagePublisher = createStoragePublisher({
   driver: config.storageDriver,
   publicTicketBaseUrl: config.publicTicketBaseUrl,
@@ -137,6 +153,7 @@ await registerSpecialApi(app, {
   publicKeyPemBase64: config.piiPublicKeyPemBase64,
   privateKeyPemBase64: config.piiPrivateKeyPemBase64,
   storagePublisher,
+  emailNotifications,
 });
 await registerRegistrationApi(app, {
   db,
@@ -149,6 +166,7 @@ await registerRegistrationApi(app, {
   ticketsPrefix: config.ticketsPrefix,
   storagePublisher,
   syncPublicStateManifest,
+  emailNotifications,
 });
 
 await syncPublicStateManifest('startup');

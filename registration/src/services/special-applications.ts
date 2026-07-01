@@ -1354,6 +1354,9 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
   return {
     applicationId,
     applicationCode,
+    fullName,
+    email,
+    phone,
     status,
     rejectionReason: rejectionReason || null,
     event: publicSpecialEventView(loaded.event, loaded.showings),

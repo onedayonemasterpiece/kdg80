@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-type AppConfig = {
+export type AppConfig = {
   operatingMode: 'testing' | 'production';
   host: string;
   port: number;
@@ -36,6 +36,17 @@ type AppConfig = {
   vkAuthAllowedReturnOrigins: string[];
   vkAuthToken: string | null;
   vkSocialMonitoringEnabled: boolean;
+  postboxEnabled: boolean;
+  postboxEndpoint: string;
+  postboxRegion: string;
+  postboxAccessKeyId: string | null;
+  postboxSecretAccessKey: string | null;
+  postboxFromEmail: string;
+  postboxFromName: string | null;
+  postboxReplyToEmail: string | null;
+  postboxConfigurationSetName: string | null;
+  postboxArchiveBccEmail: string | null;
+  postboxSendTimeoutMs: number;
 };
 
 function trimTrailingSlash(value: string) {
@@ -114,6 +125,18 @@ export function loadConfig(): AppConfig {
   );
   const vkAuthToken = process.env.VK_AUTH_TOKEN?.trim() || null;
   const vkSocialMonitoringEnabled = parseBoolean(process.env.VK_SOCIAL_MONITORING_ENABLED, true);
+  const postboxAccessKeyId = process.env.POSTBOX_ACCESS_KEY_ID?.trim() || null;
+  const postboxSecretAccessKey = process.env.POSTBOX_SECRET_ACCESS_KEY?.trim() || null;
+  const postboxFromEmail = process.env.POSTBOX_FROM_EMAIL?.trim() || 'info@kgd80.ru';
+  const postboxFromName = process.env.POSTBOX_FROM_NAME?.trim() || null;
+  const postboxReplyToEmail = process.env.POSTBOX_REPLY_TO_EMAIL?.trim() || postboxFromEmail;
+  const postboxConfigurationSetName = process.env.POSTBOX_CONFIGURATION_SET_NAME?.trim() || 'kgd80-default';
+  const postboxArchiveBccEmail = process.env.POSTBOX_ARCHIVE_BCC_EMAIL?.trim() || null;
+  const postboxEnabled = parseBoolean(
+    process.env.POSTBOX_ENABLED,
+    Boolean(postboxAccessKeyId && postboxSecretAccessKey),
+  );
+  const postboxSendTimeoutMs = parsePort(process.env.POSTBOX_SEND_TIMEOUT_MS, 15_000);
 
   return {
     operatingMode,
@@ -151,5 +174,16 @@ export function loadConfig(): AppConfig {
     vkAuthAllowedReturnOrigins,
     vkAuthToken,
     vkSocialMonitoringEnabled,
+    postboxEnabled,
+    postboxEndpoint: trimTrailingSlash(process.env.POSTBOX_ENDPOINT?.trim() || 'https://postbox.cloud.yandex.net'),
+    postboxRegion: process.env.POSTBOX_REGION?.trim() || 'ru-central1',
+    postboxAccessKeyId,
+    postboxSecretAccessKey,
+    postboxFromEmail,
+    postboxFromName,
+    postboxReplyToEmail,
+    postboxConfigurationSetName,
+    postboxArchiveBccEmail,
+    postboxSendTimeoutMs,
   };
 }

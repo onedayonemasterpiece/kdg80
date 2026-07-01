@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import type { FastifyInstance } from 'fastify';
 import type { StoragePublisher } from '../lib/storage';
+import type { EmailNotificationService } from '../services/email-notifications';
 import {
   checkSpecialApplicationPhotos,
   createSpecialApplication,
@@ -19,6 +20,7 @@ type SpecialApiDeps = {
   publicKeyPemBase64: string | null;
   privateKeyPemBase64: string | null;
   storagePublisher: StoragePublisher;
+  emailNotifications: EmailNotificationService;
 };
 
 type MultipartPart = {
@@ -1143,8 +1145,31 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
         userAgent: request.headers['user-agent'],
       });
 
+      let emailNotification;
+      try {
+        emailNotification = await deps.emailNotifications.sendSpecialApplicationCreated(created);
+        request.log.info({
+          applicationId: created.applicationId,
+          status: created.status,
+          emailSent: emailNotification.sent,
+          messageId: emailNotification.messageId,
+          reason: emailNotification.reason,
+        }, 'special_application_email_notification_result');
+      } catch (error) {
+        request.log.error({ err: error, applicationId: created.applicationId }, 'special_application_email_notification_failed');
+        emailNotification = {
+          sent: false,
+          provider: 'yandex-postbox' as const,
+          messageId: null,
+          reason: 'send_failed',
+        };
+      }
+
       reply.code(201);
-      return created;
+      return {
+        ...created,
+        emailNotification,
+      };
     } catch (error) {
       if (error instanceof SpecialApplicationError) {
         reply.code(error.statusCode);
@@ -1212,6 +1237,26 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
         userAgent: request.headers['user-agent'],
       });
 
+      let emailNotification;
+      try {
+        emailNotification = await deps.emailNotifications.sendSpecialApplicationCreated(created);
+        request.log.info({
+          route: 'applications-multipart',
+          applicationId: created.applicationId,
+          emailSent: emailNotification.sent,
+          messageId: emailNotification.messageId,
+          reason: emailNotification.reason,
+        }, 'special_application_email_notification_result');
+      } catch (error) {
+        request.log.error({ err: error, route: 'applications-multipart', applicationId: created.applicationId }, 'special_application_email_notification_failed');
+        emailNotification = {
+          sent: false,
+          provider: 'yandex-postbox' as const,
+          messageId: null,
+          reason: 'send_failed',
+        };
+      }
+
       reply.code(201);
       request.log.info({
         route: 'applications-multipart',
@@ -1220,7 +1265,10 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
         stampCount: created.scoring.stampCount,
         score: created.scoring.score,
       }, 'special_application_multipart_created');
-      return created;
+      return {
+        ...created,
+        emailNotification,
+      };
     } catch (error) {
       if (error instanceof SpecialApplicationError) {
         request.log.warn({

@@ -12,10 +12,11 @@ const events = getFestivalEvents();
 const now = new Date();
 const programHref = getSmartProgramHref(events, false, now);
 const canonicalPath = '/special/zoo-excursion/';
-const title = 'Заявка на розыгрыш — экскурсия по Калининградскому зоопарку';
-const description = 'Заявка на розыгрыш 10 мест на премьеру новой тематической экскурсии по советскому периоду Калининградского зоопарка.';
+const title = 'Новая дата экскурсии по Калининградскому зоопарку | 80 историй о главном';
+const description = 'Экскурсия по Калининградскому зоопарку состоится 12 июля 2026 года в 14:00. Результаты розыгрыша сохраняются; коммерческий билет можно купить на сайте зоопарка.';
 const heroImage = '/generated/events/zoopark-sokolova.webp';
-const ogImage = '/generated/events/zoopark-sokolova.webp';
+const ogImage = '/generated/social/zoo-new-date-20260712.webp';
+const commercialTicketUrl = 'https://tickets.kldzoo.ru/event/CC87B2DFED9611E1E579E86C7D1D400FBCF4DE6F/2026-07-12/14:00';
 ---
 
 <Layout
@@ -28,7 +29,7 @@ const ogImage = '/generated/events/zoopark-sokolova.webp';
     <SiteHeader programHref={programHref} routeItems={routeItems} />
     <main class="special-page__main">
       <section class="special-intro" aria-labelledby="special-title">
-        <p class="special-kicker">Заявка на розыгрыш</p>
+        <p class="special-kicker">Новая дата экскурсии</p>
         <h1 id="special-title">Премьера новой тематической экскурсии по Калининградскому зоопарку</h1>
         <p class="special-lead">Новая экскурсия по Калининградскому зоопарку раскрывает советский период его истории: как зоопарк менялся после немецкой эпохи и становился одним из очагов мирной городской жизни.</p>
         <p class="special-story-copy">Маршрут задуман как живая, весёлая и содержательная прогулка по советскому слою зоопарка. Участники увидят привычную территорию как историческое пространство: послевоенное восстановление, новые смыслы городской культуры, зоопросвещение, памятные места и истории о людях и животных, которые помогали Калининграду возвращаться к мирной жизни.</p>
@@ -44,19 +45,26 @@ const ogImage = '/generated/events/zoopark-sokolova.webp';
           />
         </figure>
         <ul class="special-meta" aria-label="Дата экскурсии">
-          <li><strong>28 июня</strong><span>14:00 · Калининградский зоопарк</span></li>
-          <li><strong>10 мест</strong><span>все места — в розыгрыше</span></li>
+          <li><strong>12 июля</strong><span>воскресенье · 14:00 · Калининградский зоопарк</span></li>
+          <li><strong>Розыгрыш</strong><span>результаты сохраняются, повторная заявка не нужна</span></li>
         </ul>
-        <p class="special-note"><strong>Важно:</strong> заявка не является билетом. Победители получат приглашение на экскурсию после розыгрыша.</p>
+        <p class="special-note"><strong>Важно:</strong> результаты розыгрыша сохраняются. Победителям розыгрыша покупать коммерческий билет на экскурсию не нужно.</p>
+        <div class="special-postponed-panel" role="status" aria-live="polite">
+          <strong>Экскурсия состоится 12 июля</strong>
+          <p>Новая дата перенесённой экскурсии — воскресенье, 12 июля 2026 года, начало в 14:00. Победителям лучше быть у входа заранее, примерно к 13:45.</p>
+          <p>Результаты розыгрыша сохраняются: повторно подавать заявку не нужно.</p>
+          <p>Коммерческий билет на экскурсию можно купить по ссылке ниже. Эта ссылка не касается уже выигравших участников розыгрыша.</p>
+          <a class="special-panel-link" href={commercialTicketUrl} target="_blank" rel="noopener">Купить коммерческий билет на экскурсию</a>
+        </div>
         <div class="special-access-note" aria-label="Как попасть на экскурсию">
-          <strong>Как попасть</strong>
-          <p>Нужно посетить не меньше 5 событий фестиваля и загрузить фото подписанного паспорта участника со штампами. Механика заявки такая же, как у других спецмероприятий: предварительная проверка фото, расчет штампов и участие в розыгрыше среди допущенных заявок.</p>
-          <a href="/programma/">Выбрать события фестиваля</a>
-          <span>Розыгрыш запланирован автоматически за сутки до экскурсии — 27 июня 2026.</span>
+          <strong>Розыгрыш уже завершён</strong>
+          <p>Дополнительные заявки на розыгрыш не принимаются: результаты остаются действительными после переноса.</p>
+          <a href={commercialTicketUrl} target="_blank" rel="noopener">Купить коммерческий билет на экскурсию</a>
+          <span>Победителям розыгрыша покупать билет по этой ссылке не нужно.</span>
         </div>
       </section>
 
-      <form class="special-form" data-special-form>
+      <form class="special-form" data-special-form hidden aria-hidden="true">
         <div class="special-form__head">
           <h2>Подать заявку</h2>
           <p>Подтвердите дату экскурсии и приложите фото паспорта участника фестиваля.</p>
@@ -1275,7 +1283,7 @@ const ogImage = '/generated/events/zoopark-sokolova.webp';
 
   .special-meta {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.65rem;
     padding: 0;
     margin: 0;
@@ -1284,6 +1292,7 @@ const ogImage = '/generated/events/zoopark-sokolova.webp';
 
   .special-meta li,
   .special-note,
+  .special-postponed-panel,
   .special-access-note,
   .special-form,
   .special-dates :global(.special-date),
@@ -1315,6 +1324,29 @@ const ogImage = '/generated/events/zoopark-sokolova.webp';
     border-radius: 1rem;
   }
 
+  .special-postponed-panel {
+    display: grid;
+    gap: 0.75rem;
+    max-width: 40rem;
+    padding: 1.15rem 1.2rem;
+    border-radius: 1.1rem;
+    background: linear-gradient(135deg, rgba(216, 72, 47, 0.16), rgba(255, 253, 249, 0.92));
+    box-shadow: 0 16px 40px rgba(216, 72, 47, 0.12);
+  }
+
+  .special-postponed-panel strong {
+    font-family: var(--font-display);
+    font-size: clamp(1.8rem, 4vw, 2.7rem);
+    line-height: 0.92;
+    color: #9b2f20;
+  }
+
+  .special-postponed-panel p {
+    margin: 0;
+    color: rgba(21, 17, 15, 0.74);
+    line-height: 1.5;
+  }
+
   .special-access-note {
     display: grid;
     gap: 0.7rem;
@@ -1336,7 +1368,8 @@ const ogImage = '/generated/events/zoopark-sokolova.webp';
     line-height: 1.5;
   }
 
-  .special-access-note a {
+  .special-access-note a,
+  .special-panel-link {
     width: fit-content;
     color: #a33324;
     font-weight: 800;
@@ -1351,6 +1384,10 @@ const ogImage = '/generated/events/zoopark-sokolova.webp';
     border-radius: 1.4rem;
     box-shadow: 0 22px 70px rgba(21, 17, 15, 0.12);
     backdrop-filter: blur(10px);
+  }
+
+  .special-form[hidden] {
+    display: none !important;
   }
 
   .special-form__head h2 {

@@ -11,6 +11,7 @@ import {
   getFestivalEventHref,
   getFestivalEvents,
   getNextRecordedFestivalEvent,
+  getSuggestedFestivalEvents,
 } from '../../lib/festival';
 import { getRouteNavItems, getSmartProgramHref } from '../../lib/routes';
 
@@ -112,6 +113,7 @@ const recordingAriaLabel = recordingPlatformLabel
   : `Смотреть запись лекции «${event.title}»`;
 const recordingNotice = event.recordingNotice;
 const nextRecordedEvent = getNextRecordedFestivalEvent(event.slug, allEvents);
+const suggestedEvents = getSuggestedFestivalEvents(event, allEvents, now, 6);
 const baseStructuredData = {
   '@context': 'https://schema.org',
   '@type': 'Event',
@@ -451,6 +453,26 @@ const structuredData = event.slug === 'etyudy-toy-vesny' ? etudyStructuredData :
                 </section>
               )}
             </div>
+
+            {suggestedEvents.length > 0 && (
+              <section class="event-leaf__suggestions" aria-labelledby="event-leaf-suggestions">
+                <div class="event-leaf__suggestions-head">
+                  <p class="event-leaf__eyebrow">Продолжить маршрут</p>
+                  <h2 id="event-leaf-suggestions">Вам могут быть интересны</h2>
+                  <p>Другие будущие события фестиваля, которые можно выбрать после этой страницы.</p>
+                </div>
+                <div class="event-leaf__suggestion-grid">
+                  {suggestedEvents.map((candidate) => (
+                    <a class="event-leaf__suggestion-card" href={getFestivalEventHref(candidate.slug)}>
+                      <span class="event-leaf__suggestion-label">{candidate.relationLabel}</span>
+                      <strong>{candidate.title}</strong>
+                      <span>{candidate.formatLabel} · {candidate.dateLabel}{candidate.timeLabel && !candidate.timeLabel.includes('будет объявлено') ? ` · ${candidate.timeLabel}` : ''}</span>
+                      <small>{[candidate.speakerLabel, candidate.venue].filter(Boolean).join(' · ')}</small>
+                    </a>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
         </div>
       </section>

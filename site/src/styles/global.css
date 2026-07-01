@@ -4954,6 +4954,100 @@ a.event-leaf__recording-panel:focus-visible {
   text-underline-offset: 0.14em;
 }
 
+.event-leaf__suggestions {
+  display: grid;
+  gap: 1rem;
+  padding: clamp(1rem, 2.8vw, 1.35rem);
+  border-radius: 1.45rem;
+  border: 1px solid rgba(155, 46, 26, 0.14);
+  background:
+    radial-gradient(circle at top right, rgba(216, 75, 49, 0.12), transparent 22rem),
+    rgba(255, 252, 248, 0.9);
+  box-shadow: 0 16px 36px rgba(83, 38, 25, 0.1);
+}
+
+.event-leaf__suggestions-head {
+  display: grid;
+  gap: 0.45rem;
+  max-width: 46rem;
+}
+
+.event-leaf__suggestions-head h2,
+.event-leaf__suggestions-head p {
+  margin: 0;
+}
+
+.event-leaf__suggestions-head h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.65rem, 4vw, 2.45rem);
+  line-height: 0.96;
+  letter-spacing: -0.045em;
+}
+
+.event-leaf__suggestions-head p:not(.event-leaf__eyebrow) {
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+
+.event-leaf__suggestion-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.event-leaf__suggestion-card {
+  display: grid;
+  gap: 0.35rem;
+  min-height: 100%;
+  padding: 0.95rem;
+  border-radius: 1.1rem;
+  color: inherit;
+  text-decoration: none;
+  background: rgba(252, 246, 237, 0.88);
+  border: 1px solid rgba(18, 17, 14, 0.08);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.event-leaf__suggestion-card:hover,
+.event-leaf__suggestion-card:focus-visible {
+  transform: translateY(-2px);
+  border-color: rgba(216, 75, 49, 0.24);
+  box-shadow: 0 16px 28px rgba(83, 38, 25, 0.12);
+}
+
+.event-leaf__suggestion-card:focus-visible {
+  outline: 2px solid rgba(216, 75, 49, 0.3);
+  outline-offset: 3px;
+}
+
+.event-leaf__suggestion-label {
+  width: fit-content;
+  padding: 0.28rem 0.52rem;
+  border-radius: 999px;
+  color: var(--accent-deep);
+  background: rgba(216, 75, 49, 0.09);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.event-leaf__suggestion-card strong {
+  font-size: 1.05rem;
+  line-height: 1.12;
+  letter-spacing: -0.018em;
+}
+
+.event-leaf__suggestion-card span:not(.event-leaf__suggestion-label),
+.event-leaf__suggestion-card small {
+  color: var(--ink-soft);
+  line-height: 1.35;
+}
+
+.event-leaf__suggestion-card small {
+  font-size: 0.86rem;
+}
+
 @media (max-width: 759px) {
   .registration-modal-shell {
     display: block;
@@ -5024,7 +5118,12 @@ a.event-leaf__recording-panel:focus-visible {
   .event-leaf__share {
     width: 100%;
   }
+
+  .event-leaf__suggestion-grid {
+    grid-template-columns: 1fr;
+  }
 }
+
 
 @media (min-width: 960px) {
   .event-leaf__hero {

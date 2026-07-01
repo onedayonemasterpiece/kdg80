@@ -1658,6 +1658,44 @@ export function getFestivalEventBySlug(slug: string, options: { includeHidden?: 
   return getFestivalEvents(options).find((event) => event.slug === slug);
 }
 
+function relatedEventScore(current: FestivalEvent, candidate: FestivalEvent, now: Date) {
+  let score = 0;
+  const currentIsLecture = isLectureFormat(current.formatLabel);
+  const candidateIsLecture = isLectureFormat(candidate.formatLabel);
+
+  if (current.formatLabel === candidate.formatLabel) score += 80;
+  if (currentIsLecture && candidateIsLecture) score += 70;
+  if (current.monthAnchor && current.monthAnchor === candidate.monthAnchor) score += 16;
+  if (current.venue && current.venue === candidate.venue) score += 14;
+  if (current.speakerLabel && current.speakerLabel === candidate.speakerLabel) score += 10;
+
+  const candidateStart = candidate.isoStart ? new Date(candidate.isoStart).getTime() : Number.NaN;
+  if (!Number.isNaN(candidateStart)) {
+    const daysUntil = Math.max(0, Math.round((candidateStart - now.getTime()) / 86_400_000));
+    score += Math.max(0, 24 - Math.min(24, daysUntil));
+  }
+
+  return score;
+}
+
+export function getSuggestedFestivalEvents(current: FestivalEvent, events = getFestivalEvents(), now = new Date(), limit = 6) {
+  return [...events]
+    .filter((candidate) => candidate.slug !== current.slug)
+    .filter((candidate) => !candidate.hiddenFromPublic)
+    .filter((candidate) => candidate.isoStart && getEventTemporalState(candidate, now) === 'upcoming')
+    .map((candidate) => ({
+      event: candidate,
+      score: relatedEventScore(current, candidate, now),
+    }))
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      if (left.event.isoStart && right.event.isoStart) return left.event.isoStart.localeCompare(right.event.isoStart);
+      return left.event.title.localeCompare(right.event.title, 'ru');
+    })
+    .slice(0, Math.max(0, limit))
+    .map(({ event }) => toRelatedEvent(event, isLectureFormat(event.formatLabel) ? 'Будущая лекция' : 'Будущее событие'));
+}
+
 function compareEventStart(left: FestivalEvent, right: FestivalEvent) {
   if (left.isoStart && right.isoStart) {
     return left.isoStart.localeCompare(right.isoStart);

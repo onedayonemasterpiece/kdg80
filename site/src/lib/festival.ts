@@ -71,6 +71,7 @@ export type FestivalEvent = {
   formatLabel: string;
   publicationStatus?: string;
   hiddenFromPublic?: boolean;
+  linkOnly?: boolean;
   accessLabel?: string;
   dateLabel: string;
   monthLabel: string;
@@ -230,6 +231,11 @@ const EVENT_RECORDING_NOTICES: Record<string, FestivalEventRecordingNotice> = {
 };
 
 const EVENT_IMAGE_MAP: Array<{ title: string; speaker: string; manifestKeys: string[]; alternateTitles?: string[] }> = [
+  {
+    title: 'Стендап - Презентация сайта анонсов событий',
+    speaker: 'Команда сайта анонсов событий',
+    manifestKeys: ['Стендап-презентация сайта анонсов событий - Загадка'],
+  },
   {
     title: 'Советское монументальное искусство на территории Калининградской области',
     speaker: 'Мосиенко',
@@ -531,9 +537,22 @@ const EXHIBITION_LOCATION_OVERRIDES: Array<{
 
 let cache: FestivalEvent[] | null = null;
 
+function isLinkOnlyPublicationStatus(value: string) {
+  const normalized = normalizeLookup(value);
+  const lowerValue = value.toLowerCase();
+
+  return (
+    normalized.includes('link-only')
+    || normalized.includes('linkonly')
+    || normalized.includes('only-by-link')
+    || normalized.includes('direct-link')
+    || (lowerValue.includes('только') && lowerValue.includes('ссыл'))
+  );
+}
+
 function isHiddenPublicationStatus(value: string) {
   const normalized = normalizeLookup(value);
-  return normalized.includes('skryto') || normalized.includes('hidden');
+  return normalized.includes('skryto') || normalized.includes('hidden') || isLinkOnlyPublicationStatus(value);
 }
 
 function escapeRegex(value: string) {
@@ -1502,6 +1521,7 @@ function parseSections() {
     const formatRaw = extractField(body, 'Формат') || 'Событие';
     const formatLabel = normalizeFormatName(formatRaw);
     const publicationStatus = normalizeText(extractField(body, 'Статус публикации'));
+    const linkOnly = isLinkOnlyPublicationStatus(publicationStatus);
     const kind: FestivalEvent['kind'] = heading.startsWith('Спецсобытие')
       ? 'special'
       : formatRaw.includes('Выставка') || body.includes('**Период проведения:**') || body.includes('**Период работы:**')
@@ -1564,7 +1584,7 @@ function parseSections() {
     const rangeDate = kind === 'range' ? parseRangeStart(dateLabel) : null;
     const monthInfo = exactDate || rangeDate || { monthLabel: 'Скоро', monthAnchor: 'soon' };
     const durationMinutes = parseDurationMinutes(durationLabel);
-    const isIcaePublicHoldback = kind === 'dated' && isIcaePublicHoldbackLocation(normalizedLocation);
+    const isIcaePublicHoldback = !linkOnly && kind === 'dated' && isIcaePublicHoldbackLocation(normalizedLocation);
     const publicVenue = isIcaePublicHoldback ? '' : normalizedLocation.venue;
     const publicAddress = isIcaePublicHoldback ? '' : normalizedLocation.address;
     const publicTimeLabel = isIcaePublicHoldback ? '' : timeLabel;
@@ -1592,6 +1612,7 @@ function parseSections() {
       formatLabel,
       publicationStatus,
       hiddenFromPublic: isHiddenPublicationStatus(publicationStatus),
+      linkOnly,
       dateLabel,
       monthLabel: monthInfo.monthLabel,
       monthAnchor: monthInfo.monthAnchor,

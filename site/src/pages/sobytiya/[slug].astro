@@ -15,14 +15,16 @@ import {
 import { getRouteNavItems, getSmartProgramHref } from '../../lib/routes';
 
 export function getStaticPaths() {
-  return getFestivalEvents().map((event) => ({
-    params: { slug: event.slug },
-  }));
+  return getFestivalEvents({ includeHidden: true })
+    .filter((event) => !event.hiddenFromPublic || event.linkOnly)
+    .map((event) => ({
+      params: { slug: event.slug },
+    }));
 }
 
-const event = getFestivalEventBySlug(Astro.params.slug ?? '');
+const event = getFestivalEventBySlug(Astro.params.slug ?? '', { includeHidden: true });
 
-if (!event) {
+if (!event || (event.hiddenFromPublic && !event.linkOnly)) {
   return Astro.redirect('/programma/');
 }
 
@@ -75,7 +77,11 @@ const description = [
 ].filter(Boolean).join(' · ');
 const whyGoCopy = event.whyGo && event.whyGo !== event.summary ? event.whyGo : '';
 const metadataParts = [event.dateLabel, event.timeLabel, event.venue].filter(Boolean);
-const robots = temporalState === 'past' && !event.recording ? 'noindex, follow, noarchive' : undefined;
+const robots = event.hiddenFromPublic
+  ? 'noindex, nofollow, noarchive'
+  : temporalState === 'past' && !event.recording
+    ? 'noindex, follow, noarchive'
+    : undefined;
 const jsonLdStartDate = event.timeLabel ? event.isoStart : event.isoStart?.slice(0, 10);
 const jsonLdEndDate = event.timeLabel ? getEventEndIso(event) : event.isoStart?.slice(0, 10);
 const jsonLdImage = event.image ? [new URL(event.image, `${siteOrigin}/`).toString()] : undefined;

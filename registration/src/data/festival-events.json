@@ -459,6 +459,20 @@
     "isoStart": "2026-07-19T18:30:00"
   },
   {
+    "slug": "stendap-prezentatsiya-sayta-anonsov-sobytiy",
+    "title": "Стендап - Презентация сайта анонсов событий",
+    "durationLabel": "1 час + вопросы из зала",
+    "venue": "ИЦАЭ Калининграда (2-й этаж КГТУ)",
+    "address": "Советский проспект, 1",
+    "kind": "dated",
+    "isoStart": "2026-07-23T18:30:00",
+    "hiddenFromPublic": true,
+    "linkOnly": true,
+    "capacity": 60,
+    "overbookingPercent": 0,
+    "registrationLimit": 60
+  },
+  {
     "slug": "vystavka-pervye-na-kose",
     "title": "Выставка «Первые на косе»",
     "durationLabel": "",

@@ -4,8 +4,8 @@ import { buildIcs, getFestivalEvents } from '../../lib/festival';
 export const prerender = true;
 
 export function getStaticPaths() {
-  return getFestivalEvents()
-    .filter((event) => event.calendarReady)
+  return getFestivalEvents({ includeHidden: true })
+    .filter((event) => event.calendarReady && (!event.hiddenFromPublic || event.linkOnly))
     .map((event) => ({
       params: { slug: event.slug },
       props: { event },

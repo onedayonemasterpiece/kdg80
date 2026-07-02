@@ -21,6 +21,11 @@ type FestivalEvent = {
   address: string;
   kind: 'dated' | 'range' | 'special';
   isoStart: string | null;
+  capacity?: number | null;
+  overbookingPercent?: number | null;
+  registrationLimit?: number | null;
+  hiddenFromPublic?: boolean;
+  linkOnly?: boolean;
 };
 
 type EventRow = {
@@ -75,6 +80,10 @@ const EVENT_CATALOG_SYNC_OVERRIDES: Record<string, CatalogSyncOverride> = {
     openOnCatalogSyncWhenStateIsSoon: true,
   },
   'ot-konfrontatsii-k-sosuschestvovaniyu-kak-vystraivalis-otnosheniya-mezhdu-sovetskimi-pereselentsami-i-nemetskim-naseleniem-kenigsberga-kaliningrada-v-pervye-poslevoennye-gody': {
+    defaultPublicState: 'open',
+    openOnCatalogSyncWhenStateIsSoon: true,
+  },
+  'stendap-prezentatsiya-sayta-anonsov-sobytiy': {
     defaultPublicState: 'open',
     openOnCatalogSyncWhenStateIsSoon: true,
   },
@@ -142,6 +151,14 @@ const HALLS: HallSeed[] = [
 function addMinutes(isoStart: string, minutes: number) {
   const start = new Date(isoStart);
   return new Date(start.getTime() + minutes * 60_000).toISOString();
+}
+
+function getOptionalNonNegativeInteger(value: number | null | undefined) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return undefined;
+  }
+
+  return Math.max(0, Math.floor(value));
 }
 
 function getDefaultDurationMinutes(event: FestivalEvent) {
@@ -224,8 +241,12 @@ function toCatalogSeed(event: FestivalEvent): CatalogEventSeed | null {
     };
   }
 
-  const overbookingPercent = EVENT_OVERBOOKING_PERCENT_OVERRIDES[event.slug] ?? DEFAULT_OVERBOOKING_PERCENT;
-  const registrationLimit = computeRegistrationLimit(hall.capacity, overbookingPercent);
+  const capacity = getOptionalNonNegativeInteger(event.capacity) ?? hall.capacity;
+  const overbookingPercent = getOptionalNonNegativeInteger(event.overbookingPercent)
+    ?? EVENT_OVERBOOKING_PERCENT_OVERRIDES[event.slug]
+    ?? DEFAULT_OVERBOOKING_PERCENT;
+  const registrationLimit = getOptionalNonNegativeInteger(event.registrationLimit)
+    ?? computeRegistrationLimit(capacity, overbookingPercent);
 
   return {
     slug: event.slug,
@@ -235,7 +256,7 @@ function toCatalogSeed(event: FestivalEvent): CatalogEventSeed | null {
     venueName: hall.venueName,
     hallName: hall.hallName,
     address: hall.address,
-    capacity: hall.capacity,
+    capacity,
     overbookingPercent,
     registrationLimit,
     sourceStatus: 'ready',

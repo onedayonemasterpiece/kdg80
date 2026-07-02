@@ -1,5 +1,6 @@
 import type { PublicEventCtaState, RegistrationPublicState } from '../types';
 import { computeRegistrationSeatsLeft } from './overbooking';
+import festivalEvents from '../data/festival-events.json';
 
 type EventStateRow = {
   slug?: string;
@@ -15,7 +16,23 @@ type EventStateRow = {
   registration_public_state: RegistrationPublicState;
 };
 
+type CatalogVisibilityEvent = {
+  slug?: string;
+  linkOnly?: boolean;
+};
+
+const LINK_ONLY_EVENT_SLUGS = new Set(
+  (festivalEvents as CatalogVisibilityEvent[])
+    .filter((event) => event.linkOnly)
+    .map((event) => event.slug)
+    .filter((slug): slug is string => Boolean(slug)),
+);
+
 export function isDeferredPublicEvent(row: Pick<EventStateRow, 'slug' | 'venue_name' | 'hall_name' | 'address'>) {
+  if (row.slug && LINK_ONLY_EVENT_SLUGS.has(row.slug)) {
+    return false;
+  }
+
   const lookup = [
     row.slug ?? '',
     row.venue_name ?? '',

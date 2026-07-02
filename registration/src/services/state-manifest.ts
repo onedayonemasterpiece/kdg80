@@ -1,13 +1,27 @@
 import type Database from 'better-sqlite3';
 import type { StoragePublisher } from '../lib/storage';
 import { listPublicEventStates } from './catalog';
+import festivalEvents from '../data/festival-events.json';
 
 export const REGISTRATION_STATE_MANIFEST_KEY = 'tickets/registration/states.json';
+
+type CatalogManifestEvent = {
+  slug?: string;
+  hiddenFromPublic?: boolean;
+  linkOnly?: boolean;
+};
+
+const LINK_ONLY_OR_HIDDEN_SLUGS = new Set(
+  (festivalEvents as CatalogManifestEvent[])
+    .filter((event) => event.hiddenFromPublic || event.linkOnly)
+    .map((event) => event.slug)
+    .filter((slug): slug is string => Boolean(slug)),
+);
 
 export function buildPublicStateManifest(db: Database.Database) {
   return {
     generatedAt: new Date().toISOString(),
-    items: listPublicEventStates(db),
+    items: listPublicEventStates(db).filter((item) => !LINK_ONLY_OR_HIDDEN_SLUGS.has(item.slug)),
   };
 }
 

@@ -233,7 +233,7 @@ const EVENT_RECORDING_NOTICES: Record<string, FestivalEventRecordingNotice> = {
 const EVENT_IMAGE_MAP: Array<{ title: string; speaker: string; manifestKeys: string[]; alternateTitles?: string[] }> = [
   {
     title: 'Стендап - Презентация сайта анонсов событий',
-    speaker: 'Команда сайта анонсов событий',
+    speaker: 'Максим Никифоров',
     manifestKeys: ['Стендап-презентация сайта анонсов событий - Загадка'],
   },
   {

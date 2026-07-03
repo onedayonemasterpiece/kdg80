@@ -4,6 +4,8 @@ import {
   computeRegistrationLimit,
   computeRegistrationLimitPercent,
   DEFAULT_OVERBOOKING_PERCENT,
+  FUTURE_EVENT_DEFAULT_OVERBOOKING_PERCENT,
+  FUTURE_EVENT_OVERBOOKING_EFFECTIVE_FROM_ISO,
 } from '../lib/overbooking';
 import festivalEvents from '../data/festival-events.json';
 import type {
@@ -88,6 +90,21 @@ const EVENT_CATALOG_SYNC_OVERRIDES: Record<string, CatalogSyncOverride> = {
     openOnCatalogSyncWhenStateIsSoon: true,
   },
 };
+function isTretyakovHall(hall: HallSeed) {
+  return `${hall.venueName} ${hall.hallName} ${hall.address}`.toLowerCase().includes('третьяков');
+}
+
+function getDefaultOverbookingPercentForEvent(event: FestivalEvent, hall: HallSeed) {
+  if (
+    !isTretyakovHall(hall)
+    && event.isoStart
+    && new Date(event.isoStart).getTime() >= new Date(FUTURE_EVENT_OVERBOOKING_EFFECTIVE_FROM_ISO).getTime()
+  ) {
+    return FUTURE_EVENT_DEFAULT_OVERBOOKING_PERCENT;
+  }
+
+  return DEFAULT_OVERBOOKING_PERCENT;
+}
 
 const HALLS: HallSeed[] = [
   {
@@ -244,7 +261,7 @@ function toCatalogSeed(event: FestivalEvent): CatalogEventSeed | null {
   const capacity = getOptionalNonNegativeInteger(event.capacity) ?? hall.capacity;
   const overbookingPercent = getOptionalNonNegativeInteger(event.overbookingPercent)
     ?? EVENT_OVERBOOKING_PERCENT_OVERRIDES[event.slug]
-    ?? DEFAULT_OVERBOOKING_PERCENT;
+    ?? getDefaultOverbookingPercentForEvent(event, hall);
   const registrationLimit = getOptionalNonNegativeInteger(event.registrationLimit)
     ?? computeRegistrationLimit(capacity, overbookingPercent);
 

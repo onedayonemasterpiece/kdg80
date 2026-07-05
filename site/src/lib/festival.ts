@@ -156,7 +156,8 @@ const SPEAKER_SHOWCASE_NAME_BONUSES: Array<{ match: string; bonus: number }> = [
   { match: 'Марковец', bonus: 1.6 },
 ];
 const FIXED_EVENT_SLUGS: Record<string, string> = {
-  // Keep the public URL stable after the lecture title correction.
+  // Keep the public URL stable after lecture title corrections.
+  'Калининградский морской торговый порт: яркие страницы советской истории': 'kaliningradskiy-morskoy-torgovyy-port-yarkie-stranitsy-sovetskoy-istorii-i-sovremennost',
   'Виштынецкая возвышенность: освоение с 1945 года, современность и перспективы': 'vishtynetskaya-vozvyshennost-kak-osvaivali-s-1945-goda-sovremennost-i-perspektivy',
   'Виштынецкая возвышенность: как осваивали с 1945 года, современность и перспективы': 'vishtynetskaya-vozvyshennost-kak-osvaivali-s-1945-goda-sovremennost-i-perspektivy',
 };
@@ -265,10 +266,13 @@ const EVENT_IMAGE_MAP: Array<{ title: string; speaker: string; manifestKeys: str
     alternateTitles: ['История парусного спорта в Калинингадской области'],
   },
   {
-    title: 'Калининградский морской торговый порт: яркие страницы советской истории и современность',
+    title: 'Калининградский морской торговый порт: яркие страницы советской истории',
     speaker: 'Нижегородцева',
     manifestKeys: ['Торговый порт - Нижегородцева'],
-    alternateTitles: ['Калининградский морской торговый порт: яркие страницы советской истории и современность.'],
+    alternateTitles: [
+      'Калининградский морской торговый порт: яркие страницы советской истории и современность',
+      'Калининградский морской торговый порт: яркие страницы советской истории и современность.',
+    ],
   },
   {
     title: 'Калининград корабельный — от первых дней к вершинам славы завода Янтарь',

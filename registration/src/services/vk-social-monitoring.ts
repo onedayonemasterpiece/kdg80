@@ -1084,7 +1084,7 @@ function getCachedMatch(db: Database.Database, actor: VkSocialActor) {
   } | undefined;
 
   if (!row) return null;
-  if (row.status === 'unmatched' || row.status === 'ambiguous') {
+  if (row.status !== 'matched') {
     return null;
   }
 

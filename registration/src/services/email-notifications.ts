@@ -26,6 +26,7 @@ export type EmailSendResult = {
 export type EmailNotificationService = {
   sendRegistrationCreated(input: RegistrationEmailInput): Promise<EmailSendResult>;
   sendSpecialApplicationCreated(input: SpecialApplicationEmailInput): Promise<EmailSendResult>;
+  sendSpecialSocialActivityReminder(input: SpecialSocialActivityReminderEmailInput): Promise<EmailSendResult>;
 };
 
 export type RegistrationEmailInput = {
@@ -63,6 +64,25 @@ export type SpecialApplicationEmailInput = {
   };
   fullName: string;
   email: string;
+};
+
+export type SpecialSocialActivityReminderEmailInput = {
+  applicationCode: string;
+  fullName: string;
+  email: string;
+  event: {
+    title: string;
+    venueName: string;
+  };
+  showing: {
+    displayLabel: string;
+    startsAt: string;
+  };
+  social: {
+    bonusPoints: number;
+    latestActivityAt: string | null;
+    inactiveDays: number;
+  };
 };
 
 const FOOTER_LINES = [
@@ -241,6 +261,67 @@ export function renderSpecialApplicationEmail(input: SpecialApplicationEmailInpu
   return { subject, text, html };
 }
 
+export function renderSpecialSocialActivityReminderEmail(
+  input: SpecialSocialActivityReminderEmailInput,
+  timeZone: string,
+) {
+  const startsAt = formatDateTime(input.showing.startsAt, timeZone);
+  const subject = `Соцбаллы к розыгрышу: ${input.event.title}`;
+  const lastActivityLine = input.social.latestActivityAt
+    ? `Последняя учтённая VK-активность по вашей заявке была ${formatDateTime(input.social.latestActivityAt, timeZone)}.`
+    : 'Пока мы не видим VK-активности, связанной с вашей заявкой.';
+  const currentBonusLine = input.social.bonusPoints > 0
+    ? `Сейчас у вас уже есть ${input.social.bonusPoints} соцбалл(ов), и их можно увеличить.`
+    : 'Сейчас по VK-активности ещё нет дополнительных соцбаллов.';
+  const text = [
+    `Здравствуйте, ${input.fullName}!`,
+    '',
+    `Вы участвуете в розыгрыше на спецмероприятие «${input.event.title}».`,
+    `Розыгрыш относится к будущему показу: ${input.showing.displayLabel} (${startsAt}).`,
+    `Код заявки: ${input.applicationCode}.`,
+    '',
+    `Мы не видим новой VK-соцактивности по вашей заявке последние ${input.social.inactiveDays} дней.`,
+    lastActivityLine,
+    currentBonusLine,
+    '',
+    'Лайки, комментарии и репосты постов фестиваля ВКонтакте помогают большему числу жителей увидеть события фестиваля. За такую активность начисляются дополнительные соцбаллы, которые прибавляются к вашим баллам и увеличивают вес участия именно в этом розыгрыше.',
+    'Комментарии и репосты обычно дают больше веса, регулярные лайки тоже учитываются.',
+    '',
+    'Если у вас есть VK-профиль, проявите активность в пабликах фестиваля: поставьте лайк, оставьте комментарий или сделайте репост актуального поста — после следующей проверки мы учтём подходящие действия.',
+    '',
+    'Если нужно уточнить данные или задать вопрос, ответьте на это письмо — мы получим ваш ответ в info@kgd80.ru.',
+    '',
+    footerText(),
+  ].join('\n');
+  const htmlLines = [
+    `Здравствуйте, ${input.fullName}!`,
+    `Вы участвуете в розыгрыше на спецмероприятие «${input.event.title}».`,
+    `Розыгрыш относится к будущему показу: ${input.showing.displayLabel} (${startsAt}).`,
+    `Код заявки: ${input.applicationCode}.`,
+    `Мы не видим новой VK-соцактивности по вашей заявке последние ${input.social.inactiveDays} дней.`,
+    lastActivityLine,
+    currentBonusLine,
+    'Лайки, комментарии и репосты постов фестиваля ВКонтакте помогают большему числу жителей увидеть события фестиваля. За такую активность начисляются дополнительные соцбаллы, которые прибавляются к вашим баллам и увеличивают вес участия именно в этом розыгрыше.',
+    'Комментарии и репосты обычно дают больше веса, регулярные лайки тоже учитываются.',
+    'Если у вас есть VK-профиль, проявите активность в пабликах фестиваля: поставьте лайк, оставьте комментарий или сделайте репост актуального поста — после следующей проверки мы учтём подходящие действия.',
+    'Если нужно уточнить данные или задать вопрос, ответьте на это письмо — мы получим ваш ответ в info@kgd80.ru.',
+  ];
+  const html = `<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>${escapeHtml(subject)}</title></head>
+<body style="margin:0;padding:24px;background:#f7f1e8;color:#12110e;font-family:Arial,Helvetica,sans-serif;line-height:1.5;">
+  <main style="max-width:640px;margin:0 auto;background:#fffaf2;border-radius:18px;padding:28px;border:1px solid #eadfce;">
+    <h1 style="margin:0 0 18px;font-size:24px;line-height:1.2;">${escapeHtml('Как добавить соцбаллы к розыгрышу')}</h1>
+    ${paragraphsHtml(htmlLines)}
+    <hr style="border:0;border-top:1px solid #eadfce;margin:24px 0;">
+    <p style="margin:0;color:#554f48;">${footerHtml()}</p>
+  </main>
+</body>
+</html>`;
+
+  return { subject, text, html };
+}
+
 async function sendPostboxEmail(config: PostboxConfig, message: {
   to: string;
   subject: string;
@@ -383,6 +464,13 @@ export function createEmailNotificationService(config: PostboxConfig): EmailNoti
     },
     async sendSpecialApplicationCreated(input) {
       const rendered = renderSpecialApplicationEmail(input, config.timeZone);
+      return sendPostboxEmail(config, {
+        to: input.email,
+        ...rendered,
+      });
+    },
+    async sendSpecialSocialActivityReminder(input) {
+      const rendered = renderSpecialSocialActivityReminderEmail(input, config.timeZone);
       return sendPostboxEmail(config, {
         to: input.email,
         ...rendered,

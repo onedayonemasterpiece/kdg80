@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import ExcelJS from 'exceljs';
 import type Database from 'better-sqlite3';
 import { decryptPii } from '../lib/crypto';
+import { loadSocialRaffleBonuses, type SocialRaffleBonus } from './special-social-scoring';
 
 type SpecialEventRow = {
   id: number;
@@ -90,6 +91,12 @@ export type SpecialParticipant = {
   email: string;
   phone: string;
   status: string;
+  baseScore: number;
+  socialBonusPoints: number;
+  socialBonusRawPoints: number;
+  socialBonusActiveDays: number;
+  socialBonusEligibleActivityCount: number;
+  socialBonusLatestActivityAt: string | null;
   score: number;
   stampCount: number;
   ordinaryRegistrationCount: number;
@@ -118,6 +125,8 @@ export type SpecialDrawWinner = SpecialParticipant & {
 export type SpecialDrawTicketRange = {
   applicationId: number;
   applicationCode: string;
+  baseScore?: number;
+  socialBonusPoints?: number;
   score: number;
   selectedShowingCount: number;
   previousSpecialWinner?: boolean;
@@ -298,6 +307,13 @@ function formatShowingWeight(score: number, selectedShowingCount: number) {
   return `${score}/${denominator}`;
 }
 
+function formatScoreBreakdown(participant: Pick<SpecialParticipant, 'score' | 'baseScore' | 'socialBonusPoints'>) {
+  if (participant.socialBonusPoints <= 0) {
+    return String(participant.score);
+  }
+  return `${participant.score} (основные ${participant.baseScore} + соцбаллы ${participant.socialBonusPoints})`;
+}
+
 function getLatestDrawRow(db: Database.Database, showingId: number, runType?: SpecialDrawRunType) {
   const whereRunType = runType ? 'AND run_type = ?' : '';
   const params = runType ? [showingId, runType] : [showingId];
@@ -469,7 +485,27 @@ function listCandidateRows(
   });
 }
 
-function mapParticipants(rows: SpecialCandidateRow[], privateKeyPemBase64: string) {
+function emptySocialBonus(applicationId: number): SocialRaffleBonus {
+  return {
+    applicationId,
+    bonusPoints: 0,
+    rawPoints: 0,
+    activeDays: 0,
+    eligibleActivityCount: 0,
+    actions: {},
+    latestActivityAt: null,
+  };
+}
+
+function loadBonusesForRows(db: Database.Database, rows: Array<Pick<SpecialCandidateRow, 'id'>>) {
+  return loadSocialRaffleBonuses(db, rows.map((row) => row.id));
+}
+
+function mapParticipants(
+  rows: SpecialCandidateRow[],
+  privateKeyPemBase64: string,
+  socialBonuses: Map<number, SocialRaffleBonus> = new Map(),
+) {
   return rows.flatMap((row) => {
     try {
       const pii = decryptPii(privateKeyPemBase64, {
@@ -478,6 +514,10 @@ function mapParticipants(rows: SpecialCandidateRow[], privateKeyPemBase64: strin
         piiIv: row.pii_iv,
         piiAlg: row.pii_alg,
       });
+      const socialBonus = socialBonuses.get(row.id) ?? emptySocialBonus(row.id);
+      const baseScore = Math.max(0, Math.trunc(Number(row.score) || 0));
+      const socialBonusPoints = Math.max(0, Math.trunc(Number(socialBonus.bonusPoints) || 0));
+      const effectiveScore = baseScore + socialBonusPoints;
 
       return [{
         applicationId: row.id,
@@ -487,7 +527,13 @@ function mapParticipants(rows: SpecialCandidateRow[], privateKeyPemBase64: strin
         email: pii.email ?? '',
         phone: pii.phone ?? '',
         status: row.status,
-        score: row.score,
+        baseScore,
+        socialBonusPoints,
+        socialBonusRawPoints: Number(socialBonus.rawPoints) || 0,
+        socialBonusActiveDays: Math.max(0, Math.trunc(Number(socialBonus.activeDays) || 0)),
+        socialBonusEligibleActivityCount: Math.max(0, Math.trunc(Number(socialBonus.eligibleActivityCount) || 0)),
+        socialBonusLatestActivityAt: socialBonus.latestActivityAt,
+        score: effectiveScore,
         stampCount: row.stamp_count,
         ordinaryRegistrationCount: row.ordinary_registration_count,
         noShowCount: row.no_show_count,
@@ -531,6 +577,8 @@ function weightedDraw(candidates: SpecialParticipant[], limit: number) {
       ticketRanges.push({
         applicationId: candidate.applicationId,
         applicationCode: candidate.applicationCode,
+        baseScore: candidate.baseScore,
+        socialBonusPoints: candidate.socialBonusPoints,
         score: candidate.score,
         selectedShowingCount,
         previousSpecialWinner: candidate.previousSpecialWinner,
@@ -584,6 +632,12 @@ function snapshotParticipant(participant: SpecialParticipant) {
     applicationCode: participant.applicationCode,
     participantProfileId: participant.participantProfileId,
     score: participant.score,
+    baseScore: participant.baseScore,
+    socialBonusPoints: participant.socialBonusPoints,
+    socialBonusRawPoints: participant.socialBonusRawPoints,
+    socialBonusActiveDays: participant.socialBonusActiveDays,
+    socialBonusEligibleActivityCount: participant.socialBonusEligibleActivityCount,
+    socialBonusLatestActivityAt: participant.socialBonusLatestActivityAt,
     stampCount: participant.stampCount,
     ordinaryRegistrationCount: participant.ordinaryRegistrationCount,
     noShowCount: participant.noShowCount,
@@ -711,7 +765,9 @@ export function getSpecialShowingForTelegram(
   }
 
   const acceptedRows = listCandidateRows(db, showing);
-  const candidates = privateKeyPemBase64 ? mapParticipants(acceptedRows, privateKeyPemBase64) : [];
+  const candidates = privateKeyPemBase64
+    ? mapParticipants(acceptedRows, privateKeyPemBase64, loadBonusesForRows(db, acceptedRows))
+    : [];
   const latestDraft = getLatestDrawRow(db, showing.id, 'draft');
   const latestPublished = getLatestDrawRow(db, showing.id, 'published');
 
@@ -742,7 +798,8 @@ export function runSpecialDraw(
     throw new Error('special_event_not_found');
   }
 
-  const candidates = mapParticipants(listCandidateRows(db, showing), privateKeyPemBase64);
+  const candidateRows = listCandidateRows(db, showing);
+  const candidates = mapParticipants(candidateRows, privateKeyPemBase64, loadBonusesForRows(db, candidateRows));
   const draw = weightedDraw(candidates, showing.lottery_quota);
   const winners = draw.winners;
   const totalWeight = candidates.reduce((sum, candidate) => sum + getDistributedDrawWeight(candidate, draw.weightScale), 0);
@@ -771,6 +828,12 @@ export function runSpecialDraw(
       applicationId: winner.applicationId,
       applicationCode: winner.applicationCode,
       participantProfileId: winner.participantProfileId,
+      baseScore: winner.baseScore,
+      socialBonusPoints: winner.socialBonusPoints,
+      socialBonusRawPoints: winner.socialBonusRawPoints,
+      socialBonusActiveDays: winner.socialBonusActiveDays,
+      socialBonusEligibleActivityCount: winner.socialBonusEligibleActivityCount,
+      socialBonusLatestActivityAt: winner.socialBonusLatestActivityAt,
       score: winner.score,
       stampCount: winner.stampCount,
       noShowCount: winner.noShowCount,
@@ -858,7 +921,7 @@ export function getLatestSpecialDrawResult(
     } satisfies SpecialCandidateRow;
   });
 
-  return rowToDrawResult(row, event, showing, mapParticipants(decoratedRows, privateKeyPemBase64));
+  return rowToDrawResult(row, event, showing, mapParticipants(decoratedRows, privateKeyPemBase64, loadBonusesForRows(db, decoratedRows)));
 }
 
 export function listSpecialApplicationPhotos(db: Database.Database, applicationId: number) {
@@ -930,7 +993,10 @@ export function formatSpecialShowingApplicants(item: NonNullable<ReturnType<type
 
   const lines = item.candidates.slice(0, 40).map((candidate, index) => [
     `${index + 1}. ФИО: ${candidate.fullName}`,
-    `   Баллы: ${candidate.score}, штампы: ${candidate.stampCount}, неявки: ${candidate.noShowCount}`,
+    `   Баллы для розыгрыша: ${formatScoreBreakdown(candidate)}, штампы: ${candidate.stampCount}, неявки: ${candidate.noShowCount}`,
+    candidate.socialBonusPoints > 0
+      ? `   Соцактивность VK: +${candidate.socialBonusPoints} балл., активных дней ${candidate.socialBonusActiveDays}, действий ${candidate.socialBonusEligibleActivityCount}`
+      : null,
     `   Фото: ${candidate.acceptedPhotoCount}/${candidate.uniquePhotoCount}/${candidate.uploadedPhotoCount}`,
     `   Выбрано дат: ${candidate.selectedShowingCount}, вес на этот показ: ${formatShowingWeight(candidate.score, candidate.selectedShowingCount)} (${getDistributedDrawWeight(candidate, weightScale)} тех. билетиков)`,
     candidate.previousSpecialWinner ? `   Уже выигрывал спецрозыгрыш: да, коэффициент веса ${candidate.previousWinnerWeightPercent}%` : null,
@@ -967,7 +1033,10 @@ export function formatSpecialDrawResult(result: SpecialDrawResult) {
 
   const winners = result.winners.slice(0, 30).map((winner) => [
     `${winner.position}. ${winner.fullName}`,
-    `   Баллы: ${winner.score}, штампы: ${winner.stampCount}, неявки: ${winner.noShowCount}`,
+    `   Баллы для розыгрыша: ${formatScoreBreakdown(winner)}, штампы: ${winner.stampCount}, неявки: ${winner.noShowCount}`,
+    winner.socialBonusPoints > 0
+      ? `   Соцактивность VK: +${winner.socialBonusPoints} балл., активных дней ${winner.socialBonusActiveDays}, действий ${winner.socialBonusEligibleActivityCount}`
+      : null,
     `   Выбрано дат: ${winner.selectedShowingCount}, вес на этот показ: ${formatShowingWeight(winner.showingWeightNumerator, winner.showingWeightDenominator)} (${winner.drawWeight} тех. билетиков)`,
     winner.previousSpecialWinner ? `   Уже выигрывал спецрозыгрыш: да, коэффициент веса ${winner.previousWinnerWeightPercent}%` : null,
     `   Раунд: выпал билет №${winner.selectedTicket} из ${winner.poolWeightBeforeDraw}`,
@@ -995,7 +1064,13 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
     { header: 'Email', key: 'email', width: 34 },
     { header: 'Телефон', key: 'phone', width: 20 },
     { header: 'Код заявки', key: 'applicationCode', width: 42 },
-    { header: 'Баллы', key: 'score', width: 10 },
+    { header: 'Баллы всего', key: 'score', width: 12 },
+    { header: 'Основные баллы', key: 'baseScore', width: 14 },
+    { header: 'Соцбаллы VK', key: 'socialBonusPoints', width: 14 },
+    { header: 'Сырые соцбаллы VK', key: 'socialBonusRawPoints', width: 18 },
+    { header: 'VK активных дней', key: 'socialBonusActiveDays', width: 18 },
+    { header: 'VK действий', key: 'socialBonusEligibleActivityCount', width: 14 },
+    { header: 'Последняя VK активность', key: 'socialBonusLatestActivityAt', width: 24 },
     { header: 'Выбрано дат', key: 'selectedShowingCount', width: 14 },
     { header: 'Вес на показ', key: 'showingWeight', width: 18 },
     { header: 'Тех. билетики участника', key: 'drawWeight', width: 22 },
@@ -1018,6 +1093,12 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
       phone: winner.phone,
       applicationCode: winner.applicationCode,
       score: winner.score,
+      baseScore: winner.baseScore,
+      socialBonusPoints: winner.socialBonusPoints,
+      socialBonusRawPoints: winner.socialBonusRawPoints,
+      socialBonusActiveDays: winner.socialBonusActiveDays,
+      socialBonusEligibleActivityCount: winner.socialBonusEligibleActivityCount,
+      socialBonusLatestActivityAt: winner.socialBonusLatestActivityAt ?? '',
       selectedShowingCount: winner.selectedShowingCount,
       showingWeight: formatShowingWeight(winner.showingWeightNumerator, winner.showingWeightDenominator),
       drawWeight: winner.drawWeight,
@@ -1039,7 +1120,13 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
     { header: 'Email', key: 'email', width: 34 },
     { header: 'Телефон', key: 'phone', width: 20 },
     { header: 'Код заявки', key: 'applicationCode', width: 42 },
-    { header: 'Баллы', key: 'score', width: 10 },
+    { header: 'Баллы всего', key: 'score', width: 12 },
+    { header: 'Основные баллы', key: 'baseScore', width: 14 },
+    { header: 'Соцбаллы VK', key: 'socialBonusPoints', width: 14 },
+    { header: 'Сырые соцбаллы VK', key: 'socialBonusRawPoints', width: 18 },
+    { header: 'VK активных дней', key: 'socialBonusActiveDays', width: 18 },
+    { header: 'VK действий', key: 'socialBonusEligibleActivityCount', width: 14 },
+    { header: 'Последняя VK активность', key: 'socialBonusLatestActivityAt', width: 24 },
     { header: 'Выбрано дат', key: 'selectedShowingCount', width: 14 },
     { header: 'Вес на этот показ', key: 'showingWeight', width: 18 },
     { header: 'Тех. билетики на этот показ', key: 'drawWeight', width: 26 },
@@ -1059,6 +1146,12 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
       phone: candidate.phone,
       applicationCode: candidate.applicationCode,
       score: candidate.score,
+      baseScore: candidate.baseScore,
+      socialBonusPoints: candidate.socialBonusPoints,
+      socialBonusRawPoints: candidate.socialBonusRawPoints,
+      socialBonusActiveDays: candidate.socialBonusActiveDays,
+      socialBonusEligibleActivityCount: candidate.socialBonusEligibleActivityCount,
+      socialBonusLatestActivityAt: candidate.socialBonusLatestActivityAt ?? '',
       selectedShowingCount: candidate.selectedShowingCount,
       showingWeight: formatShowingWeight(candidate.score, candidate.selectedShowingCount),
       drawWeight: getDistributedDrawWeight(candidate, weightScale),
@@ -1077,7 +1170,9 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
     { header: 'Всего билетов в раунде', key: 'totalTickets', width: 24 },
     { header: 'Выпавший билет', key: 'selectedTicket', width: 18 },
     { header: 'Код заявки', key: 'applicationCode', width: 42 },
-    { header: 'Баллы участника', key: 'score', width: 18 },
+    { header: 'Баллы участника всего', key: 'score', width: 22 },
+    { header: 'Основные баллы', key: 'baseScore', width: 14 },
+    { header: 'Соцбаллы VK', key: 'socialBonusPoints', width: 14 },
     { header: 'Выбрано дат', key: 'selectedShowingCount', width: 14 },
     { header: 'Вес на показ', key: 'showingWeight', width: 18 },
     { header: 'Тех. билетики участника', key: 'drawWeight', width: 22 },
@@ -1096,6 +1191,8 @@ export async function buildSpecialDrawXlsxBuffer(result: SpecialDrawResult) {
         selectedTicket: round.selectedTicket,
         applicationCode: range.applicationCode,
         score: range.score,
+        baseScore: range.baseScore ?? '',
+        socialBonusPoints: range.socialBonusPoints ?? '',
         selectedShowingCount: range.selectedShowingCount ?? '',
         showingWeight: formatShowingWeight(
           range.showingWeightNumerator ?? range.score,

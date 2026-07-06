@@ -342,6 +342,25 @@ function tokenMatchScore(left: string, right: string) {
   return 0;
 }
 
+const GIVEN_NAME_ALIASES = new Map<string, Set<string>>([
+  ['анна', new Set(['аня', 'анюта'])],
+  ['татьяна', new Set(['таня'])],
+]);
+
+function givenNameMatchScore(left: string, right: string) {
+  if (left === right) return 1;
+  if (GIVEN_NAME_ALIASES.get(left)?.has(right) || GIVEN_NAME_ALIASES.get(right)?.has(left)) {
+    return 1;
+  }
+  return tokenMatchScore(left, right);
+}
+
+function highConfidenceSurnameMatchScore(left: string, right: string) {
+  if (left === right) return 1;
+  if (left.length >= 5 && right.length >= 5 && levenshtein(left, right) <= 1) return 0.92;
+  return 0;
+}
+
 function isOrganizationLikeName(displayName: string) {
   return /калининград|афиша|анонсы|полюбить|event|events|official|club/iu.test(normalizeName(displayName));
 }
@@ -354,17 +373,25 @@ function scoreVkAgainstApplicant(vkFirst: string, vkLast: string, applicant: Spe
   }
 
   const tokens = applicant.tokens;
+  const surnameScore = highConfidenceSurnameMatchScore(last, tokens[0]);
+  const givenScore = givenNameMatchScore(tokens[1], first);
   const exactSurnameGiven = (
-    tokens[0] === last && tokens[1] === first
+    tokens[0] === last && givenScore === 1
   ) || (
-    tokens.length === 2 && tokens.includes(first) && tokens.includes(last)
+    tokens.length === 2
+      && tokens.includes(last)
+      && tokens.some((token) => givenNameMatchScore(token, first) === 1)
+  ) || (
+    surnameScore >= 0.84 && givenScore === 1
   );
 
   if (exactSurnameGiven) {
     return {
       applicant,
       score: 1,
-      reason: 'vk_first_last_matches_application_surname_given_name',
+      reason: tokens[0] === last
+        ? 'vk_first_last_matches_application_surname_given_name'
+        : 'vk_first_last_matches_application_surname_given_name_approx',
       exactSurnameGiven: true,
       duplicateApplicationCount: 1,
     };
@@ -372,7 +399,7 @@ function scoreVkAgainstApplicant(vkFirst: string, vkLast: string, applicant: Spe
 
   const forward = Math.max(
     tokenMatchScore(first, tokens[0]) + tokenMatchScore(last, tokens[1]),
-    tokenMatchScore(first, tokens[1] ?? '') + tokenMatchScore(last, tokens[0]),
+    givenNameMatchScore(first, tokens[1] ?? '') + tokenMatchScore(last, tokens[0]),
   ) / 2;
   let bestAnyPair = 0;
   for (const left of [first, last]) {

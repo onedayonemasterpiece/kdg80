@@ -213,6 +213,49 @@ test('deterministicMatchActor treats same person in several special events as on
   assert.match(result.verdict.reason, /same_person_special_applications=2/u);
 });
 
+test('deterministicMatchActor matches common first-name diminutives with exact surname', () => {
+  const anna = deterministicMatchActor({
+    firstName: 'Анюта',
+    lastName: 'Ябурова',
+    displayName: 'Анюта Ябурова',
+  }, [applicant(1, 'Ябурова Анна Валерьевна')]);
+
+  assert.equal(anna.verdict.status, 'matched');
+  assert.equal(anna.verdict.matchedSpecialApplicationId, 1);
+
+  const tatiana = deterministicMatchActor({
+    firstName: 'Таня',
+    lastName: 'Косицкая',
+    displayName: 'Таня Косицкая',
+  }, [applicant(2, 'Косицкая Татьяна Евгеньевна')]);
+
+  assert.equal(tatiana.verdict.status, 'matched');
+  assert.equal(tatiana.verdict.matchedSpecialApplicationId, 2);
+});
+
+test('deterministicMatchActor matches one-letter surname truncation with exact given name', () => {
+  const result = deterministicMatchActor({
+    firstName: 'Лидия',
+    lastName: 'Гофман',
+    displayName: 'Лидия Гофман',
+  }, [applicant(1, 'Гофма Лидия Васильевна')]);
+
+  assert.equal(result.verdict.status, 'matched');
+  assert.equal(result.verdict.matchedSpecialApplicationId, 1);
+  assert.match(result.verdict.reason, /surname_given_name_approx/u);
+});
+
+test('deterministicMatchActor does not promote loose surname prefix matches to matched', () => {
+  const result = deterministicMatchActor({
+    firstName: 'Анна',
+    lastName: 'Кузнецов',
+    displayName: 'Анна Кузнецов',
+  }, [applicant(1, 'Кузнеченко Анна Петровна')]);
+
+  assert.notEqual(result.verdict.status, 'matched');
+  assert.ok(['weak', 'ambiguous', 'unmatched'].includes(result.verdict.status));
+});
+
 test('deterministicMatchActor keeps patronymic-only profile below high-confidence', () => {
   const result = deterministicMatchActor({
     firstName: 'Ольга',

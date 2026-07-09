@@ -729,7 +729,7 @@ Category opener:
 Техническая привязка:
 
 - QR: `/generated/max/max-channel-qr.svg`
-- ссылка: `https://max.ru/join/do_4eLW85-yK_dXcc6f2cmKp9utJuFl_hCo0cxnJ1QA`
+- ссылка: `https://max.ru/channel_kenigevents`
 
 Финальная эмоция:
 

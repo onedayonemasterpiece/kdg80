@@ -317,7 +317,7 @@ export function getFestivalSlideDeckSlides(): FestivalSlideDeckSlide[] {
       subtitle: 'ПОДПИСЫВАЙТЕСЬ И СКАНИРУЙТЕ QR',
       channelTitle: 'ПОЛЮБИТЬ КАЛИНИНГРАД АНОНСЫ',
       qrPath: '/generated/max/max-channel-qr.svg',
-      href: 'https://max.ru/join/1/SVxthSc4iDHg4n7d1uQ2MTV9MKb17SkBe66U4SMtL0Q',
+      href: 'https://max.ru/channel_kenigevents',
     },
   );
 

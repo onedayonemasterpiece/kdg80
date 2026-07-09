@@ -335,7 +335,7 @@ export function getVideoStoryScenes(): VideoStoryScene[] {
       subtitle: 'ТАМ ЖЕ ПРИХОДЯТ ДОПМЕСТА И СРОЧНЫЕ ОБНОВЛЕНИЯ',
       footer: 'БАЗА АНОНСОВ СОБЫТИЙ КАЛИНИНГРАДСКОЙ ОБЛАСТИ',
       qrPath: '/generated/max/max-channel-qr.svg',
-      href: 'https://max.ru/join/do_4eLW85-yK_dXcc6f2cmKp9utJuFl_hCo0cxnJ1QA',
+      href: 'https://max.ru/channel_kenigevents',
     },
   ];
 }

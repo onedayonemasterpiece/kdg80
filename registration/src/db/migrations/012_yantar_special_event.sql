@@ -45,19 +45,20 @@ INSERT OR IGNORE INTO special_event_showings(
   reserved_seats,
   lottery_quota
 )
-SELECT id, '2026-07-16-1700', '2026-07-16T17:00:00+02:00', '16 июля 17:00 ПСЗ «Янтарь»', 1, 22, 10, 12
+SELECT id, '2026-07-16-1800', '2026-07-16T18:00:00+02:00', '16 июля 18:00 ПСЗ «Янтарь»', 1, 22, 10, 12
 FROM special_events
 WHERE slug = 'yantar-excursion';
 
 UPDATE special_event_showings
-SET starts_at = '2026-07-16T17:00:00+02:00',
-    display_label = '16 июля 17:00 ПСЗ «Янтарь»',
+SET slug = '2026-07-16-1800',
+    starts_at = '2026-07-16T18:00:00+02:00',
+    display_label = '16 июля 18:00 ПСЗ «Янтарь»',
     time_is_final = 1,
     physical_quota = 22,
     reserved_seats = 10,
     lottery_quota = 12,
     updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-WHERE slug = '2026-07-16-1700'
+WHERE slug IN ('2026-07-16-1700', '2026-07-16-1800')
   AND special_event_id = (
     SELECT id
     FROM special_events

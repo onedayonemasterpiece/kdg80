@@ -151,15 +151,27 @@ export function loadSocialRaffleBonuses(
 
   const placeholders = uniqueIds.map(() => '?').join(', ');
   const rows = db.prepare(`
+    WITH target_applications AS (
+      SELECT id, participant_profile_id
+      FROM special_applications
+      WHERE id IN (${placeholders})
+    )
     SELECT
-      actor.matched_special_application_id AS applicationId,
+      target.id AS applicationId,
       act.action AS action,
       COALESCE(act.activity_date, act.created_at) AS occurredAt
-    FROM vk_social_activities act
-    INNER JOIN vk_social_actors actor ON actor.vk_user_id = act.vk_user_id
-    WHERE actor.matched_special_application_id IN (${placeholders})
-      AND actor.match_status = 'matched'
+    FROM target_applications target
+    INNER JOIN vk_social_actors actor
+      ON actor.match_status = 'matched'
       AND actor.match_confidence >= ?
+    INNER JOIN special_applications matched_app
+      ON matched_app.id = actor.matched_special_application_id
+    INNER JOIN vk_social_activities act ON act.vk_user_id = actor.vk_user_id
+    WHERE actor.matched_special_application_id = target.id
+      OR (
+        target.participant_profile_id IS NOT NULL
+        AND matched_app.participant_profile_id = target.participant_profile_id
+      )
     ORDER BY occurredAt ASC, act.id ASC
   `).all(...uniqueIds, MATCH_CONFIDENCE_MIN) as Array<{
     applicationId: number;

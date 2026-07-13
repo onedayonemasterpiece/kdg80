@@ -16,6 +16,7 @@
 - Hero и визуальный канон: [docs/hero-requirements.md](/workspaces/kdg80/docs/hero-requirements.md)
 - Тематические маршруты / страницы по интересам: [docs/po-interesam-requirements.md](/workspaces/kdg80/docs/po-interesam-requirements.md)
 - Consent text и ПДн: [docs/registration-personal-data-consent.md](/workspaces/kdg80/docs/registration-personal-data-consent.md)
+- VK social monitoring, VK ID и post-release message-code linking: [docs/features/social-activity-monitoring/requirements.md](/workspaces/kdg80/docs/features/social-activity-monitoring/requirements.md)
 
 ## Роутинг по операциям
 

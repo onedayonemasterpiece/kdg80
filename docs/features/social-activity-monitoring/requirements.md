@@ -39,6 +39,41 @@ Missing:
 Preview-страница для проверки UI без изменения production-страницы:
 - `https://kgd80.ru/preview-vk-auth-20260615/special/etudy-toy-vesny-vk-auth-debug-20260615/` — Статус: `Не подтверждено пользователем`
 
+## Post-release: привязка VK через код в личном сообщении
+
+> Статус: `Зафиксировано как post-release направление, не реализовано`. Сценарий подтверждён как технически рабочий 2026-07-13, но не входит в текущий registration/VK-monitoring release и не должен включаться до согласования юридических текстов, dedicated VK inbox и security canary.
+
+Канонический межпроектный протокол и модель данных находятся в `events-bot-new/docs/features/site-user-identity/vk-message-link.md`. KGD80 в этом сценарии остаётся источником фестивальных регистраций и VK-активностей, но не становится владельцем site-account identity/friend graph.
+
+Already present:
+- В текущих требованиях уже зафиксированы VK user-token владельца/админа, получение VK ID и необходимость серверно проверенной связи VK-профиля с заявителем. — Статус: `Зафиксировано`
+- Production API `api.kgd80.ru` уже существует, а VK social monitoring уже сохраняет обнаруженные VK actor ID и действия. — Статус: `Частично реализовано`
+- Read-only проверка на реальных данных подтвердила, что публичные списки друзей можно получать для доступных профилей и пересекать внутри известной выборки; закрытые/удалённые профили дают неполный результат. — Статус: `Проверено 2026-07-13`
+
+Needs clarification:
+- Message-code flow является дополнительным способом proof-of-control VK-профиля, а не неявным расширением текущего согласия на регистрацию и не автоматическим матчингом по ФИО. — Статус: `Зафиксировано для post-release`
+- Три цифры не принимаются как production-secret: пространство из `1 000` значений допускает перехват чужого pending challenge. Минимум — криптографически случайный шестизначный код, уникальный среди активных кодов, TTL `5 минут`, one-time atomic consume, keyed hash и rate/attempt limits. — Статус: `Зафиксировано для post-release`
+- Предпочтителен dedicated VK community inbox с Callback/Long Poll; второй вариант — отдельный service-only пользовательский профиль. Общий человеческий inbox допустим только для ограниченного прототипа, так как integration получает технический доступ к посторонней переписке. — Статус: `Требует выбора владельца`
+- После верификации полный публичный список друзей обрабатывается транзитно: сохраняются только пересечения между пользователями, которые отдельно согласились на VK-link и friend signals. VK ID незарегистрированных/несогласившихся друзей и полный список друзей не сохраняются. — Статус: `Зафиксировано для post-release`
+- Сигнал о друге показывается только при двойном разрешении: viewer разрешил использовать активность друзей, а actor разрешил показывать свою активность подтверждённым друзьям. Первый slice возвращает только число друзей, без имени/avatar. — Статус: `Зафиксировано для post-release`
+
+Missing:
+- На статическом сайте нужны отдельные документы/акцепты: политика обработки персональных данных, purpose-specific согласие на VK-привязку/friend graph и пользовательское соглашение; email-рекомендации требуют ещё одного независимого opt-in. — Статус: `Не выполнено`
+- Нельзя публиковать формулировку «персональные данные не хранятся, только обезличенные»: связанный с site-account VK ID и восстанавливаемое ребро дружбы остаются персональными/псевдонимизированными данными. Допустимая целевая формулировка — минимальное хранение: без message body, без полного friend list, с encrypted VK ID/dedicated HMAC lookup, TTL и удалением/отзывом. — Статус: `Требует юридического согласования`
+- Нужен server-side challenge/receiver flow: создание challenge по авторизованному Supabase user, приём только новых входящих сообщений строгого формата, atomic consume, one-to-one VK↔site-account conflict/recovery semantics, dedupe и abuse protection. Статический Astro frontend сам по себе этот flow выполнить не может. — Статус: `Не выполнено`
+- Supabase personalization DB должна владеть `user_external_identity`, версиями согласия и допустимыми friend edges; core Fly SQLite и YDB analytics не должны хранить raw VK ID, message body, полный friend list или identity graph. — Статус: `Не выполнено`
+- Для передачи действий KGD80 в events-bot нужен отдельный service-only bridge с новым dedicated keyed VK subject identifier. Запрещено передавать raw email/ФИО или переиспользовать `PII_FINGERPRINT_SECRET` регистрации как межсистемный ключ. — Статус: `Не выполнено`
+- Перед canary нужно выбрать точный VK inbox/profile URL и проверить: сообщения от незнакомого пользователя на desktop/mobile, корректный sender VK ID, replay/concurrency, token restart/revocation, private/deleted friend list, unlink/withdraw/delete. — Статус: `Не выполнено`
+
+Post-release порядок:
+1. юридические тексты, retention и product copy;
+2. dedicated VK inbox и один контролируемый live-message canary;
+3. account-only linking без friend signals;
+4. transient `friends.get` intersection и aggregate-only double-opt-in signal;
+5. mapping KGD80/VK/site actions к canonical event ID;
+6. friend-aware site ranking;
+7. только после отдельного email-consent — friend-aware recommendation email.
+
 ## Качество распознавания штампов в заявках на розыгрыш
 
 Already present:

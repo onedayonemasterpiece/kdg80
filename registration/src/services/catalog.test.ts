@@ -4,7 +4,7 @@ import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import { syncCatalog } from './catalog';
 
-test('Skrebtsova lecture adds 15 percentage points to the future-event overbooking quota', () => {
+test('Skrebtsova lecture adds 25 percentage points to the future-event overbooking quota', () => {
   const db = new Database(':memory:');
   runMigrations(db);
   syncCatalog(db);
@@ -23,8 +23,8 @@ test('Skrebtsova lecture adds 15 percentage points to the future-event overbooki
 
   assert.deepEqual(event, {
     capacity: 80,
-    overbooking_percent: 98,
-    registration_limit: 158,
+    overbooking_percent: 108,
+    registration_limit: 166,
   });
 
   db.close();

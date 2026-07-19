@@ -66,7 +66,7 @@ const specialApplicationConfigs: Record<string, { href: string; eventSlug: strin
 const currentSpecialApplication = specialApplicationConfigs[event.slug];
 const isSpecialApplicationEvent = Boolean(currentSpecialApplication);
 const absoluteEventUrl = new URL(canonicalPath, `${siteOrigin}/`).toString();
-const programMonthHref = `/programma/#month-${event.monthAnchor}`;
+const programMonthHref = event.publicDetailsDeferred ? '/programma/' : `/programma/#month-${event.monthAnchor}`;
 const descriptionBase = event.summary || event.whyGo || `Событие фестиваля «80 историй о главном»: ${event.title}.`;
 const title = `${event.title} | 80 историй о главном`;
 const description = [
@@ -82,8 +82,12 @@ const robots = event.hiddenFromPublic
   : temporalState === 'past' && !event.recording
     ? 'noindex, follow, noarchive'
     : undefined;
-const jsonLdStartDate = event.timeLabel ? event.isoStart : event.isoStart?.slice(0, 10);
-const jsonLdEndDate = event.timeLabel ? getEventEndIso(event) : event.isoStart?.slice(0, 10);
+const jsonLdStartDate = event.publicDetailsDeferred
+  ? undefined
+  : event.timeLabel ? event.isoStart : event.isoStart?.slice(0, 10);
+const jsonLdEndDate = event.publicDetailsDeferred
+  ? undefined
+  : event.timeLabel ? getEventEndIso(event) : event.isoStart?.slice(0, 10);
 const jsonLdImage = event.image ? [new URL(event.image, `${siteOrigin}/`).toString()] : undefined;
 const jsonLdLocation = event.venue ? {
   '@type': 'Place',
@@ -286,10 +290,11 @@ const structuredData = event.slug === 'etyudy-toy-vesny' ? etudyStructuredData :
                         data-registration-autoload
                         data-event-slug={event.slug}
                         data-event-title={event.title}
-                        data-event-start={event.isoStart ?? ''}
+                        data-event-start={event.publicDetailsDeferred ? '' : event.isoStart ?? ''}
                         data-event-venue={event.venue}
                         data-event-address={event.address}
                         data-event-speaker={event.speakerLabel}
+                        data-public-details-deferred={event.publicDetailsDeferred ? 'true' : 'false'}
                         data-registration-state-override={event.publicRegistrationStateOverride ?? ''}
                         disabled
                         aria-disabled="true"

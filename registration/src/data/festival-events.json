@@ -465,12 +465,13 @@
     "venue": "ИЦАЭ Калининграда (2-й этаж КГТУ)",
     "address": "Советский проспект, 1",
     "kind": "dated",
-    "isoStart": "2026-07-23T18:30:00",
+    "isoStart": "2026-07-30T18:30:00",
     "hiddenFromPublic": true,
     "linkOnly": true,
-    "capacity": 60,
+    "publicDetailsDeferred": true,
+    "capacity": 120,
     "overbookingPercent": 0,
-    "registrationLimit": 60
+    "registrationLimit": 120
   },
   {
     "slug": "vystavka-pervye-na-kose",

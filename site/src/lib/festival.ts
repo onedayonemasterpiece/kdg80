@@ -72,6 +72,7 @@ export type FestivalEvent = {
   publicationStatus?: string;
   hiddenFromPublic?: boolean;
   linkOnly?: boolean;
+  publicDetailsDeferred?: boolean;
   accessLabel?: string;
   dateLabel: string;
   monthLabel: string;
@@ -1568,6 +1569,12 @@ function parseSections() {
         'Примечание для сайта',
       ]),
     );
+    const publicDetailsStatus = normalizeText(extractField(body, 'Публичные дата и место'));
+    const publicDetailsDeferred = Boolean(publicDetailsStatus)
+      && (
+        includesAnyNormalized(publicDetailsStatus, ['опубликованы позже', 'будут опубликованы позже'])
+        || includesAnyNormalized(publicDetailsStatus, ['скрыты до публикации'])
+      );
     const dateLabel = extractField(body, 'Дата') || extractField(body, 'Период работы') || extractField(body, 'Период проведения') || 'Дата будет объявлена';
     const timeLabel = sanitizeTimeLabel(
       extractField(body, 'Время') || extractField(body, 'Режим посещения') || extractField(body, 'Время посещения') || 'Время будет объявлено',
@@ -1585,13 +1592,15 @@ function parseSections() {
     const monthInfo = exactDate || rangeDate || { monthLabel: 'Скоро', monthAnchor: 'soon' };
     const durationMinutes = parseDurationMinutes(durationLabel);
     const isIcaePublicHoldback = !linkOnly && kind === 'dated' && isIcaePublicHoldbackLocation(normalizedLocation);
-    const publicVenue = isIcaePublicHoldback ? '' : normalizedLocation.venue;
-    const publicAddress = isIcaePublicHoldback ? '' : normalizedLocation.address;
-    const publicTimeLabel = isIcaePublicHoldback ? '' : timeLabel;
-    const calendar = isIcaePublicHoldback
+    const hidePublicDetails = isIcaePublicHoldback || publicDetailsDeferred;
+    const publicVenue = hidePublicDetails ? '' : normalizedLocation.venue;
+    const publicAddress = hidePublicDetails ? '' : normalizedLocation.address;
+    const publicDateLabel = publicDetailsDeferred ? '' : dateLabel;
+    const publicTimeLabel = hidePublicDetails ? '' : timeLabel;
+    const calendar = hidePublicDetails
       ? {
           ready: false,
-          note: ICAE_CALENDAR_NOTE,
+          note: publicDetailsDeferred ? 'Дата и место будут опубликованы позже.' : ICAE_CALENDAR_NOTE,
           googleUrl: undefined,
           icsUrl: undefined,
         }
@@ -1613,7 +1622,8 @@ function parseSections() {
       publicationStatus,
       hiddenFromPublic: isHiddenPublicationStatus(publicationStatus),
       linkOnly,
-      dateLabel,
+      publicDetailsDeferred,
+      dateLabel: publicDateLabel,
       monthLabel: monthInfo.monthLabel,
       monthAnchor: monthInfo.monthAnchor,
       timeLabel: publicTimeLabel,
@@ -1633,7 +1643,9 @@ function parseSections() {
       speakerAbout: kind === 'special' ? '' : speakerAbout,
       questions,
       registrationUrl: kind === 'dated' ? getFestivalRegistrationHref(slug) : undefined,
-      publicInfoNotice: publicInfoNotice || (isIcaePublicHoldback ? ICAE_PUBLIC_INFO_NOTICE : undefined),
+      publicInfoNotice: publicInfoNotice
+        || (publicDetailsDeferred ? 'Дата и место будут опубликованы позже.' : undefined)
+        || (isIcaePublicHoldback ? ICAE_PUBLIC_INFO_NOTICE : undefined),
       publicRegistrationStateOverride: isIcaePublicHoldback ? 'registration_soon' : undefined,
       calendarReady: kind === 'dated' ? calendar.ready : false,
       googleCalendarUrl: kind === 'dated' ? calendar.googleUrl : undefined,

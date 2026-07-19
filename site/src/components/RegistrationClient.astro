@@ -519,6 +519,10 @@ const supportEmail = 'info@kgd80.ru';
     }
 
     function formatEventSummary(item) {
+      if (item.publicDetailsDeferred) {
+        return 'Дата и место будут опубликованы позже.';
+      }
+
       const dateLabel = new Intl.DateTimeFormat('ru-RU', {
         dateStyle: 'long',
         timeStyle: 'short',
@@ -605,6 +609,7 @@ const supportEmail = 'info@kgd80.ru';
         hallName: '',
         address: button.dataset.eventAddress || '',
         speakerLabel: button.dataset.eventSpeaker || '',
+        publicDetailsDeferred: button.dataset.publicDetailsDeferred === 'true',
         publicState,
         ctaLabel: publicState === 'registration_soon' ? 'Регистрация скоро откроется' : 'Регистрация',
         ctaNotice: '',

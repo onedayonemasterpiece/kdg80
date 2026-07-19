@@ -42,6 +42,7 @@ export type RegistrationEmailInput = {
   ticketUrl: string;
   pdfUrl: string;
   icsUrl: string;
+  publicDetailsDeferred?: boolean;
 };
 
 export type SpecialApplicationEmailInput = {
@@ -166,20 +167,24 @@ function paragraphsHtml(lines: string[]) {
 }
 
 export function renderRegistrationEmail(input: RegistrationEmailInput, timeZone: string) {
-  const startsAt = formatDateTime(input.startsAt, timeZone);
-  const place = [input.venueName, input.hallName, input.address].filter(Boolean).join(', ');
+  const startsAt = input.publicDetailsDeferred ? '' : formatDateTime(input.startsAt, timeZone);
+  const place = input.publicDetailsDeferred
+    ? ''
+    : [input.venueName, input.hallName, input.address].filter(Boolean).join(', ');
+  const detailsLines = input.publicDetailsDeferred
+    ? ['Дата и место будут опубликованы позже.']
+    : [`Дата и время: ${startsAt}.`, `Место: ${place}.`];
   const subject = `Вы зарегистрированы: ${input.eventTitle}`;
   const text = [
     `Здравствуйте, ${input.fullName}!`,
     '',
     `Вы зарегистрированы на событие «${input.eventTitle}».`,
-    `Дата и время: ${startsAt}.`,
-    `Место: ${place}.`,
+    ...detailsLines,
     '',
     `Ваш номер приглашения: ${input.shortTicketId}.`,
     `Приглашение: ${input.ticketUrl}`,
     `PDF: ${input.pdfUrl}`,
-    `Календарь: ${input.icsUrl}`,
+    ...(input.publicDetailsDeferred ? [] : [`Календарь: ${input.icsUrl}`]),
     '',
     'Если планы изменятся или возникнут вопросы, ответьте на это письмо — мы получим ваш ответ в info@kgd80.ru.',
     '',
@@ -194,12 +199,11 @@ export function renderRegistrationEmail(input: RegistrationEmailInput, timeZone:
     ${paragraphsHtml([
       `Здравствуйте, ${input.fullName}!`,
       `Вы зарегистрированы на событие «${input.eventTitle}».`,
-      `Дата и время: ${startsAt}.`,
-      `Место: ${place}.`,
+      ...detailsLines,
       `Ваш номер приглашения: ${input.shortTicketId}.`,
     ])}
     <p><a href="${escapeHtml(input.ticketUrl)}" style="color:#b83f2f;font-weight:bold;">Открыть приглашение</a></p>
-    <p style="font-size:14px;color:#554f48;">PDF: <a href="${escapeHtml(input.pdfUrl)}">${escapeHtml(input.pdfUrl)}</a><br>Календарь: <a href="${escapeHtml(input.icsUrl)}">${escapeHtml(input.icsUrl)}</a></p>
+    <p style="font-size:14px;color:#554f48;">PDF: <a href="${escapeHtml(input.pdfUrl)}">${escapeHtml(input.pdfUrl)}</a>${input.publicDetailsDeferred ? '' : `<br>Календарь: <a href="${escapeHtml(input.icsUrl)}">${escapeHtml(input.icsUrl)}</a>`}</p>
     <p>Если планы изменятся или возникнут вопросы, ответьте на это письмо — мы получим ваш ответ в info@kgd80.ru.</p>
     <hr style="border:0;border-top:1px solid #eadfce;margin:24px 0;">
     <p style="margin:0;color:#554f48;">${footerHtml()}</p>

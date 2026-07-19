@@ -7,6 +7,7 @@ import type { StoragePublisher } from '../lib/storage';
 import { publishTicketArtifacts } from './ticket-artifacts';
 import { enqueueRegistrationCreated } from './telegram-outbox';
 import { derivePublicState } from '../lib/public-state';
+import { arePublicEventDetailsDeferred } from '../lib/catalog-visibility';
 
 type RegistrationDeps = {
   db: Database.Database;
@@ -292,6 +293,7 @@ export async function createRegistration(payload: RegistrationPayload, deps: Reg
     venueName: event.venue_name,
     hallName: event.hall_name,
     address: event.address,
+    publicDetailsDeferred: arePublicEventDetailsDeferred(event.slug),
   });
 
   insertTicket.run({
@@ -309,14 +311,17 @@ export async function createRegistration(payload: RegistrationPayload, deps: Reg
     seatsLeftAfter: created.seatsLeftAfter,
   });
 
+  const publicDetailsDeferred = arePublicEventDetailsDeferred(event.slug);
+
   return {
     registrationId: created.registrationId,
     eventSlug: event.slug,
     eventTitle: event.title,
-    startsAt: event.starts_at,
-    venueName: event.venue_name,
-    hallName: event.hall_name,
-    address: event.address,
+    startsAt: publicDetailsDeferred ? '' : event.starts_at,
+    venueName: publicDetailsDeferred ? '' : event.venue_name,
+    hallName: publicDetailsDeferred ? '' : event.hall_name,
+    address: publicDetailsDeferred ? '' : event.address,
+    publicDetailsDeferred,
     fullName,
     email,
     phone,

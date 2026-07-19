@@ -14,6 +14,7 @@ import type {
   PublicEventStateView,
   RegistrationPublicState,
 } from '../types';
+import { arePublicEventDetailsDeferred } from '../lib/catalog-visibility';
 
 type FestivalEvent = {
   slug: string;
@@ -28,6 +29,7 @@ type FestivalEvent = {
   registrationLimit?: number | null;
   hiddenFromPublic?: boolean;
   linkOnly?: boolean;
+  publicDetailsDeferred?: boolean;
 };
 
 type EventRow = {
@@ -425,14 +427,16 @@ export function listPublicEventStates(db: Database.Database, slugs: string[] = [
   return rows.map((row) => {
     const publicState = derivePublicState(row);
     const copy = getCtaCopy(publicState);
-    const hidePublicDetails = isDeferredPublicEvent(row);
+    const publicDetailsDeferred = arePublicEventDetailsDeferred(row.slug);
+    const hidePublicDetails = isDeferredPublicEvent(row) || publicDetailsDeferred;
     const seatsLeft = deriveSeatsLeft(row);
 
     return {
       slug: row.slug,
       title: row.title,
-      startsAt: row.starts_at,
-      endsAt: row.ends_at,
+      startsAt: publicDetailsDeferred ? '' : row.starts_at,
+      endsAt: publicDetailsDeferred ? '' : row.ends_at,
+      publicDetailsDeferred,
       venueName: hidePublicDetails ? '' : row.venue_name,
       hallName: hidePublicDetails ? '' : row.hall_name,
       address: hidePublicDetails ? '' : row.address,

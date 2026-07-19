@@ -301,7 +301,7 @@ const recordingsHref = '/zapisi/';
         </div>
       ) : (
         <>
-          <div class="event-card__date">
+          {!event.publicDetailsDeferred && <div class="event-card__date">
             {rangeDateParts ? (
               <>
                 <span class="event-card__range-row">
@@ -323,7 +323,7 @@ const recordingsHref = '/zapisi/';
                 {shouldShowPublicTime && <span class="event-card__time">{event.timeLabel}</span>}
               </>
             )}
-          </div>
+          </div>}
 
           {useDialogueVisual ? (
             <div
@@ -671,10 +671,11 @@ const recordingsHref = '/zapisi/';
               data-registration-cta
               data-event-slug={event.slug}
               data-event-title={event.title}
-              data-event-start={event.isoStart ?? ''}
+              data-event-start={event.publicDetailsDeferred ? '' : event.isoStart ?? ''}
               data-event-venue={event.venue}
               data-event-address={event.address}
               data-event-speaker={event.speakerLabel}
+              data-public-details-deferred={event.publicDetailsDeferred ? 'true' : 'false'}
               data-registration-state-override={event.publicRegistrationStateOverride ?? ''}
               disabled
               aria-disabled="true"

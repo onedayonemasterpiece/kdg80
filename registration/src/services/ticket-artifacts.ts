@@ -21,6 +21,7 @@ type TicketArtifactInput = {
   venueName: string;
   hallName: string;
   address: string;
+  publicDetailsDeferred?: boolean;
   eventImageUrl?: string | null;
   ticketImageAsset?: string | null;
 };
@@ -190,6 +191,7 @@ function buildHtml(input: TicketArtifactInput) {
   const favoritMediumUrl = FAVORIT_MEDIUM_DATA_URI ?? '/shared-assets/fonts/FavoritPro-Medium.otf';
   const favoritBoldUrl = FAVORIT_BOLD_DATA_URI ?? '/shared-assets/fonts/FavoritPro-Bold.otf';
   const eventImageUrl = input.eventImageUrl || '';
+  const deferredDetailsCopy = 'Дата и место будут опубликованы позже.';
 
   return `<!doctype html>
 <html lang="ru">
@@ -632,6 +634,11 @@ function buildHtml(input: TicketArtifactInput) {
           <p class="hero__summary">Сохраните пригласительный в телефоне и покажите на входе. Распечатывать не требуется, рассадка свободная.</p>
           ${speakerLabel ? `<p class="hero__speaker">Спикер: ${escapeHtml(speakerLabel)}</p>` : ''}
           <div class="hero__meta">
+            ${input.publicDetailsDeferred ? `
+            <div class="hero__stat" style="grid-column: 1 / -1;">
+              <span class="hero__stat-label">Дата и место</span>
+              <div class="hero__stat-value">${deferredDetailsCopy}</div>
+            </div>` : `
             <div class="hero__stat">
               <span class="hero__stat-label">Дата</span>
               <div class="hero__stat-value">${escapeHtml(dateOnly)}</div>
@@ -647,13 +654,13 @@ function buildHtml(input: TicketArtifactInput) {
             <div class="hero__stat">
               <span class="hero__stat-label">Зал</span>
               <div class="hero__stat-value">${escapeHtml(input.hallName)}</div>
-            </div>
+            </div>`}
           </div>
           <figure class="hero__image">
             ${eventImageUrl ? `<img src="${escapeHtml(eventImageUrl)}" alt="Визуальный образ события «${escapeHtml(input.title)}»" />` : ''}
             <figcaption class="hero__image-caption">
               <strong>Пригласительный № ${escapeHtml(input.shortTicketId)}</strong>
-              <span>${escapeHtml(formattedDate)} · ${escapeHtml(input.address)}</span>
+              <span>${input.publicDetailsDeferred ? deferredDetailsCopy : `${escapeHtml(formattedDate)} · ${escapeHtml(input.address)}`}</span>
             </figcaption>
           </figure>
         </section>
@@ -670,13 +677,13 @@ function buildHtml(input: TicketArtifactInput) {
             <p class="ticket-id-note">Покажите этот номер на входе или откройте пригласительный со страницы мероприятия. Рассадка свободная.</p>
           </div>
           <div class="panel">
-            <span class="panel__label">Маршрут</span>
-            <p class="panel__value">${escapeHtml(input.venueName)}<br />${escapeHtml(input.hallName)}<br />${escapeHtml(input.address)}</p>
+            <span class="panel__label">${input.publicDetailsDeferred ? 'Дата и место' : 'Маршрут'}</span>
+            <p class="panel__value">${input.publicDetailsDeferred ? deferredDetailsCopy : `${escapeHtml(input.venueName)}<br />${escapeHtml(input.hallName)}<br />${escapeHtml(input.address)}`}</p>
           </div>
           <div class="panel">
             <div class="actions-stack">
               <a class="button" href="${escapeHtml(pdfUrl)}">Скачать PDF</a>
-              <div class="calendar-block">
+              ${input.publicDetailsDeferred ? '' : `<div class="calendar-block">
                 <p class="actions-title">📅 Добавить в календарь</p>
                 <p class="actions-copy">Добавьте событие сейчас, чтобы не искать билет в день мероприятия.</p>
                 <div class="actions actions--calendar">
@@ -684,7 +691,7 @@ function buildHtml(input: TicketArtifactInput) {
                   <a class="button button--ghost" href="${escapeHtml(icsUrl)}">Календарь Apple</a>
                   <a class="button button--ghost" href="${escapeHtml(googleCalendarUrl)}" target="_blank" rel="noreferrer">Google</a>
                 </div>
-              </div>
+              </div>`}
             </div>
             <p class="footer-note">Распечатывать не требуется, рассадка свободная. Постоянная ссылка: <a href="${escapeHtml(ticketUrl)}">${escapeHtml(ticketUrl)}</a></p>
           </div>
@@ -696,6 +703,17 @@ function buildHtml(input: TicketArtifactInput) {
 }
 
 function buildIcs(input: TicketArtifactInput) {
+  if (input.publicDetailsDeferred) {
+    return [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//80 историй о главном//Registration Ticket//RU',
+      'CALSCALE:GREGORIAN',
+      'END:VCALENDAR',
+      '',
+    ].join('\r\n');
+  }
+
   const start = new Date(input.startsAt);
   const end = new Date(start.getTime() + 90 * 60_000);
   const stamp = new Date().toISOString().replace(/[-:]/gu, '').replace(/\.\d{3}Z$/u, 'Z');
@@ -1019,6 +1037,16 @@ function createPdfBuffer(input: TicketArtifactInput) {
     });
     const secondRowHeight = Math.max(venueCardHeight, hallCardHeight);
 
+    if (input.publicDetailsDeferred) {
+      drawInfoCard(doc, {
+        x: contentX,
+        y: cardsY,
+        width: contentWidth,
+        height: topRowHeight,
+        label: 'Дата и место',
+        value: 'Дата и место будут опубликованы позже.',
+      });
+    } else {
     drawInfoCard(doc, {
       x: contentX,
       y: cardsY,
@@ -1055,11 +1083,14 @@ function createPdfBuffer(input: TicketArtifactInput) {
       valueFontSize: 11.5,
       valueLineGap: 2,
     });
+    }
 
-    const lowerY = cardsY + topRowHeight + cardGap + secondRowHeight + 8;
+    const lowerY = input.publicDetailsDeferred
+      ? cardsY + topRowHeight + 8
+      : cardsY + topRowHeight + cardGap + secondRowHeight + 8;
     const contactText = `${input.emailMasked}\n${input.phoneMasked}`;
     const visitorHeight = Math.max(
-      90,
+      112,
       28
         + measureTextHeight(doc, {
             text: input.fullName,
@@ -1138,7 +1169,9 @@ function createPdfBuffer(input: TicketArtifactInput) {
     });
 
     const addressY = lowerY + visitorHeight + 14;
-    const routeValue = `${input.venueName}\n${input.hallName}\n${input.address}`;
+    const routeValue = input.publicDetailsDeferred
+      ? 'Дата и место будут опубликованы позже.'
+      : `${input.venueName}\n${input.hallName}\n${input.address}`;
     const addressHeight = Math.max(
       70,
       28
@@ -1162,7 +1195,7 @@ function createPdfBuffer(input: TicketArtifactInput) {
     });
     doc.fillColor('#7a7066');
     setPdfBoldFont(doc);
-    drawFixedText(doc, 'ПЛОЩАДКА И АДРЕС', contentX + 18, addressY + 16, {
+    drawFixedText(doc, input.publicDetailsDeferred ? 'ДАТА И МЕСТО' : 'ПЛОЩАДКА И АДРЕС', contentX + 18, addressY + 16, {
       fontSize: 10,
       width: contentWidth - 36,
       characterSpacing: 1.2,
@@ -1179,6 +1212,7 @@ function createPdfBuffer(input: TicketArtifactInput) {
     const calendarHeight = 56;
     const calendarButtonGap = 8;
     const calendarButtonWidth = (contentWidth - (calendarButtonGap * 2)) / 3;
+    if (!input.publicDetailsDeferred) {
     drawPanelSurface(doc, {
       x: contentX,
       y: calendarY,
@@ -1231,8 +1265,9 @@ function createPdfBuffer(input: TicketArtifactInput) {
       textColor: '#962d1b',
       fontSize: 9.3,
     });
+    }
 
-    const footerY = calendarY + calendarHeight + 4;
+    const footerY = input.publicDetailsDeferred ? calendarY + 4 : calendarY + calendarHeight + 4;
     setPdfRegularFont(doc);
     doc.fillColor('#962d1b');
     drawFixedText(doc, 'Открыть приглашение онлайн', contentX, footerY, {
@@ -1279,6 +1314,7 @@ export async function publishTicketArtifacts(
     venueName: string;
     hallName: string;
     address: string;
+    publicDetailsDeferred?: boolean;
     eventImageUrl?: string | null;
     ticketImageAsset?: string | null;
   },
@@ -1298,6 +1334,7 @@ export async function publishTicketArtifacts(
     venueName: input.venueName,
     hallName: input.hallName,
     address: input.address,
+    publicDetailsDeferred: input.publicDetailsDeferred,
     eventImageUrl: buildAbsoluteUrl(input.ticketBaseUrl, input.eventImageUrl ?? null),
     ticketImageAsset: input.ticketImageAsset ?? null,
   };

@@ -35,6 +35,7 @@ export type PublicEventStateView = {
   title: string;
   startsAt: string;
   endsAt: string;
+  publicDetailsDeferred: boolean;
   venueName: string;
   hallName: string;
   address: string;

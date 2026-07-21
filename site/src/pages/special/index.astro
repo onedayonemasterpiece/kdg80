@@ -10,8 +10,20 @@ const now = new Date();
 const routeItems = getRouteNavItems();
 const programHref = getSmartProgramHref(events, false, now);
 const title = 'Спецмероприятия фестиваля | 80 историй о главном';
-const description = 'Розыгрыши и специальные форматы фестиваля: экскурсии, спектакли и события с отдельной заявкой по паспорту участника.';
+const description = 'Спецмероприятия фестиваля: отдельные регистрации, экскурсии, спектакли и события с заявкой по паспорту участника.';
 const specialCards = [
+  {
+    title: 'Стендап-презентация сайта анонсов событий',
+    kicker: 'Регистрация открыта',
+    meta: '30 июля 18:30 · четверг · квота 220 человек',
+    text: 'Встреча пройдёт в Калининградском областном историко-художественном музее. Участники первыми увидят новый сайт анонсов событий, его персональные подборки и скрытые возможности.',
+    href: '/sobytiya/stendap-prezentatsiya-sayta-anonsov-sobytiy/?register=1',
+    image: '/generated/events/stendap-prezentatsiya-sayta-anonsov-sobytiy.svg',
+    imageAlt: 'Афиша стендап-презентации сайта анонсов событий',
+    imageWidth: 1600,
+    imageHeight: 1050,
+    cta: 'Зарегистрироваться',
+  },
   {
     title: 'Экскурсия «Слон по городу идёт»',
     kicker: 'Новая дата',
@@ -59,8 +71,8 @@ const specialCards = [
         <div class="container special-index__hero-grid">
           <div>
             <p class="section__eyebrow">Спецмероприятия</p>
-            <h1>Розыгрыши, экскурсии и специальные форматы фестиваля</h1>
-            <p>Здесь собраны события, куда нельзя просто зарегистрироваться как на лекцию: нужно подать заявку на розыгрыш, подтвердить посещения фестиваля паспортом участника и дождаться результатов.</p>
+            <h1>Спецмероприятия фестиваля</h1>
+            <p>Здесь собраны специальные форматы с разными правилами участия. На одни события действует отдельная регистрация, на другие нужно подать заявку, подтвердить посещения фестиваля паспортом участника и дождаться результатов розыгрыша.</p>
           </div>
           <a class="button button--primary" href="/programma/">Вернуться к программе</a>
         </div>
@@ -121,7 +133,7 @@ const specialCards = [
 
   .special-index__cards {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1rem;
     margin-top: 2rem;
   }
@@ -182,7 +194,11 @@ const specialCards = [
   @media (max-width: 900px) {
     .special-index__hero-grid,
     .special-index__cards {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .special-index__hero-grid > div {
+      min-width: 0;
     }
 
     .special-index__hero-grid > .button {
@@ -197,7 +213,7 @@ const specialCards = [
 
     .special-index__hero h1 {
       max-width: none;
-      font-size: clamp(2.35rem, 13vw, 3.8rem);
+      font-size: clamp(1.9rem, 9.8vw, 3.8rem);
     }
   }
 </style>

@@ -3800,6 +3800,10 @@ a.event-card__recording:focus-visible {
   overscroll-behavior: contain;
 }
 
+.site-header__route-menu:not([open]) .site-header__route-panel {
+  display: none;
+}
+
 .site-header__route-link {
   display: grid;
   gap: 0.18rem;

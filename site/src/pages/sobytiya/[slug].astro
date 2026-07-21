@@ -77,7 +77,7 @@ const description = [
 ].filter(Boolean).join(' · ');
 const whyGoCopy = event.whyGo && event.whyGo !== event.summary ? event.whyGo : '';
 const metadataParts = [event.dateLabel, event.timeLabel, event.venue].filter(Boolean);
-const robots = event.hiddenFromPublic
+const robots = event.hiddenFromPublic && !event.listedOnSpecial
   ? 'noindex, nofollow, noarchive'
   : temporalState === 'past' && !event.recording
     ? 'noindex, follow, noarchive'

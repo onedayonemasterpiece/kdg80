@@ -72,6 +72,7 @@ export type FestivalEvent = {
   publicationStatus?: string;
   hiddenFromPublic?: boolean;
   linkOnly?: boolean;
+  listedOnSpecial?: boolean;
   publicDetailsDeferred?: boolean;
   accessLabel?: string;
   dateLabel: string;
@@ -545,10 +546,17 @@ function isLinkOnlyPublicationStatus(value: string) {
   return (
     normalized.includes('link-only')
     || normalized.includes('linkonly')
+    || normalized.includes('special-only')
+    || normalized.includes('specialonly')
     || normalized.includes('only-by-link')
     || normalized.includes('direct-link')
     || (lowerValue.includes('только') && lowerValue.includes('ссыл'))
   );
+}
+
+function isSpecialOnlyPublicationStatus(value: string) {
+  const normalized = normalizeLookup(value);
+  return normalized.includes('special-only') || normalized.includes('specialonly');
 }
 
 function isHiddenPublicationStatus(value: string) {
@@ -1523,6 +1531,7 @@ function parseSections() {
     const formatLabel = normalizeFormatName(formatRaw);
     const publicationStatus = normalizeText(extractField(body, 'Статус публикации'));
     const linkOnly = isLinkOnlyPublicationStatus(publicationStatus);
+    const listedOnSpecial = isSpecialOnlyPublicationStatus(publicationStatus);
     const kind: FestivalEvent['kind'] = heading.startsWith('Спецсобытие')
       ? 'special'
       : formatRaw.includes('Выставка') || body.includes('**Период проведения:**') || body.includes('**Период работы:**')
@@ -1622,6 +1631,7 @@ function parseSections() {
       publicationStatus,
       hiddenFromPublic: isHiddenPublicationStatus(publicationStatus),
       linkOnly,
+      listedOnSpecial,
       publicDetailsDeferred,
       dateLabel: publicDateLabel,
       monthLabel: monthInfo.monthLabel,

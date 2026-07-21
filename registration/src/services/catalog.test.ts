@@ -30,7 +30,7 @@ test('Skrebtsova lecture adds 25 percentage points to the future-event overbooki
   db.close();
 });
 
-test('link-only presentation keeps its preliminary schedule private and registers up to 120 people', () => {
+test('special-only presentation uses the history museum quota of 220 people', () => {
   const db = new Database(':memory:');
   runMigrations(db);
   syncCatalog(db);
@@ -57,22 +57,22 @@ test('link-only presentation keeps its preliminary schedule private and register
   };
 
   assert.match(event.starts_at, /^2026-07-30T/);
-  assert.equal(event.venue_name, 'ИЦАЭ, КГТУ');
-  assert.equal(event.address, 'Советский проспект, 1');
-  assert.equal(event.capacity, 120);
+  assert.equal(event.venue_name, 'Калининградский областной историко-художественный музей');
+  assert.equal(event.address, 'улица Клиническая, 21');
+  assert.equal(event.capacity, 220);
   assert.equal(event.overbooking_percent, 0);
-  assert.equal(event.registration_limit, 120);
+  assert.equal(event.registration_limit, 220);
   assert.equal(event.registration_public_state, 'open');
 
   const publicEvent = listPublicEventStates(db, ['stendap-prezentatsiya-sayta-anonsov-sobytiy'])[0];
   assert.equal(publicEvent.publicState, 'registration_open');
-  assert.equal(publicEvent.publicDetailsDeferred, true);
-  assert.equal(publicEvent.startsAt, '');
-  assert.equal(publicEvent.endsAt, '');
-  assert.equal(publicEvent.venueName, '');
-  assert.equal(publicEvent.hallName, '');
-  assert.equal(publicEvent.address, '');
-  assert.equal(publicEvent.registrationLimit, 120);
+  assert.equal(publicEvent.publicDetailsDeferred, false);
+  assert.match(publicEvent.startsAt, /^2026-07-30T/);
+  assert.match(publicEvent.endsAt, /^2026-07-30T/);
+  assert.equal(publicEvent.venueName, 'Калининградский областной историко-художественный музей');
+  assert.equal(publicEvent.hallName, 'Конференц-зал');
+  assert.equal(publicEvent.address, 'улица Клиническая, 21');
+  assert.equal(publicEvent.registrationLimit, 220);
 
   db.close();
 });

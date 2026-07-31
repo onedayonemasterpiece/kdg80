@@ -122,7 +122,7 @@ Background loop inside same app
 
 - С `2026-07-31`, пока новые регистрации не планируются, production
   `znanie-kgd80-fest` работает на минимальном проверенном профиле
-  `shared-cpu-1x / 512 MB RAM / 512 MB swap`, с одной always-on машиной.
+  `shared-cpu-1x / 256 MB RAM / 512 MB swap`, с одной always-on машиной.
   CPU уже имеет минимальный shared-размер; машина не переводится в auto-stop,
   потому что на ней остаются Telegram webhook, VK social monitoring и
   операторский контроль. — Статус: `Зафиксировано`
@@ -132,11 +132,13 @@ Background loop inside same app
   `memory = "1gb"` в `fly.toml`, применить `fly scale memory 1024
   -a znanie-kgd80-fest` и подтвердить `/api/v1/health`. — Статус:
   `Зафиксировано`
-- Профиль 256 MB не используется: перед снижением idle working set контейнера
-  составлял около 700 MB с учётом runtime/cache, а основной Node-процесс
-  держал около 451 MB RSS. Существующий 3 GB volume не уменьшается и не
-  пересоздаётся, чтобы не рисковать production SQLite и журналом социальной
-  активности. — Статус: `Зафиксировано`
+- Промежуточный безопасный fallback — `shared-cpu-1x / 512 MB RAM / 512 MB
+  swap`; команда восстановления: `fly scale memory 512 -a
+  znanie-kgd80-fest`. Минимальный профиль 256 MB принят только после
+  production-перезапуска, `1/1` passing health check, десяти последовательных
+  публичных `HTTP 200`, запуска Postbox consumer и отсутствия OOM. Существующий
+  3 GB volume не уменьшается и не пересоздаётся, чтобы не рисковать production
+  SQLite и журналом социальной активности. — Статус: `Зафиксировано`
 
 ## 5. База данных и защита от lock/овербукинга
 

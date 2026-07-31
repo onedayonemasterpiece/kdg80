@@ -60,7 +60,8 @@ swap_size_mb = 512
   size = "shared-cpu-1x"
   # Low-activity profile since 2026-07-31: registration is paused, while the
   # always-on VK social monitor and operator controls remain available.
+  # Intermediate fallback if this profile becomes tight: memory = "512mb".
   # Previous registration/high-traffic profile: memory = "1gb".
-  memory = "512mb"
+  memory = "256mb"
   cpus = 1
   cpu_kind = "shared"

@@ -21,24 +21,25 @@
     "vk:social:reminders:send": "tsx scripts/send-special-social-reminders.ts --send",
     "test:special-social": "tsx --test src/services/special-social-scoring.test.ts",
     "test:special-draws": "tsx --test src/services/special-draws.test.ts",
+    "test:special-public-quota": "tsx --test src/services/special-public-quota.test.ts",
     "test:special-social-reminders": "tsx --test src/services/special-social-reminders.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-kinesis": "^3.1077.0",
     "@aws-sdk/client-s3": "^3.888.0",
-    "@fastify/cors": "^11.1.0",
-    "@fastify/rate-limit": "^10.3.0",
-    "@fastify/static": "^8.3.0",
-    "better-sqlite3": "^12.4.1",
     "exceljs": "^4.4.0",
     "fastify": "^5.6.1",
     "grammy": "^1.38.3",
-    "pdfkit": "^0.17.2"
+    "pdfkit": "^0.17.2",
+    "@fastify/cors": "^11.1.0",
+    "@fastify/rate-limit": "^10.3.0",
+    "@fastify/static": "^8.3.0",
+    "better-sqlite3": "^12.4.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.5.2",
-    "@types/pdfkit": "^0.17.3",
+    "@types/pdfkit": "^0.17.2",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
   }

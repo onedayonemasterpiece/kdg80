@@ -1,6 +1,6 @@
 # Экскурсия на ювелирное производство Янтарного комбината — 11 августа 2026
 
-Статус: реализация подготовлена в ветке, не подтверждена пользователем и не выпущена в production.
+Статус: выпущено в production 5 августа 2026 года; не подтверждено пользователем.
 
 ## Событие
 
@@ -93,9 +93,11 @@ Alt-текст:
 - Canonical: `/special/amber-combine-jewelry-excursion/`
 - Schema.org: `Event`, offline, scheduled; без capacity/quota-полей.
 
-## Что осталось до выпуска
+## Выпуск
 
-1. Запустить `python3 scripts/run_amber_combine_release.py`. Внешние вложения и пути к `/mnt/data` больше не нужны.
-2. Выполнить typecheck, backend tests, site build и Playwright visual gate на desktop/mobile.
-3. Выпустить сначала registration backend, затем сайт, не создавая обычную production-заявку; при технической необходимости использовать ФИО, начинающееся с `ТЕСТ`.
-4. Проверить production API, форму, карточку, hero и отсутствие публичного вывода числа победителей, включая отсутствие numeric quota fields в JSON для нового события.
+- Интеграция выполнена командой `python3 scripts/run_amber_combine_release.py`.
+- Typecheck, focused backend tests, site build и Playwright gate desktop/mobile пройдены.
+- Registration backend: Fly release `v109` приложения `znanie-kgd80-fest`.
+- Production URL: `https://kgd80.ru/special/amber-combine-jewelry-excursion/`.
+- Публичный API возвращает `quotaVisibility: hidden` без `physicalQuota`, `reservedSeats` и `lotteryQuota`; форма не выводит число победителей.
+- Профиль Fly `256 MB RAM + 512 MB swap` выдержал production photo-check smoke с пятью файлами и multipart-body `15.8 MB`: HTTP `200`, без OOM и с последующим успешным health-check. Профиль остаётся тесным по памяти и требует наблюдения при одновременных тяжёлых загрузках. Production-заявка не создавалась.

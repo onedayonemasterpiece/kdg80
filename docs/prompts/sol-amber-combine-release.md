@@ -12,9 +12,16 @@ Draft PR: `#1`
 
 Внешние вложения больше не нужны: оба изображения уже упакованы в ветку в `release-assets/amber-combine/` и проверяются по SHA-256.
 
-## 1. Запустить подготовленную интеграцию
+## 1. Обновить локальную ветку и запустить интеграцию
 
-Из корня репозитория выполни одну команду:
+Сначала обязательно подтяни последние коммиты той же ветки:
+
+```bash
+git checkout feat/amber-combine-jewelry-excursion
+git pull --ff-only origin feat/amber-combine-jewelry-excursion
+```
+
+Затем из корня репозитория выполни одну команду:
 
 ```bash
 python3 scripts/run_amber_combine_release.py

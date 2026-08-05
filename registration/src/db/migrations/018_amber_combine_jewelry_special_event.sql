@@ -1,3 +1,6 @@
+ALTER TABLE special_events
+  ADD COLUMN hide_public_quota INTEGER NOT NULL DEFAULT 0 CHECK (hide_public_quota IN (0, 1));
+
 INSERT OR IGNORE INTO special_events(
   slug,
   title,
@@ -10,7 +13,8 @@ INSERT OR IGNORE INTO special_events(
   extra_stamp_points,
   no_show_grace_count,
   no_show_penalty_points,
-  previous_winner_weight_percent
+  previous_winner_weight_percent,
+  hide_public_quota
 ) VALUES (
   'amber-combine-jewelry-excursion',
   'Экскурсия на ювелирное производство Калининградского янтарного комбината',
@@ -23,7 +27,8 @@ INSERT OR IGNORE INTO special_events(
   2,
   3,
   3,
-  0
+  0,
+  1
 );
 
 UPDATE special_events
@@ -38,6 +43,7 @@ SET title = 'Экскурсия на ювелирное производство
     no_show_grace_count = 3,
     no_show_penalty_points = 3,
     previous_winner_weight_percent = 0,
+    hide_public_quota = 1,
     updated_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 WHERE slug = 'amber-combine-jewelry-excursion';
 

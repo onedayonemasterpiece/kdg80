@@ -52,11 +52,19 @@
 - `site/src/pages/special/amber-combine-jewelry-excursion.astro`
 - `site/src/pages/special/index.astro`
 - `scripts/prepare_amber_combine_release.py`
+- `scripts/run_amber_combine_release.py`
+- `release-assets/amber-combine/`
 
-Подготовленные медиафайлы должны быть размещены как:
+Оба медиафайла уже находятся в рабочей ветке как проверяемые base64-части. Они не зависят от файловой системы конкретной ChatGPT/Codex-сессии. Команда:
 
-- `site/public/generated/special/amber-combine-jewelry-production.webp`
-- `site/public/generated/special/amber-combine-jewelry-production-og.webp`
+```bash
+python3 scripts/run_amber_combine_release.py
+```
+
+восстанавливает и проверяет изображения, затем создаёт:
+
+- `site/public/generated/special/amber-combine-jewelry-production.webp` — `1200×900`;
+- `site/public/generated/special/amber-combine-jewelry-production-og.webp` — `1200×630`.
 
 Выбран кадр с мастером, который рассматривает закреплённый янтарь через лупу у производственного оборудования. Он однозначно показывает именно ювелирное производство, сохраняет заметный янтарный акцент в небольшом превью и хорошо работает в форматах `4:3` и `1200×630`.
 
@@ -87,7 +95,7 @@ Alt-текст:
 
 ## Что осталось до выпуска
 
-1. Запустить `scripts/prepare_amber_combine_release.py` с двумя подготовленными WebP-файлами. Скрипт добавит изображения, заменит homepage hero, дополнит канонические требования и включит скрытие квоты в публичном API.
+1. Запустить `python3 scripts/run_amber_combine_release.py`. Внешние вложения и пути к `/mnt/data` больше не нужны.
 2. Выполнить typecheck, backend tests, site build и Playwright visual gate на desktop/mobile.
 3. Выпустить сначала registration backend, затем сайт, не создавая обычную production-заявку; при технической необходимости использовать ФИО, начинающееся с `ТЕСТ`.
 4. Проверить production API, форму, карточку, hero и отсутствие публичного вывода числа победителей, включая отсутствие numeric quota fields в JSON для нового события.

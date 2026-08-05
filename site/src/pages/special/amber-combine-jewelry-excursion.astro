@@ -1,0 +1,2035 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import SiteHeader from '../../components/SiteHeader.astro';
+import { getFestivalEvents } from '../../lib/festival';
+import { getRouteNavItems, getSmartProgramHref } from '../../lib/routes';
+
+const apiBaseUrl = (import.meta.env.PUBLIC_REGISTRATION_API_BASE_URL || 'https://znanie-kgd80-fest.fly.dev').replace(/\/+$/u, '');
+const token = 'amber-combine-jewelry-20260811';
+const eventSlug = 'amber-combine-jewelry-excursion';
+const routeItems = getRouteNavItems();
+const events = getFestivalEvents();
+const now = new Date();
+const programHref = getSmartProgramHref(events, false, now);
+const canonicalPath = '/special/amber-combine-jewelry-excursion/';
+const title = 'Экскурсия на ювелирное производство Янтарного комбината | 80 историй о главном';
+const description = '11 августа 2026 года — специальная экскурсия для активных участников фестиваля «80 историй о главном» на действующее ювелирное производство Калининградского янтарного комбината Ростеха. Участие по заявке и результатам розыгрыша.';
+const heroImage = '/generated/special/amber-combine-jewelry-production.webp';
+const ogImage = '/generated/special/amber-combine-jewelry-production-og.webp';
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@type': 'Event',
+  name: 'Экскурсия на ювелирное производство Калининградского янтарного комбината',
+  description,
+  startDate: '2026-08-11T11:00:00+02:00',
+  eventStatus: 'https://schema.org/EventScheduled',
+  eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
+  image: [`https://kgd80.ru${ogImage}`, `https://kgd80.ru${heroImage}`],
+  url: `https://kgd80.ru${canonicalPath}`,
+  location: {
+    '@type': 'Place',
+    name: 'Калининградский янтарный комбинат',
+    address: {
+      '@type': 'PostalAddress',
+      addressLocality: 'пгт Янтарный',
+      addressRegion: 'Калининградская область',
+      addressCountry: 'RU',
+    },
+  },
+  organizer: {
+    '@type': 'Organization',
+    name: 'Калининградский филиал Российского общества «Знание»',
+    url: 'https://kgd80.ru/',
+  },
+};
+---
+
+<Layout
+  title={title}
+  description={description}
+  canonicalPath={canonicalPath}
+  ogImage={ogImage}
+  structuredData={structuredData}
+>
+  <div class="special-page">
+    <SiteHeader programHref={programHref} routeItems={routeItems} />
+    <main class="special-page__main">
+      <section class="special-intro" aria-labelledby="special-title">
+        <p class="special-kicker">Спецмероприятие для активных участников фестиваля</p>
+        <h1 id="special-title">Экскурсия на ювелирное производство Калининградского янтарного комбината</h1>
+        <p class="special-lead"><strong>Не в музей при комбинате, а в действующее ювелирное производство.</strong> Участники увидят, как балтийский янтарь проходит путь от отобранного камня до готового украшения — через обработку, огранку, шлифовку, полировку и сборку.</p>
+        <p class="special-story-copy">Калининградский янтарный комбинат Госкорпорации Ростех соединяет промышленную добычу янтаря с его глубокой переработкой. В современных цехах ручная работа резчиков, огранщиков, шлифовщиков, полировщиков и ювелиров сочетается с точным оборудованием и современными производственными технологиями.</p>
+        <p class="special-story-copy">Это специально организованный визит в рабочее пространство предприятия: не рассказ по музейным экспонатам, а знакомство с людьми, оборудованием и последовательностью операций, благодаря которым природный камень становится украшением. Производственные маршруты требуют отдельного согласования и рассчитаны на небольшие группы — поэтому событие доступно только по итогам розыгрыша среди активных участников фестиваля.</p>
+        <figure class="special-hero-art">
+          <img
+            src={heroImage}
+            width="1200"
+            height="900"
+            alt="Мастер проверяет обработку янтаря на ювелирном производстве Калининградского янтарного комбината"
+            loading="eager"
+            decoding="async"
+            fetchpriority="high"
+          />
+        </figure>
+        <ul class="special-meta" aria-label="Дата и условия экскурсии">
+          <li><strong>11 августа</strong><span>вторник · 11:00 · посёлок Янтарный</span></li>
+          <li><strong>Специальный доступ</strong><span>на действующее ювелирное производство</span></li>
+          <li><strong>Количество мест ограничено</strong><span>победителей определит розыгрыш</span></li>
+        </ul>
+        <p class="special-note"><strong>Важно:</strong> заявка не является билетом. Участие возможно только после персонального подтверждения победы организаторами. Точку сбора и требования пропускного режима победители получат отдельно.</p>
+        <div class="special-access-note" aria-label="Как попасть на экскурсию">
+          <strong>Как попасть</strong>
+          <p>Подать заявку могут участники, посетившие не менее пяти событий фестиваля и подтвердившие посещения штампами в Паспорте участника фестиваля. Пять штампов дают допуск к розыгрышу; каждое следующее подтверждённое посещение увеличивает вес заявки.</p>
+          <a href="/programma/">Посмотреть программу фестиваля</a>
+          <span>Розыгрыш запланирован автоматически за сутки до экскурсии — 10 августа 2026 года.</span>
+        </div>
+      </section>
+
+      <form class="special-form" data-special-form>
+        <div class="special-form__head">
+          <h2>Подать заявку на розыгрыш</h2>
+          <p>Подтвердите, что сможете приехать 11 августа к 11:00, и приложите фото Паспорта участника фестиваля.</p>
+        </div>
+
+        <input type="hidden" name="website" autocomplete="off" />
+
+        <fieldset>
+          <legend>Дата экскурсии</legend>
+          <p class="special-hint">Отметьте дату, если сможете приехать в посёлок Янтарный к началу экскурсии. Количество мест ограничено; победителей определит розыгрыш.</p>
+          <div class="special-dates" data-special-dates aria-live="polite"></div>
+        </fieldset>
+
+        <div class="special-closed" data-special-closed hidden>Дата экскурсии уже закрыта для заявки.</div>
+
+        <div class="special-fields">
+          <label>ФИО
+            <input name="fullName" type="text" autocomplete="name" maxlength="120" placeholder="Фамилия Имя Отчество" required />
+          </label>
+          <label>Email
+            <input name="email" type="email" autocomplete="email" maxlength="254" placeholder="name@example.com" required />
+          </label>
+          <label>Телефон
+            <input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+7 (___) ___-__-__" required />
+          </label>
+        </div>
+
+        <fieldset>
+          <legend>Паспорт участника фестиваля</legend>
+          <label class="special-upload" data-special-upload>
+            <input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple data-special-photos />
+            <span class="special-upload__plus" aria-hidden="true">+</span>
+            <span>
+              <strong data-special-upload-title>Добавьте фото Паспорта участника фестиваля</strong>
+              <span data-special-upload-text>Можно выбрать до 5 файлов или перетащить их сюда. ФИО должно быть заполнено и видно на каждом паспорте.</span>
+            </span>
+          </label>
+          <button class="special-upload-add" type="button" data-special-upload-add hidden><span aria-hidden="true">+</span>Добавить ещё фото</button>
+          <p class="special-hint">После добавления фото мы покажем предварительный расчёт штампов и баллов. Для допуска нужно не менее 5 штампов; фото без видимого ФИО не засчитывается. Лимит: до 5 исходных фото, каждое до 35 МБ; крупные фото браузер подготовит перед отправкой.</p>
+          <div class="special-upload-status" data-special-upload-status aria-live="polite"></div>
+          <div class="special-files" data-special-files></div>
+          <div class="special-precheck" data-special-precheck hidden></div>
+        </fieldset>
+
+        <label class="special-consent">
+          <input name="consentAccepted" type="checkbox" required />
+          <span>Согласен на обработку персональных данных, загрузку фотографий Паспорта участника фестиваля, распознавание текста и автоматический AI-анализ изображений для участия в розыгрыше.</span>
+        </label>
+
+        <button class="special-submit" type="submit" data-special-submit>Отправить заявку</button>
+        <div class="special-status" data-special-status role="status" aria-live="polite"></div>
+        <div class="special-summary" data-special-summary hidden></div>
+      </form>
+    </main>
+  </div>
+
+  <script define:vars={{ apiBaseUrl, token, eventSlug }} is:inline>
+    const form = document.querySelector('[data-special-form]');
+    const dates = document.querySelector('[data-special-dates]');
+    const upload = document.querySelector('[data-special-upload]');
+    const uploadIcon = upload ? upload.querySelector('.special-upload__plus') : null;
+    const uploadTitle = document.querySelector('[data-special-upload-title]');
+    const uploadText = document.querySelector('[data-special-upload-text]');
+    const uploadAdd = document.querySelector('[data-special-upload-add]');
+    const photosInput = document.querySelector('[data-special-photos]');
+    const fileList = document.querySelector('[data-special-files]');
+    const uploadStatus = document.querySelector('[data-special-upload-status]');
+    const precheckEl = document.querySelector('[data-special-precheck]');
+    const statusEl = document.querySelector('[data-special-status]');
+    const summaryEl = document.querySelector('[data-special-summary]');
+    const submit = document.querySelector('[data-special-submit]');
+    const closedPanel = document.querySelector('[data-special-closed]');
+    let specialEvent = null;
+    let selectedFiles = [];
+    let precheckState = 'idle';
+    let latestPrecheck = null;
+    let latestPrecheckTransport = 'json';
+    let latestPhotoCheckKey = '';
+    let photoCheckRun = 0;
+    let submitted = false;
+    const maxPhotoCount = 5;
+    const maxOriginalPhotoBytes = 35 * 1024 * 1024;
+    const maxSubmittedPhotoBytes = 15 * 1024 * 1024;
+    const maxTotalOriginalPhotoBytes = maxOriginalPhotoBytes * maxPhotoCount;
+    const maxPreparedImageSide = 1800;
+    const preparedImageQuality = 0.84;
+
+    const htmlEntities = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    };
+
+    const escapeHtml = (value) => Array.from(String(value))
+      .map((character) => htmlEntities[character] || character)
+      .join('');
+
+    const setStatus = (kind, text) => {
+      statusEl.dataset.kind = kind;
+      statusEl.textContent = text;
+    };
+
+    const setUploadStatus = (kind, text) => {
+      uploadStatus.dataset.kind = kind;
+      uploadStatus.textContent = text;
+    };
+
+    const renderUploadState = () => {
+      const count = selectedFiles.length;
+      upload.classList.toggle('is-has-files', count > 0);
+      upload.dataset.state = count ? precheckState : 'idle';
+      photosInput.disabled = precheckState === 'checking';
+      uploadAdd.hidden = count === 0;
+      uploadAdd.disabled = precheckState === 'checking';
+      uploadAdd.innerHTML = '<span aria-hidden="true">+</span>Добавить ещё фото';
+
+      if (!count) {
+        if (uploadIcon) uploadIcon.textContent = '+';
+        uploadTitle.textContent = 'Добавьте фото Паспорта участника фестиваля';
+        uploadText.textContent = `Можно выбрать до ${maxPhotoCount} файлов или перетащить их сюда. ФИО должно быть заполнено и видно на каждом паспорте.`;
+        return;
+      }
+
+      if (precheckState === 'checking') {
+        if (uploadIcon) uploadIcon.textContent = '';
+        uploadTitle.textContent = `${count} фото загружено. Идёт проверка`;
+        uploadText.textContent = 'Фотографии отправляются и распознаются. Пожалуйста, подождите. Ниже появятся штампы и предварительные баллы.';
+        return;
+      }
+
+      if (precheckState === 'ready' && latestPrecheck) {
+        if (uploadIcon) uploadIcon.textContent = '✓';
+        uploadTitle.textContent = `${count} фото обработано`;
+        uploadText.textContent = `Засчитано: ${formatStamps(latestPrecheck.scoring.stampCount)} · ${formatPoints(latestPrecheck.scoring.score)}. Нажмите сюда, чтобы добавить ещё фото.`;
+        return;
+      }
+
+      if (precheckState === 'error') {
+        if (uploadIcon) uploadIcon.textContent = '!';
+        uploadTitle.textContent = `${count} фото добавлено`;
+        uploadText.textContent = 'Проверка не завершилась. Можно удалить проблемное фото ниже или добавить другое фото.';
+        return;
+      }
+
+      if (uploadIcon) uploadIcon.textContent = '+';
+      uploadTitle.textContent = `${count} фото добавлено`;
+      uploadText.textContent = 'Файлы уже в заявке. Сейчас подготовим проверку штампов и предварительный расчёт баллов.';
+    };
+
+    const formatBytes = (bytes) => {
+      if (bytes >= 1024 * 1024) {
+        return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
+      }
+      return `${Math.max(1, Math.round(bytes / 1024))} КБ`;
+    };
+
+    const formatCount = (value, one, few, many) => {
+      const number = Math.abs(Number(value) || 0);
+      const mod100 = number % 100;
+      const mod10 = number % 10;
+      if (mod100 >= 11 && mod100 <= 14) return `${value} ${many}`;
+      if (mod10 === 1) return `${value} ${one}`;
+      if (mod10 >= 2 && mod10 <= 4) return `${value} ${few}`;
+      return `${value} ${many}`;
+    };
+
+    const formatStamps = (value) => formatCount(value, 'штамп', 'штампа', 'штампов');
+    const formatPoints = (value) => formatCount(value, 'балл', 'балла', 'баллов');
+
+    const arrayBufferToBase64 = (buffer) => {
+      const bytes = new Uint8Array(buffer);
+      const chunkSize = 0x8000;
+      let binary = '';
+      for (let index = 0; index < bytes.length; index += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+      }
+      return btoa(binary);
+    };
+
+    const inferContentType = (file) => {
+      const type = String(file.type || '').toLowerCase();
+      if (type.indexOf('image/jpeg') === 0 || type.indexOf('image/png') === 0 || type.indexOf('image/webp') === 0) {
+        return type.split(';')[0];
+      }
+
+      const name = String(file.name || '').toLowerCase();
+      if (/\.(jpe?g|jfif)$/u.test(name)) return 'image/jpeg';
+      if (/\.png$/u.test(name)) return 'image/png';
+      if (/\.webp$/u.test(name)) return 'image/webp';
+      return 'application/octet-stream';
+    };
+
+    const looksLikeAcceptedImage = (file) => {
+      const type = String(file.type || '').toLowerCase();
+      if (type.indexOf('image/') === 0) return true;
+      if (!type || type === 'application/octet-stream') {
+        return true;
+      }
+      return false;
+    };
+
+    const readFileWithReader = (file) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      let settled = false;
+      const finish = (callback) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        callback();
+      };
+      const timer = setTimeout(() => {
+        try {
+          reader.abort();
+        } catch {
+          // Older Android WebView can throw on abort after picker cancellation.
+        }
+        finish(() => reject(new Error('Не удалось прочитать файл. Попробуйте выбрать фото ещё раз или сделать новое фото с камеры.')));
+      }, 25000);
+
+      reader.onerror = () => finish(() => reject(new Error('Не удалось прочитать файл. Попробуйте выбрать фото ещё раз или сделать новое фото с камеры.')));
+      reader.onload = () => finish(() => {
+        const text = String(reader.result || '');
+        if (!text) {
+          reject(new Error('Не удалось прочитать файл. Попробуйте выбрать фото ещё раз или сделать новое фото с камеры.'));
+          return;
+        }
+        resolve(text.indexOf(',') >= 0 ? text.split(',').pop() : text);
+      });
+      reader.readAsDataURL(file);
+    });
+
+    const readFileWithArrayBuffer = async (file) => {
+      if (typeof file.arrayBuffer !== 'function') {
+        throw new Error('array_buffer_unavailable');
+      }
+      return arrayBufferToBase64(await file.arrayBuffer());
+    };
+
+    const fileToBase64 = async (file) => {
+      try {
+        return await readFileWithReader(file);
+      } catch {
+        try {
+          return await readFileWithArrayBuffer(file);
+        } catch {
+          throw new Error('Не удалось прочитать файл. Попробуйте выбрать фото ещё раз или сделать новое фото с камеры.');
+        }
+      }
+    };
+
+    const blobToBase64 = async (blob) => arrayBufferToBase64(await blob.arrayBuffer());
+
+    const canvasToBlob = (canvas, type, quality) => new Promise((resolve) => {
+      if (typeof canvas.toBlob !== 'function') {
+        resolve(null);
+        return;
+      }
+      canvas.toBlob((blob) => resolve(blob), type, quality);
+    });
+
+    const loadImageElement = (file) => new Promise((resolve, reject) => {
+      if (!window.URL || typeof window.URL.createObjectURL !== 'function') {
+        reject(new Error('object_url_unavailable'));
+        return;
+      }
+      const image = new Image();
+      const url = window.URL.createObjectURL(file);
+      image.onload = () => {
+        window.URL.revokeObjectURL(url);
+        resolve(image);
+      };
+      image.onerror = () => {
+        window.URL.revokeObjectURL(url);
+        reject(new Error('image_decode_failed'));
+      };
+      image.src = url;
+    });
+
+    const preparePhotoForUpload = async (file) => {
+      const rawContentType = inferContentType(file);
+      const fallbackOriginal = async () => {
+        const dataBase64 = await fileToBase64(file);
+        return {
+          dataBase64,
+          contentType: inferContentTypeFromBase64(rawContentType, dataBase64),
+          preparedSize: file.size,
+        };
+      };
+
+      if (!document.createElement || !rawContentType.startsWith('image/')) {
+        return fallbackOriginal();
+      }
+
+      try {
+        let source = null;
+        let closeSource = () => {};
+        if (typeof window.createImageBitmap === 'function') {
+          source = await window.createImageBitmap(file);
+          closeSource = () => {
+            if (source && typeof source.close === 'function') {
+              source.close();
+            }
+          };
+        } else {
+          source = await loadImageElement(file);
+        }
+
+        const sourceWidth = source.width || source.naturalWidth || 0;
+        const sourceHeight = source.height || source.naturalHeight || 0;
+        if (!sourceWidth || !sourceHeight) {
+          closeSource();
+          return fallbackOriginal();
+        }
+
+        const scale = Math.min(1, maxPreparedImageSide / Math.max(sourceWidth, sourceHeight));
+        const width = Math.max(1, Math.round(sourceWidth * scale));
+        const height = Math.max(1, Math.round(sourceHeight * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d', { alpha: false });
+        if (!context) {
+          closeSource();
+          return fallbackOriginal();
+        }
+
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, width, height);
+        context.drawImage(source, 0, 0, width, height);
+        closeSource();
+
+        const blob = await canvasToBlob(canvas, 'image/jpeg', preparedImageQuality);
+        if (!blob || blob.size <= 0 || blob.size >= file.size) {
+          return fallbackOriginal();
+        }
+
+        return {
+          dataBase64: await blobToBase64(blob),
+          contentType: 'image/jpeg',
+          preparedSize: blob.size,
+        };
+      } catch {
+        return fallbackOriginal();
+      }
+    };
+
+    const inferContentTypeFromBase64 = (fallbackContentType, dataBase64) => {
+      if (dataBase64.indexOf('/9j/') === 0) return 'image/jpeg';
+      if (dataBase64.indexOf('iVBOR') === 0) return 'image/png';
+      if (dataBase64.indexOf('UklGR') === 0) return 'image/webp';
+      if (fallbackContentType.indexOf('image/') === 0) {
+        return fallbackContentType;
+      }
+      return fallbackContentType;
+    };
+
+    const previewUrlForPhoto = (contentType, dataBase64) => (
+      contentType.indexOf('image/') === 0 ? `data:${contentType};base64,${dataBase64}` : ''
+    );
+
+    const releasePreviewUrl = (previewUrl) => {
+      if (previewUrl && previewUrl.indexOf('blob:') === 0 && window.URL && typeof window.URL.revokeObjectURL === 'function') {
+        window.URL.revokeObjectURL(previewUrl);
+      }
+    };
+
+    const photoPayloadFromItem = async (item, index, total) => {
+      if (item.dataBase64) {
+        return {
+          fileName: item.file.name,
+          contentType: item.contentType || inferContentType(item.file),
+          dataBase64: item.dataBase64,
+        };
+      }
+
+      selectedFiles = selectedFiles.map((current) => current.id === item.id
+        ? { ...current, kind: 'checking', status: `Читаем фото ${index + 1} из ${total}` }
+        : current);
+      renderFiles();
+
+      const prepared = await preparePhotoForUpload(item.file);
+      if (prepared.preparedSize > maxSubmittedPhotoBytes) {
+        throw new Error('Фото слишком большое после подготовки. Попробуйте отправить скриншот или сжатую копию этого фото.');
+      }
+      const dataBase64 = prepared.dataBase64;
+      const contentType = prepared.contentType;
+      const previewUrl = previewUrlForPhoto(contentType, dataBase64);
+
+      selectedFiles = selectedFiles.map((current) => {
+        if (current.id !== item.id) return current;
+        releasePreviewUrl(current.previewUrl);
+        return {
+          ...current,
+          contentType,
+          dataBase64,
+          previewUrl: previewUrl || current.previewUrl,
+          kind: 'checking',
+          status: prepared.preparedSize < item.file.size ? 'Фото подготовлено, отправляем на проверку' : 'Фото прочитано, отправляем на проверку',
+        };
+      });
+      renderFiles();
+
+      return {
+        fileName: item.file.name,
+        contentType,
+        dataBase64,
+      };
+    };
+
+    const buildSpecialMultipartData = (formData, selectedShowingSlugs) => {
+      const payload = new FormData();
+      payload.append('token', token);
+      payload.append('eventSlug', specialEvent ? specialEvent.slug : eventSlug);
+      payload.append('fullName', String(formData.get('fullName') || ''));
+      payload.append('email', String(formData.get('email') || ''));
+      payload.append('phone', String(formData.get('phone') || ''));
+      payload.append('website', String(formData.get('website') || ''));
+      if (formData.get('consentAccepted') === 'on') {
+        payload.append('consentAccepted', 'on');
+      }
+      if (selectedShowingSlugs) {
+        selectedShowingSlugs.forEach((slug) => payload.append('selectedShowingSlugs', String(slug)));
+      }
+      selectedFiles.forEach((item) => {
+        const fileName = item.file.name || 'passport-photo';
+        const contentType = item.contentType || inferContentType(item.file);
+        if (item.dataBase64) {
+          payload.append('photoData', JSON.stringify({
+            fileName,
+            contentType,
+            dataBase64: item.dataBase64,
+          }));
+          return;
+        }
+        payload.append('photos', item.file, fileName);
+      });
+      return payload;
+    };
+
+    const readJsonResponse = async (response, fallbackMessage) => {
+      let data = null;
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
+      }
+      if (!response.ok) {
+        throw new Error((data && data.message) || fallbackMessage);
+      }
+      if (!data || typeof data !== 'object') {
+        throw new Error('unexpected_empty_response');
+      }
+      return data;
+    };
+
+    const isPhotoCheckData = (data) => (
+      data
+      && typeof data === 'object'
+      && Array.isArray(data.photos)
+      && data.scoring
+      && typeof data.scoring === 'object'
+      && typeof data.scoring.stampCount !== 'undefined'
+      && typeof data.scoring.score !== 'undefined'
+    );
+
+    const ensurePhotoCheckData = (data) => {
+      if (!isPhotoCheckData(data)) {
+        throw new Error('invalid_photo_check_response');
+      }
+      return data;
+    };
+
+    const isTechnicalErrorText = (message) => {
+      const normalized = String(message || '').toLowerCase();
+      return (
+        normalized.indexOf('failed to fetch') >= 0
+        || normalized.indexOf('networkerror') >= 0
+        || normalized.indexOf('load failed') >= 0
+        || normalized.indexOf('cannot read') >= 0
+        || normalized.indexOf('undefined') >= 0
+        || normalized.indexOf('null') >= 0
+        || normalized.indexOf('unexpected_empty_response') >= 0
+        || normalized.indexOf('invalid_photo_check_response') >= 0
+      );
+    };
+
+    const userFacingCheckError = (message) => {
+      const text = String(message || '');
+      if (isTechnicalErrorText(text)) {
+        return 'Проверка не завершилась из-за сбоя связи с сервером. Фото остались в списке, попробуйте запустить проверку ещё раз или удалите проблемное фото.';
+      }
+      if (text.indexOf('прочитать') >= 0) {
+        return 'Не получилось прочитать одно из фото. Попробуйте сделать новое фото с камеры или выбрать файл ещё раз.';
+      }
+      return text || 'Не удалось проверить фотографии. Попробуйте ещё раз чуть позже.';
+    };
+
+    const applyPhotoCheckResult = (data) => {
+      ensurePhotoCheckData(data);
+      latestPrecheck = data;
+      selectedFiles = selectedFiles.map((item, index) => {
+        const photo = data.photos[index];
+        if (!photo) {
+          return { ...item, kind: 'error', status: 'Нет результата проверки' };
+        }
+
+        const contentType = photo.contentType || item.contentType || inferContentType(item.file);
+        const dataBase64 = photo.dataBase64 || item.dataBase64 || '';
+        const previewUrl = dataBase64
+          ? previewUrlForPhoto(contentType, dataBase64) || item.previewUrl
+          : item.previewUrl;
+        if (previewUrl !== item.previewUrl) {
+          releasePreviewUrl(item.previewUrl);
+        }
+
+        if (photo.duplicateOfSha256) {
+          return {
+            ...item,
+            contentType,
+            dataBase64,
+            previewUrl,
+            kind: 'duplicate',
+            status: 'Дубль: не засчитывается повторно',
+          };
+        }
+
+        if (!photo.accepted) {
+          return {
+            ...item,
+            contentType,
+            dataBase64,
+            previewUrl,
+            kind: 'error',
+            status: photo.rejectionReason || `Не зачтено: ${formatStamps(photo.stampCount)}`,
+          };
+        }
+
+        return {
+          ...item,
+          contentType,
+          dataBase64,
+          previewUrl,
+          kind: 'success',
+          status: `Зачтено: ${formatStamps(photo.stampCount)}`,
+        };
+      });
+      precheckState = 'ready';
+      const enoughStamps = !specialEvent || data.scoring.stampCount >= specialEvent.minStampCount;
+      setUploadStatus(
+        enoughStamps ? 'success' : 'progress',
+        enoughStamps
+          ? `Предварительная проверка готова: ${formatStamps(data.scoring.stampCount)}, ${formatPoints(data.scoring.score)}.`
+          : `Фото зачтены: ${formatStamps(data.scoring.stampCount)}. Для заявки нужно ${formatStamps(specialEvent.minStampCount)}.`,
+      );
+    };
+
+    const runMultipartPhotoCheck = async (formData) => {
+      selectedFiles = selectedFiles.map((item) => ({
+        ...item,
+        kind: 'checking',
+        status: 'Проверяем фото',
+      }));
+      renderFiles();
+      setUploadStatus('progress', 'Фото добавлены. Проверяем их и скоро покажем штампы и баллы.');
+
+      const response = await fetch(`${apiBaseUrl}/api/v1/special/photo-check-multipart`, {
+        method: 'POST',
+        body: buildSpecialMultipartData(formData),
+      });
+      return ensurePhotoCheckData(await readJsonResponse(response, 'Не удалось проверить фотографии.'));
+    };
+
+    const shouldUseMultipartPhotoFallback = (errorMessage) => (
+      selectedFiles.some((item) => !item.dataBase64)
+      || errorMessage.indexOf('прочитать') >= 0
+      || errorMessage.indexOf('FileReader') >= 0
+      || errorMessage.indexOf('arrayBuffer') >= 0
+      || errorMessage.indexOf('file') >= 0
+      || errorMessage.indexOf('blob') >= 0
+      || errorMessage.indexOf('unexpected_empty_response') >= 0
+      || errorMessage.indexOf('invalid_photo_check_response') >= 0
+    );
+
+    const fileKey = (file) => `${file.name}:${file.size}:${file.lastModified}`;
+
+    const buildPhotoCheckKey = () => JSON.stringify({
+      fullName: String(form.elements.fullName ? form.elements.fullName.value : '').trim(),
+      email: String(form.elements.email ? form.elements.email.value : '').trim().toLowerCase(),
+      phone: String(form.elements.phone ? form.elements.phone.value : '').trim(),
+      files: selectedFiles.map((item) => item.key),
+    });
+
+    const updateSubmitState = () => {
+      if (submitted) {
+        submit.disabled = true;
+        submit.textContent = 'Заявка отправлена';
+        return;
+      }
+
+      if (!closedPanel.hidden) {
+        submit.disabled = true;
+        submit.textContent = 'Заявки закрыты';
+        return;
+      }
+
+      if (!selectedFiles.length) {
+        submit.disabled = true;
+        submit.textContent = 'Добавьте фото';
+        return;
+      }
+
+      if (precheckState === 'checking') {
+        submit.disabled = true;
+        submit.textContent = 'Проверяем фото...';
+        return;
+      }
+
+      if (!latestPrecheck) {
+        submit.disabled = true;
+        submit.textContent = 'Дождитесь проверки фото';
+        return;
+      }
+
+      if (latestPrecheck.duplicateApplication) {
+        submit.disabled = true;
+        submit.textContent = 'Заявка уже есть';
+        return;
+      }
+
+      if (!latestPrecheck.scoring.acceptedPhotoCount) {
+        submit.disabled = true;
+        submit.textContent = 'Фото не зачтено';
+        return;
+      }
+
+      if (specialEvent && latestPrecheck.scoring.stampCount < specialEvent.minStampCount) {
+        submit.disabled = true;
+        submit.textContent = `Нужно ${formatStamps(specialEvent.minStampCount)}`;
+        return;
+      }
+
+      submit.disabled = false;
+      submit.textContent = 'Отправить заявку';
+    };
+
+    const selectCascadeFrom = (index) => {
+      const checkboxes = Array.prototype.slice.call(dates.querySelectorAll('input[name="selectedShowingSlugs"]'));
+      checkboxes.forEach((checkbox, checkboxIndex) => {
+        if (!checkbox.disabled) {
+          checkbox.checked = checkboxIndex >= index;
+        }
+      });
+    };
+
+    const renderDates = () => {
+      const firstAvailableIndex = specialEvent.showings.findIndex((showing) => showing.applicationAvailable);
+      const hasAvailableShowings = firstAvailableIndex >= 0;
+      dates.innerHTML = specialEvent.showings.map((showing, index) => {
+        const disabled = !showing.applicationAvailable;
+        const quotaText = 'Количество мест ограничено · победителей определит розыгрыш';
+        return `
+          <label class="special-date${disabled ? ' is-disabled' : ''}">
+            <input type="checkbox" name="selectedShowingSlugs" value="${escapeHtml(showing.slug)}" data-showing-index="${index}" ${disabled ? 'disabled' : ''}>
+            <span>
+              <strong>${escapeHtml(showing.displayLabel)}</strong>
+              <small>${escapeHtml(quotaText)}${showing.timeIsFinal ? '' : ' · время уточняется'}</small>
+              ${disabled ? `<em>${escapeHtml(showing.unavailableReason || 'Дата закрыта для заявки.')}</em>` : ''}
+            </span>
+          </label>
+        `;
+      }).join('');
+
+      closedPanel.hidden = hasAvailableShowings;
+      if (hasAvailableShowings) {
+        selectCascadeFrom(firstAvailableIndex);
+      } else {
+        submit.disabled = true;
+        submit.textContent = 'Заявки закрыты';
+        setStatus('error', 'Заявки на это спецмероприятие закрыты.');
+      }
+      updateSubmitState();
+    };
+
+    const loadEvent = async () => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/v1/special/events/${eventSlug}?token=${encodeURIComponent(token)}`);
+        if (!response.ok) {
+          throw new Error('event_load_failed');
+        }
+        specialEvent = await response.json();
+        renderDates();
+      } catch {
+        submit.disabled = true;
+        setStatus('error', 'Не удалось загрузить дату экскурсии. Обновите страницу чуть позже.');
+      }
+    };
+
+    dates.addEventListener('change', (event) => {
+      const input = event.target;
+      if (!(input instanceof HTMLInputElement) || input.name !== 'selectedShowingSlugs' || !input.checked) {
+        return;
+      }
+      selectCascadeFrom(Number(input.dataset.showingIndex || '0'));
+    });
+
+    const renderFiles = () => {
+      renderUploadState();
+      if (!selectedFiles.length) {
+        fileList.innerHTML = '';
+        precheckEl.hidden = true;
+        return;
+      }
+
+      fileList.innerHTML = selectedFiles.map((item) => `
+        <article class="special-file" data-file-id="${item.id}">
+          <span class="special-file__preview">
+            ${item.previewUrl
+              ? `<img src="${item.previewUrl}" alt="" data-special-file-preview>`
+              : '<span class="special-file__placeholder">Фото добавлено</span>'}
+            ${item.kind === 'checking' ? '<span class="special-file__spinner" aria-label="Фото проверяется"></span>' : ''}
+            ${item.kind === 'success' ? '<span class="special-file__check" aria-label="Фото зачтено">✓</span>' : ''}
+          </span>
+          <div class="special-file__body">
+            <strong class="special-file__name">${escapeHtml(item.file.name)}</strong>
+            <span>${formatBytes(item.file.size)}</span>
+            <em data-kind="${item.kind}">${escapeHtml(item.status)}</em>
+          </div>
+          <button type="button" data-remove-file="${item.id}" aria-label="Удалить ${escapeHtml(item.file.name)}">Удалить</button>
+        </article>
+      `).join('');
+
+      fileList.querySelectorAll('[data-special-file-preview]').forEach((image) => {
+        image.addEventListener('error', () => {
+          const preview = image.closest('.special-file__preview');
+          if (!(preview instanceof HTMLElement)) {
+            return;
+          }
+          image.remove();
+          if (!preview.querySelector('.special-file__placeholder')) {
+            preview.insertAdjacentHTML('afterbegin', '<span class="special-file__placeholder">Фото добавлено</span>');
+          }
+        }, { once: true });
+      });
+    };
+
+    const renderPrecheck = () => {
+      if (!latestPrecheck) {
+        precheckEl.hidden = selectedFiles.length === 0;
+        if (!selectedFiles.length) {
+          precheckEl.innerHTML = '';
+          return;
+        }
+        precheckEl.innerHTML = precheckState === 'checking'
+          ? '<div class="special-precheck__loading"><span aria-hidden="true"></span><strong>Идёт проверка фото</strong><p>Фотографии загружены. Мы распознаём штампы и покажем результат здесь.</p></div>'
+          : '<strong>Предварительный расчёт по фото</strong><p>Загрузка файлов готовится к проверке.</p>';
+        return;
+      }
+
+      const scoring = latestPrecheck.scoring;
+      const duplicateText = latestPrecheck.duplicateApplication
+        ? `<p class="special-precheck__warning">${escapeHtml(latestPrecheck.duplicateApplication.message)} Повторно отправлять заявку не нужно.</p>`
+        : '';
+      const volunteerText = scoring.volunteerBonusPoints > 0
+        ? '<p class="special-precheck__success">Волонтёрский бонус: +10 баллов — добро!</p>'
+        : '';
+      const nameHint = scoring.ordinaryRegistrationCount || scoring.volunteerBonusPoints
+        ? ''
+        : '<p>Введите ФИО, email и телефон до отправки: итоговый расчёт дополнительно проверит дубли, волонтёрский бонус и неявки.</p>';
+      precheckEl.hidden = false;
+      precheckEl.innerHTML = `
+        <div class="special-precheck__head">
+          <strong>Предварительный расчёт по фото</strong>
+          <span>Это ещё не заявка. Итог появится после кнопки «Отправить заявку».</span>
+        </div>
+        <div class="special-precheck__grid">
+          <div><span>Загружено фото</span><strong>${scoring.uploadedPhotoCount}</strong></div>
+          <div><span>Уникальных фото</span><strong>${scoring.uniquePhotoCount}</strong></div>
+          <div><span>Зачтено фото</span><strong>${scoring.acceptedPhotoCount}</strong></div>
+          <div><span>Штампы</span><strong>${scoring.stampCount}</strong></div>
+          <div><span>Предварительно баллов</span><strong>${scoring.score}</strong></div>
+        </div>
+        <p>Добавьте ещё фото, если у вас несколько экземпляров Паспорта участника фестиваля.</p>
+        ${nameHint}
+        ${volunteerText}
+        ${duplicateText}
+      `;
+    };
+
+    const runPhotoCheck = async () => {
+      const runId = photoCheckRun + 1;
+      photoCheckRun = runId;
+      latestPrecheck = null;
+      latestPrecheckTransport = 'json';
+      if (!selectedFiles.length) {
+        precheckState = 'idle';
+        latestPhotoCheckKey = '';
+        setUploadStatus('', '');
+        renderFiles();
+        renderPrecheck();
+        updateSubmitState();
+        return;
+      }
+
+      const currentPhotoCheckKey = buildPhotoCheckKey();
+      if (
+        currentPhotoCheckKey === latestPhotoCheckKey
+        && (precheckState === 'checking' || (precheckState === 'ready' && latestPrecheck))
+      ) {
+        return;
+      }
+      latestPhotoCheckKey = currentPhotoCheckKey;
+
+      precheckState = 'checking';
+      selectedFiles = selectedFiles.map((item) => ({
+        ...item,
+        kind: 'checking',
+        status: 'Готовим к проверке',
+      }));
+      renderFiles();
+      renderPrecheck();
+      updateSubmitState();
+      setUploadStatus('progress', `Идёт распознавание ${selectedFiles.length} фото. Обычно это занимает до минуты.`);
+
+      try {
+        const formData = new FormData(form);
+        const photos = [];
+        for (let index = 0; index < selectedFiles.length; index += 1) {
+          const item = selectedFiles[index];
+          photos.push(await photoPayloadFromItem(item, index, selectedFiles.length));
+        }
+
+        if (runId !== photoCheckRun) {
+          return;
+        }
+
+        selectedFiles = selectedFiles.map((item) => ({
+          ...item,
+          kind: 'checking',
+          status: 'Распознаём штампы',
+        }));
+        renderFiles();
+
+        const response = await fetch(`${apiBaseUrl}/api/v1/special/photo-check`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            token,
+            eventSlug: specialEvent ? specialEvent.slug : eventSlug,
+            fullName: String(formData.get('fullName') || ''),
+            email: String(formData.get('email') || ''),
+            phone: String(formData.get('phone') || ''),
+            website: String(formData.get('website') || ''),
+            photos,
+          }),
+        });
+        const data = ensurePhotoCheckData(await readJsonResponse(response, 'Не удалось проверить фотографии.'));
+        if (runId !== photoCheckRun) {
+          return;
+        }
+        applyPhotoCheckResult(data);
+      } catch (error) {
+        if (runId !== photoCheckRun) {
+          return;
+        }
+        const errorMessage = error instanceof Error ? error.message : 'Не удалось проверить фотографии.';
+        if (shouldUseMultipartPhotoFallback(errorMessage)) {
+          try {
+            const data = await runMultipartPhotoCheck(new FormData(form));
+            if (runId !== photoCheckRun) {
+              return;
+            }
+            latestPrecheckTransport = 'multipart';
+            applyPhotoCheckResult(data);
+            return;
+          } catch (fallbackError) {
+            const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : 'Не удалось проверить фотографии.';
+            precheckState = 'error';
+            selectedFiles = selectedFiles.map((item) => ({
+              ...item,
+              kind: 'error',
+              status: 'Проверка не завершилась',
+            }));
+            setUploadStatus('error', userFacingCheckError(fallbackMessage));
+            return;
+          }
+        }
+        const fileStatus = errorMessage.indexOf('прочитать') >= 0
+          ? 'Не получилось прочитать фото'
+          : 'Проверка не завершилась';
+        precheckState = 'error';
+        selectedFiles = selectedFiles.map((item) => ({
+          ...item,
+          kind: 'error',
+          status: fileStatus,
+        }));
+        setUploadStatus('error', userFacingCheckError(errorMessage));
+      } finally {
+        if (runId === photoCheckRun) {
+          photosInput.value = '';
+          renderFiles();
+          renderPrecheck();
+          updateSubmitState();
+        }
+      }
+    };
+
+    const createFileId = () => {
+      const cryptoApi = window.crypto || window.msCrypto;
+      if (cryptoApi && typeof cryptoApi.getRandomValues === 'function') {
+        const values = new Uint32Array(2);
+        cryptoApi.getRandomValues(values);
+        return `${Date.now()}-${values[0].toString(16)}${values[1].toString(16)}`;
+      }
+      return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    };
+
+    const createPreviewUrl = (file) => {
+      if (window.URL && typeof window.URL.createObjectURL === 'function') {
+        return window.URL.createObjectURL(file);
+      }
+      return '';
+    };
+
+    const addFiles = (fileListToAdd) => {
+      const files = Array.prototype.slice.call(fileListToAdd || []);
+      const incoming = files.filter(looksLikeAcceptedImage);
+      if (!incoming.length) {
+        setUploadStatus('error', 'Добавьте фото в формате JPG, PNG или WebP.');
+        return;
+      }
+
+      const existingKeys = new Set(selectedFiles.map((item) => item.key));
+      const duplicates = [];
+      const oversized = [];
+      const added = [];
+      for (const file of incoming) {
+        if (selectedFiles.length + added.length >= maxPhotoCount) {
+          break;
+        }
+        if (file.size > maxOriginalPhotoBytes) {
+          oversized.push(file.name);
+          continue;
+        }
+        const key = fileKey(file);
+        if (existingKeys.has(key)) {
+          duplicates.push(file.name);
+          continue;
+        }
+        existingKeys.add(key);
+        added.push({
+          id: createFileId(),
+          key,
+          file,
+          previewUrl: createPreviewUrl(file),
+          kind: 'pending',
+          status: 'Добавлено, ждёт проверки',
+        });
+      }
+
+      if (added.length) {
+        const totalBytes = selectedFiles.reduce((sum, item) => sum + item.file.size, 0)
+          + added.reduce((sum, item) => sum + item.file.size, 0);
+        if (totalBytes > maxTotalOriginalPhotoBytes) {
+          added.forEach((item) => releasePreviewUrl(item.previewUrl));
+          setUploadStatus('error', 'Суммарный размер исходных фото слишком большой. Удалите лишние файлы или загрузите сжатые копии.');
+          updateSubmitState();
+          return;
+        }
+        selectedFiles = [...selectedFiles, ...added];
+        setUploadStatus('progress', `Добавлено фото: ${added.length}. Запускаем проверку.`);
+        renderFiles();
+        void runPhotoCheck();
+      }
+
+      if (incoming.length > added.length + duplicates.length + oversized.length || selectedFiles.length + added.length >= maxPhotoCount) {
+        setUploadStatus('error', `Можно загрузить не больше ${maxPhotoCount} фото в одной заявке.`);
+      }
+
+      if (oversized.length) {
+        setUploadStatus('error', `Файл больше 35 МБ: ${oversized.slice(0, 2).join(', ')}${oversized.length > 2 ? '…' : ''}`);
+      }
+
+      if (duplicates.length) {
+        setUploadStatus('error', `Файл уже добавлен: ${duplicates.slice(0, 2).join(', ')}${duplicates.length > 2 ? '…' : ''}`);
+      }
+
+      updateSubmitState();
+    };
+
+    photosInput.addEventListener('change', () => {
+      addFiles(photosInput.files || []);
+    });
+
+    uploadAdd.addEventListener('click', () => {
+      if (photosInput.disabled) {
+        return;
+      }
+      photosInput.click();
+    });
+
+    fileList.addEventListener('click', (event) => {
+      const button = event.target instanceof Element ? event.target.closest('[data-remove-file]') : null;
+      if (!(button instanceof HTMLButtonElement)) {
+        return;
+      }
+      const id = button.dataset.removeFile;
+      const removed = selectedFiles.find((item) => item.id === id);
+      if (removed) {
+        releasePreviewUrl(removed.previewUrl);
+      }
+      selectedFiles = selectedFiles.filter((item) => item.id !== id);
+      setUploadStatus('progress', selectedFiles.length ? 'Фото удалено, пересчитываем баллы.' : 'Фото удалено. Добавьте фото Паспорта участника фестиваля.');
+      renderFiles();
+      void runPhotoCheck();
+    });
+
+    ['dragenter', 'dragover'].forEach((eventName) => {
+      upload.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        upload.classList.add('is-dragging');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach((eventName) => {
+      upload.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        upload.classList.remove('is-dragging');
+      });
+    });
+
+    upload.addEventListener('drop', (event) => {
+      addFiles(event.dataTransfer ? event.dataTransfer.files : []);
+    });
+
+    ['fullName', 'email', 'phone'].forEach((name) => {
+      const input = form.querySelector(`[name="${name}"]`);
+      if (input) {
+        input.addEventListener('change', () => {
+          if (selectedFiles.length) {
+            void runPhotoCheck();
+          }
+        });
+      }
+    });
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!specialEvent || submitted || precheckState === 'checking') {
+        return;
+      }
+
+      summaryEl.hidden = true;
+      summaryEl.textContent = '';
+      setStatus('', '');
+      submit.disabled = true;
+      submit.textContent = 'Проверяем фото...';
+
+      try {
+        const formData = new FormData(form);
+        const selectedShowingSlugs = formData.getAll('selectedShowingSlugs');
+        if (!selectedShowingSlugs.length) {
+          throw new Error('Выберите доступную дату экскурсии.');
+        }
+
+        if (!selectedFiles.length) {
+          throw new Error('Добавьте хотя бы одно фото Паспорта участника фестиваля.');
+        }
+        if (!latestPrecheck) {
+          throw new Error('Дождитесь предварительной проверки фото.');
+        }
+        if (latestPrecheck.duplicateApplication) {
+          throw new Error(latestPrecheck.duplicateApplication.message);
+        }
+
+        let response;
+        if (selectedFiles.some((item) => !item.dataBase64)) {
+          response = await fetch(`${apiBaseUrl}/api/v1/special/applications-multipart`, {
+            method: 'POST',
+            body: buildSpecialMultipartData(formData, selectedShowingSlugs),
+          });
+        } else {
+          const photos = [];
+          for (let index = 0; index < selectedFiles.length; index += 1) {
+            const item = selectedFiles[index];
+            photos.push(await photoPayloadFromItem(item, index, selectedFiles.length));
+          }
+
+          response = await fetch(`${apiBaseUrl}/api/v1/special/applications`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              token,
+              eventSlug: specialEvent.slug,
+              selectedShowingSlugs,
+              fullName: String(formData.get('fullName') || ''),
+              email: String(formData.get('email') || ''),
+              phone: String(formData.get('phone') || ''),
+              consentAccepted: formData.get('consentAccepted') === 'on',
+              website: String(formData.get('website') || ''),
+              photos,
+            }),
+          });
+        }
+        const data = await readJsonResponse(response, 'Не удалось отправить заявку.');
+        submitted = data.status === 'accepted';
+
+        setStatus(
+          data.status === 'accepted' ? 'success' : 'error',
+          data.status === 'accepted'
+            ? 'Заявка принята к розыгрышу. Это не билет; результаты будут подведены отдельно.'
+            : data.rejectionReason || 'Заявка не допущена к розыгрышу.',
+        );
+        summaryEl.hidden = false;
+        summaryEl.innerHTML = [
+          `<div><span class="special-summary__label">Код заявки:</span><strong class="special-summary__value">${escapeHtml(data.applicationCode)}</strong></div>`,
+          `<div><span class="special-summary__label">Штампы:</span><strong class="special-summary__value">${data.scoring.stampCount}</strong></div>`,
+          `<div><span class="special-summary__label">Баллы:</span><strong class="special-summary__value">${data.scoring.score}</strong></div>`,
+          `<div><span class="special-summary__label">Выбрано дат:</span><strong class="special-summary__value">${data.selectedShowings.length}</strong></div>`,
+          data.scoring.volunteerBonusPoints > 0
+            ? `<div class="special-summary__wide"><span class="special-summary__label">Волонтёрский бонус:</span><strong class="special-summary__value">+10 баллов — добро! Спасибо за помощь фестивалю.</strong></div>`
+            : '',
+        ].join('');
+      } catch (error) {
+        setStatus('error', error instanceof Error ? error.message : 'Не удалось отправить заявку.');
+      } finally {
+        updateSubmitState();
+      }
+    });
+
+    loadEvent();
+    updateSubmitState();
+  </script>
+</Layout>
+
+<style>
+  .special-page {
+    min-height: 100dvh;
+    background:
+      linear-gradient(105deg, rgba(255, 251, 244, 0.98) 0%, rgba(255, 251, 244, 0.94) 39%, rgba(248, 239, 228, 0.72) 100%),
+      url('/generated/special/amber-combine-jewelry-production.webp') center 45% / cover fixed;
+    color: #15110f;
+  }
+
+  .special-page__main {
+    width: min(1180px, calc(100% - 2rem));
+    margin: 0 auto;
+    padding: clamp(2rem, 5vw, 4rem) 0 clamp(3rem, 6vw, 5rem);
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(24rem, 1.1fr);
+    gap: clamp(1.5rem, 4vw, 3rem);
+    align-items: start;
+  }
+
+  .special-intro {
+    display: grid;
+    gap: 1.4rem;
+    align-content: start;
+  }
+
+  .special-kicker,
+  .special-hint,
+  .special-dates :global(.special-date small),
+  .special-summary :global(span) {
+    color: rgba(21, 17, 15, 0.62);
+  }
+
+  .special-kicker {
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .special-intro h1 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: clamp(2.55rem, 6.4vw, 6.1rem);
+    line-height: 0.92;
+    letter-spacing: 0;
+    overflow-wrap: break-word;
+    word-break: normal;
+    hyphens: auto;
+  }
+
+  .special-lead,
+  .special-story-copy,
+  .special-note {
+    max-width: 38rem;
+    margin: 0;
+    font-size: 1.08rem;
+    line-height: 1.55;
+    color: rgba(21, 17, 15, 0.72);
+  }
+
+  .special-lead strong {
+    color: #15110f;
+  }
+
+  .special-hero-art {
+    width: min(100%, 38rem);
+    margin: 0;
+    aspect-ratio: 4 / 3;
+    border: 1px solid rgba(21, 17, 15, 0.12);
+    border-radius: 1.2rem;
+    overflow: hidden;
+    background: rgba(255, 253, 249, 0.82);
+    box-shadow: 0 20px 64px rgba(21, 17, 15, 0.16);
+  }
+
+  .special-hero-art img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center center;
+  }
+
+  .special-meta {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.65rem;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+  }
+
+  .special-meta li,
+  .special-note,
+  .special-access-note,
+  .special-form,
+  .special-dates :global(.special-date),
+  .special-summary :global(div) {
+    border: 1px solid rgba(21, 17, 15, 0.1);
+    background: rgba(255, 253, 249, 0.78);
+  }
+
+  .special-meta li {
+    min-height: 7rem;
+    padding: 1rem;
+    border-radius: 1rem;
+    display: grid;
+    align-content: space-between;
+  }
+
+  .special-meta strong {
+    font-family: var(--font-display);
+    font-size: 1.55rem;
+    line-height: 0.98;
+  }
+
+  .special-meta span {
+    color: rgba(21, 17, 15, 0.64);
+  }
+
+  .special-note {
+    padding: 1rem 1.15rem;
+    border-radius: 1rem;
+  }
+
+  .special-access-note {
+    display: grid;
+    gap: 0.7rem;
+    max-width: 38rem;
+    padding: 1rem 1.15rem;
+    border-radius: 1rem;
+  }
+
+  .special-access-note strong {
+    font-family: var(--font-display);
+    font-size: 1.55rem;
+    line-height: 0.95;
+  }
+
+  .special-access-note p,
+  .special-access-note span {
+    margin: 0;
+    color: rgba(21, 17, 15, 0.68);
+    line-height: 1.5;
+  }
+
+  .special-access-note a {
+    width: fit-content;
+    color: #a33324;
+    font-weight: 800;
+    text-decoration: underline;
+    text-underline-offset: 0.18em;
+  }
+
+  .special-form {
+    display: grid;
+    gap: 1.15rem;
+    padding: clamp(1.1rem, 3vw, 1.6rem);
+    border-radius: 1.4rem;
+    box-shadow: 0 22px 70px rgba(21, 17, 15, 0.12);
+    backdrop-filter: blur(10px);
+  }
+
+  .special-form__head h2 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 4vw, 3rem);
+    line-height: 0.96;
+  }
+
+  .special-form__head p,
+  .special-hint {
+    margin: 0.45rem 0 0;
+    line-height: 1.5;
+  }
+
+  .special-form fieldset {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .special-form legend {
+    padding: 0;
+    font-weight: 800;
+  }
+
+  .special-dates,
+  .special-fields,
+  .special-summary {
+    display: grid;
+    gap: 0.65rem;
+  }
+
+  .special-dates :global(.special-date) {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.75rem;
+    padding: 0.9rem;
+    border-radius: 0.85rem;
+    cursor: pointer;
+  }
+
+  .special-dates :global(.special-date input) {
+    width: 1.2rem;
+    height: 1.2rem;
+    margin-top: 0.16rem;
+    accent-color: #d8482f;
+  }
+
+  .special-dates :global(.special-date strong),
+  .special-dates :global(.special-date small),
+  .special-dates :global(.special-date em) {
+    display: block;
+    font-style: normal;
+  }
+
+  .special-dates :global(.special-date em) {
+    margin-top: 0.2rem;
+    color: #9b2f20;
+  }
+
+  .special-dates :global(.special-date.is-disabled) {
+    opacity: 0.62;
+    cursor: not-allowed;
+  }
+
+  .special-fields label {
+    display: grid;
+    gap: 0.38rem;
+    font-weight: 800;
+  }
+
+  .special-fields input {
+    min-height: 3rem;
+    border: 1px solid rgba(21, 17, 15, 0.16);
+    border-radius: 0.7rem;
+    padding: 0.7rem 0.85rem;
+    font: inherit;
+    background: rgba(255, 255, 255, 0.82);
+  }
+
+  .special-upload {
+    position: relative;
+    overflow: hidden;
+    min-height: 12rem;
+    display: grid;
+    place-items: center;
+    gap: 0.8rem;
+    padding: 1.2rem;
+    border: 1.5px dashed rgba(216, 72, 47, 0.48);
+    border-radius: 1rem;
+    background: rgba(216, 72, 47, 0.07);
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
+    touch-action: manipulation;
+  }
+
+  .special-upload.is-dragging {
+    border-color: rgba(216, 72, 47, 0.95);
+    background: rgba(216, 72, 47, 0.14);
+    transform: translateY(-1px);
+  }
+
+  .special-upload.is-has-files {
+    min-height: 9.5rem;
+    border-style: solid;
+    background: rgba(255, 253, 249, 0.84);
+  }
+
+  .special-upload[data-state="checking"] {
+    border-color: rgba(173, 112, 28, 0.5);
+    background: rgba(173, 112, 28, 0.08);
+  }
+
+  .special-upload[data-state="checking"]::after {
+    content: '';
+    position: absolute;
+    left: 1.1rem;
+    right: 1.1rem;
+    bottom: 0.8rem;
+    height: 0.22rem;
+    border-radius: 999px;
+    background:
+      linear-gradient(90deg, transparent, rgba(173, 112, 28, 0.82), transparent)
+      0 0 / 45% 100% no-repeat,
+      rgba(173, 112, 28, 0.14);
+    animation: special-progress 1.25s ease-in-out infinite;
+  }
+
+  .special-upload[data-state="ready"] {
+    border-color: rgba(35, 97, 68, 0.46);
+    background: rgba(35, 97, 68, 0.08);
+  }
+
+  .special-upload[data-state="error"] {
+    border-color: rgba(155, 47, 32, 0.5);
+    background: rgba(155, 47, 32, 0.08);
+  }
+
+  .special-upload input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .special-upload input:disabled {
+    pointer-events: none;
+  }
+
+  .special-upload__plus {
+    display: inline-grid;
+    place-items: center;
+    width: 3.2rem;
+    height: 3.2rem;
+    margin: 0 auto 0.7rem;
+    border-radius: 50%;
+    background: #d8482f;
+    color: #fff;
+    font-size: 2rem;
+    line-height: 1;
+  }
+
+  .special-upload.is-has-files .special-upload__plus {
+    width: 2.7rem;
+    height: 2.7rem;
+    margin-bottom: 0.5rem;
+    font-size: 1.45rem;
+  }
+
+  .special-upload[data-state="checking"] .special-upload__plus {
+    position: relative;
+    background: #ad701c;
+    color: transparent;
+  }
+
+  .special-upload[data-state="checking"] .special-upload__plus::before {
+    content: '';
+    width: 1.45rem;
+    height: 1.45rem;
+    border: 3px solid rgba(255, 255, 255, 0.42);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: special-spin 0.85s linear infinite;
+  }
+
+  .special-upload[data-state="ready"] .special-upload__plus {
+    background: #236144;
+  }
+
+  .special-upload[data-state="error"] .special-upload__plus {
+    background: #9b2f20;
+  }
+
+  .special-upload span span {
+    display: block;
+    margin-top: 0.4rem;
+    color: rgba(21, 17, 15, 0.62);
+  }
+
+  .special-upload-add {
+    min-height: 3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    border: 1px solid rgba(216, 72, 47, 0.26);
+    border-radius: 0.8rem;
+    background: rgba(255, 253, 249, 0.9);
+    color: #9b2f20;
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .special-upload-add span {
+    width: 1.35rem;
+    height: 1.35rem;
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: rgba(216, 72, 47, 0.12);
+    color: #d8482f;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  .special-upload-add:hover,
+  .special-upload-add:focus-visible {
+    border-color: rgba(216, 72, 47, 0.52);
+    background: rgba(216, 72, 47, 0.08);
+  }
+
+  .special-upload-add:active {
+    transform: translateY(1px);
+  }
+
+  .special-upload-add:disabled {
+    cursor: progress;
+    opacity: 0.62;
+  }
+
+  .special-upload-status {
+    min-height: 1.35rem;
+    padding: 0.55rem 0.72rem;
+    border-radius: 0.75rem;
+    font-size: 0.9rem;
+    font-weight: 800;
+    line-height: 1.45;
+    color: rgba(21, 17, 15, 0.68);
+  }
+
+  .special-upload-status[data-kind="progress"] {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    border: 1px solid rgba(173, 112, 28, 0.18);
+    background: rgba(173, 112, 28, 0.08);
+    color: #7a4a14;
+  }
+
+  .special-upload-status[data-kind="progress"]::before {
+    content: '';
+    flex: 0 0 auto;
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid rgba(122, 74, 20, 0.24);
+    border-top-color: #7a4a14;
+    border-radius: 50%;
+    animation: special-spin 0.85s linear infinite;
+  }
+
+  .special-upload-status[data-kind="success"] {
+    border: 1px solid rgba(35, 97, 68, 0.18);
+    background: rgba(35, 97, 68, 0.08);
+    color: #236144;
+  }
+
+  .special-upload-status[data-kind="error"] {
+    border: 1px solid rgba(155, 47, 32, 0.2);
+    background: rgba(155, 47, 32, 0.08);
+    color: #9b2f20;
+  }
+
+  .special-upload-status:empty {
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .special-files {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .special-files :global(.special-file) {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 5.2rem minmax(0, 1fr);
+    gap: 0.7rem;
+    align-items: start;
+    padding: 0.62rem;
+    border: 1px solid rgba(21, 17, 15, 0.1);
+    border-radius: 0.85rem;
+    background: rgba(255, 253, 249, 0.8);
+    font-size: 0.82rem;
+  }
+
+  .special-files :global(.special-file__preview) {
+    position: relative;
+    display: block;
+    width: 100%;
+  }
+
+  .special-files :global(.special-file img) {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 0.65rem;
+  }
+
+  .special-files :global(.special-file__placeholder) {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    aspect-ratio: 1;
+    padding: 0.35rem;
+    border-radius: 0.65rem;
+    background: rgba(35, 97, 68, 0.08);
+    color: #236144;
+    font-size: 0.7rem;
+    line-height: 1.2;
+    text-align: center;
+  }
+
+  .special-files :global(.special-file__check) {
+    position: absolute;
+    right: -0.28rem;
+    top: -0.28rem;
+    display: inline-grid;
+    place-items: center;
+    width: 1.45rem;
+    height: 1.45rem;
+    border: 2px solid #fffdf9;
+    border-radius: 50%;
+    background: #236144;
+    color: #fff;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  .special-files :global(.special-file__spinner) {
+    position: absolute;
+    right: -0.28rem;
+    top: -0.28rem;
+    display: inline-grid;
+    place-items: center;
+    width: 1.55rem;
+    height: 1.55rem;
+    border: 2px solid rgba(255, 253, 249, 0.95);
+    border-radius: 50%;
+    background: #ad701c;
+  }
+
+  .special-files :global(.special-file__spinner)::before {
+    content: '';
+    width: 0.82rem;
+    height: 0.82rem;
+    border: 2px solid rgba(255, 255, 255, 0.42);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: special-spin 0.85s linear infinite;
+  }
+
+  .special-files :global(.special-file__body) {
+    min-width: 0;
+    display: grid;
+    gap: 0.22rem;
+  }
+
+  .special-files :global(.special-file__name) {
+    display: block;
+    max-width: 100%;
+    min-width: 0;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    word-break: break-all;
+    white-space: normal;
+    color: #15110f;
+  }
+
+  .special-files :global(.special-file span) {
+    color: rgba(21, 17, 15, 0.58);
+  }
+
+  .special-files :global(.special-file em) {
+    display: block;
+    font-style: normal;
+    color: #7a4a14;
+  }
+
+  .special-files :global(.special-file em[data-kind="success"]) {
+    color: #236144;
+  }
+
+  .special-files :global(.special-file em[data-kind="checking"]) {
+    color: #7a4a14;
+  }
+
+  .special-files :global(.special-file em[data-kind="duplicate"]),
+  .special-files :global(.special-file em[data-kind="error"]) {
+    color: #9b2f20;
+  }
+
+  .special-files :global(.special-file button) {
+    grid-column: 1 / -1;
+    min-height: 2.2rem;
+    border: 1px solid rgba(21, 17, 15, 0.12);
+    border-radius: 0.62rem;
+    background: rgba(255, 255, 255, 0.65);
+    color: rgba(21, 17, 15, 0.74);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .special-precheck {
+    display: grid;
+    gap: 0.75rem;
+    padding: 0.95rem;
+    border: 1px solid rgba(35, 97, 68, 0.18);
+    border-radius: 0.9rem;
+    background: rgba(35, 97, 68, 0.08);
+  }
+
+  .special-precheck[hidden] {
+    display: none;
+  }
+
+  .special-precheck :global(p) {
+    margin: 0;
+    color: rgba(21, 17, 15, 0.66);
+    line-height: 1.45;
+  }
+
+  .special-precheck :global(.special-precheck__head) {
+    display: grid;
+    gap: 0.18rem;
+  }
+
+  .special-precheck :global(.special-precheck__head strong) {
+    font-size: 1rem;
+  }
+
+  .special-precheck :global(.special-precheck__head span) {
+    color: rgba(21, 17, 15, 0.62);
+    font-size: 0.88rem;
+  }
+
+  .special-precheck :global(.special-precheck__grid) {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+
+  .special-precheck :global(.special-precheck__grid div) {
+    min-width: 0;
+    display: grid;
+    gap: 0.12rem;
+    padding: 0.62rem;
+    border-radius: 0.7rem;
+    background: rgba(255, 253, 249, 0.76);
+  }
+
+  .special-precheck :global(.special-precheck__grid span) {
+    color: rgba(21, 17, 15, 0.58);
+    font-size: 0.72rem;
+    line-height: 1.2;
+  }
+
+  .special-precheck :global(.special-precheck__grid strong) {
+    font-size: 1.18rem;
+  }
+
+  .special-precheck :global(.special-precheck__warning) {
+    color: #9b2f20;
+  }
+
+  .special-precheck :global(.special-precheck__success) {
+    color: #236144;
+  }
+
+  .special-precheck :global(.special-precheck__loading) {
+    display: grid;
+    gap: 0.45rem;
+    justify-items: start;
+  }
+
+  .special-precheck :global(.special-precheck__loading span) {
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 3px solid rgba(35, 97, 68, 0.18);
+    border-top-color: #236144;
+    border-radius: 50%;
+    animation: special-spin 0.85s linear infinite;
+  }
+
+  @keyframes special-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes special-progress {
+    0% {
+      background-position: -45% 0, 0 0;
+    }
+    100% {
+      background-position: 145% 0, 0 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .special-upload[data-state="checking"]::after,
+    .special-upload[data-state="checking"] .special-upload__plus::before,
+    .special-upload-status[data-kind="progress"]::before,
+    .special-files :global(.special-file__spinner)::before,
+    .special-precheck :global(.special-precheck__loading span) {
+      animation-duration: 1ms;
+      animation-iteration-count: 1;
+    }
+  }
+
+  .special-consent {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.65rem;
+    font-size: 0.92rem;
+    line-height: 1.45;
+  }
+
+  .special-submit {
+    min-height: 3.2rem;
+    border: 0;
+    border-radius: 0.75rem;
+    background: #d8482f;
+    color: #fff;
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .special-submit:disabled {
+    cursor: not-allowed;
+    opacity: 0.72;
+  }
+
+  .special-status[data-kind="success"] {
+    color: #236144;
+  }
+
+  .special-status[data-kind="error"],
+  .special-closed {
+    color: #9b2f20;
+  }
+
+  .special-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .special-summary[hidden] {
+    display: none;
+  }
+
+  .special-summary :global(div) {
+    min-width: 0;
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.75rem;
+    border-radius: 0.75rem;
+  }
+
+  .special-summary :global(span) {
+    display: block;
+    font-size: 0.78rem;
+  }
+
+  .special-summary :global(strong) {
+    display: block;
+    overflow-wrap: anywhere;
+  }
+
+  .special-summary :global(.special-summary__wide) {
+    grid-column: 1 / -1;
+  }
+
+  @media (max-width: 900px) {
+    .special-page {
+      background:
+        linear-gradient(180deg, rgba(255, 251, 244, 0.98) 0%, rgba(255, 251, 244, 0.9) 46%, rgba(248, 239, 228, 0.78) 100%),
+        url('/generated/special/amber-combine-jewelry-production.webp') center top / 150% auto no-repeat;
+    }
+
+    .special-page__main,
+    .special-meta,
+    .special-files,
+    .special-summary {
+      grid-template-columns: 1fr;
+    }
+
+    .special-precheck :global(.special-precheck__grid) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .special-hero-art {
+      width: 100%;
+      max-width: 38rem;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .special-intro h1 {
+      font-size: clamp(2rem, 9.8vw, 2.75rem);
+      line-height: 1;
+    }
+
+    .special-files :global(.special-file) {
+      grid-template-columns: 4.5rem minmax(0, 1fr);
+    }
+
+    .special-precheck :global(.special-precheck__grid) {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -10,32 +10,30 @@ Draft PR: `#1`
 
 Не создавай новую ветку, не начинай реализацию заново и не переписывай тексты. Основная работа уже выполнена. Перед запуском прочитай `AGENTS.md` и `docs/amber-combine-jewelry-excursion-2026-08-11.md`.
 
-Осталось выполнить подготовленный интеграционный скрипт, проверить результат и выпустить его.
+Внешние вложения больше не нужны: оба изображения уже упакованы в ветку в `release-assets/amber-combine/` и проверяются по SHA-256.
 
 ## 1. Запустить подготовленную интеграцию
 
-К задаче приложены два файла:
-
-- `amber-combine-jewelry-production.webp` — `1200×900`;
-- `amber-combine-jewelry-production-og.webp` — `1200×630`.
-
-Из корня репозитория выполни, подставив фактические пути к вложениям:
+Из корня репозитория выполни одну команду:
 
 ```bash
-python3 scripts/prepare_amber_combine_release.py \
-  --source-image /path/to/amber-combine-jewelry-production.webp \
-  --source-og /path/to/amber-combine-jewelry-production-og.webp
+python3 scripts/run_amber_combine_release.py
 ```
 
-Скрипт уже содержит утверждённые изменения и должен только:
+Wrapper должен без внешних файлов:
 
-- положить два WebP-файла в `site/public/generated/special/` без перекодировки;
-- заменить прошедший shipyard-hero на главной странице новым событием;
+- восстановить два WebP из версионируемых `.b64.part-*` файлов;
+- проверить формат, размер и SHA-256 каждого изображения;
+- создать:
+  - `site/public/generated/special/amber-combine-jewelry-production.webp` — `1200×900`;
+  - `site/public/generated/special/amber-combine-jewelry-production-og.webp` — `1200×630`;
+- запустить уже подготовленный `scripts/prepare_amber_combine_release.py`;
+- заменить прошедший shipyard-hero на главной новым событием;
 - добавить короткий раздел в канонический `specialregistration.md`;
 - включить для нового события скрытие квоты в публичном special-event API: `quotaVisibility: hidden`, без `physicalQuota`, `reservedSeats`, `lotteryQuota`;
 - проверить отсутствие публичных формулировок `6 мест` / `6 победителей`.
 
-Если скрипт остановился из-за несовпадения ожидаемого текста, не угадывай и не делай широкий рефакторинг: покажи точный diff/конфликт.
+Если wrapper или интеграционный скрипт остановился из-за checksum mismatch либо несовпадения ожидаемого текста, не угадывай и не делай широкий рефакторинг: покажи точную ошибку и конфликт.
 
 ## 2. Проверить
 

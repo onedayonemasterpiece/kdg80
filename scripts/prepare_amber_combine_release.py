@@ -5,9 +5,11 @@ The main event page, migration and /special/ card already live in the feature br
 This script deliberately touches only:
 - the homepage special hero;
 - the canonical special-event requirements appendix;
+- the public special-event serializer, so the hidden quota is not exposed;
 - the two prepared WebP assets, when source paths are supplied.
 
-It is safe to run more than once.
+It is safe to run more than once and stops instead of guessing if the expected
+repository text has changed.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 HOMEPAGE = ROOT / "site/src/pages/index.astro"
 REQUIREMENTS = ROOT / "Исходные данные/Спецмероприятия/specialregistration.md"
+SPECIAL_APPLICATIONS = ROOT / "registration/src/services/special-applications.ts"
 PUBLIC_SPECIAL = ROOT / "site/public/generated/special"
 
 HERO_BLOCK = """const amberCombineHeroVariant: HeroMythVariant = {
@@ -55,7 +58,7 @@ REQUIREMENTS_SECTION = """
 - Событие предназначено для активных участников фестиваля `80 историй о главном`. — Статус: `Не подтверждено пользователем`
 - Для допуска к заявке нужно не менее `5` подтверждённых штампов в Паспорте участника фестиваля. — Статус: `Не подтверждено пользователем`
 - Внутренняя физическая квота и квота розыгрыша составляют `6` мест; резерв организаторов — `0`. — Статус: `Не подтверждено пользователем`
-- На публичной странице, в карточке, hero, форме, метаданных и Schema.org количество победителей не указывается; используется формулировка `Количество мест ограничено · победителей определит розыгрыш`. — Статус: `Не подтверждено пользователем`
+- На публичной странице, в карточке, hero, форме, метаданных, Schema.org и публичном special-event API количество победителей не указывается и числовые quota-поля для этого события не возвращаются; используется формулировка `Количество мест ограничено · победителей определит розыгрыш`. — Статус: `Не подтверждено пользователем`
 - Розыгрыш автоматически проводится за сутки до экскурсии — `10 августа 2026 года`. — Статус: `Не подтверждено пользователем`
 - Заявка не является билетом; участие возможно только после персонального подтверждения победы организатором. — Статус: `Не подтверждено пользователем`
 - Точная точка сбора, требования пропускного режима, безопасности и одежды направляются победителям персонально после согласования с площадкой. — Статус: `Не подтверждено пользователем`
@@ -140,6 +143,37 @@ def update_requirements() -> bool:
     return True
 
 
+def update_public_special_api() -> bool:
+    original = SPECIAL_APPLICATIONS.read_text(encoding="utf-8")
+    text = original
+
+    text = replace_required(
+        text,
+        "  previous_winner_weight_percent: number;\n};",
+        "  previous_winner_weight_percent: number;\n  hide_public_quota: number;\n};",
+        "SpecialEventRow.hide_public_quota field",
+    )
+
+    text = replace_required(
+        text,
+        "      timeIsFinal: Boolean(showing.time_is_final),\n      physicalQuota: showing.physical_quota,\n      reservedSeats: showing.reserved_seats,\n      lotteryQuota: showing.lottery_quota,\n      drawStatus: showing.draw_status,",
+        "      timeIsFinal: Boolean(showing.time_is_final),\n      ...(event.hide_public_quota\n        ? { quotaVisibility: 'hidden' as const }\n        : {\n            quotaVisibility: 'visible' as const,\n            physicalQuota: showing.physical_quota,\n            reservedSeats: showing.reserved_seats,\n            lotteryQuota: showing.lottery_quota,\n          }),\n      drawStatus: showing.draw_status,",
+        "conditional public showing quota fields",
+    )
+
+    text = replace_required(
+        text,
+        "    applicationAvailable: event.public_state !== 'closed' && publicShowings.some((showing) => showing.applicationAvailable),\n    minStampCount: event.min_stamp_count,",
+        "    applicationAvailable: event.public_state !== 'closed' && publicShowings.some((showing) => showing.applicationAvailable),\n    quotaVisibility: event.hide_public_quota ? 'hidden' as const : 'visible' as const,\n    minStampCount: event.min_stamp_count,",
+        "event-level quotaVisibility",
+    )
+
+    if text == original:
+        return False
+    SPECIAL_APPLICATIONS.write_text(text, encoding="utf-8")
+    return True
+
+
 def copy_asset(source: Path | None, target_name: str) -> bool:
     target = PUBLIC_SPECIAL / target_name
     if source is None:
@@ -173,6 +207,10 @@ def verify_public_copy() -> None:
             if phrase in text:
                 raise RuntimeError(f"Public quota leak in {path}: {phrase!r}")
 
+    api_text = SPECIAL_APPLICATIONS.read_text(encoding="utf-8")
+    if "event.hide_public_quota" not in api_text or "quotaVisibility: 'hidden'" not in api_text:
+        raise RuntimeError("The public special-event API has not been patched for hidden quotas.")
+
 
 def main() -> int:
     args = parse_args()
@@ -182,6 +220,8 @@ def main() -> int:
         changed.append(str(HOMEPAGE.relative_to(ROOT)))
     if update_requirements():
         changed.append(str(REQUIREMENTS.relative_to(ROOT)))
+    if update_public_special_api():
+        changed.append(str(SPECIAL_APPLICATIONS.relative_to(ROOT)))
     if copy_asset(args.source_image, "amber-combine-jewelry-production.webp"):
         changed.append("site/public/generated/special/amber-combine-jewelry-production.webp")
     if copy_asset(args.source_og, "amber-combine-jewelry-production-og.webp"):

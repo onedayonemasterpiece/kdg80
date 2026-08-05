@@ -43,6 +43,7 @@ python3 scripts/prepare_amber_combine_release.py \
 cd registration
 npm ci
 npm run check
+npm run test:special-public-quota
 npm run test:special-draws
 npm run test:special-social
 

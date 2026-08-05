@@ -15,5 +15,6 @@ The wrapper reconstructs and verifies:
 | `site/public/generated/special/amber-combine-jewelry-production.webp` | 1200×900 | 28790 | `8ca2e4694679d69e4309d5d23de53c7310f89aa03381ebd5acb9a241aca2bacf` |
 | `site/public/generated/special/amber-combine-jewelry-production-og.webp` | 1200×630 | 21292 | `4c2b6653286bb2a86ba3f97f3ee8a8fb8b707420c8b85f78eea381438242d218` |
 
-Do not hand-edit the `.b64.part-*` files. A checksum mismatch stops the release
-before any invalid image is used.
+The Git blob SHA values of every `.b64.part-*` file were checked against the
+source chunks before this branch was handed off. Do not hand-edit the parts.
+A checksum mismatch stops the release before any invalid image is used.

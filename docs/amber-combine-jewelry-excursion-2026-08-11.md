@@ -16,6 +16,7 @@
 - Внутренняя квота розыгрыша: `6` победителей.
 - Публичная формулировка: `Количество мест ограничено · победителей определит розыгрыш`.
 - Число победителей не выводится в SSR-тексте страницы, карточке спецмероприятия, форме, Schema.org или метаданных.
+- Для события установлен `hide_public_quota = 1`: публичный special-event API должен возвращать `quotaVisibility: hidden` и не сериализовать числовые поля `physicalQuota`, `reservedSeats`, `lotteryQuota`. Админская БД и механизм розыгрыша продолжают использовать реальные значения.
 
 ## Смысловая рамка
 
@@ -50,6 +51,7 @@
 - `registration/src/db/migrations/018_amber_combine_jewelry_special_event.sql`
 - `site/src/pages/special/amber-combine-jewelry-excursion.astro`
 - `site/src/pages/special/index.astro`
+- `scripts/prepare_amber_combine_release.py`
 
 Подготовленные медиафайлы должны быть размещены как:
 
@@ -85,9 +87,7 @@ Alt-текст:
 
 ## Что осталось до выпуска
 
-1. Добавить два подготовленных WebP-файла в указанные пути.
-2. Заменить прошедший shipyard-hero на главной странице новым спецмероприятием.
-3. Внести короткий раздел о событии в канонический документ `Исходные данные/Спецмероприятия/specialregistration.md` со статусом `Не подтверждено пользователем`.
-4. Выполнить typecheck, backend tests, site build и Playwright visual gate на desktop/mobile.
-5. Выпустить сначала registration backend, затем сайт, не создавая обычную production-заявку; при технической необходимости использовать ФИО, начинающееся с `ТЕСТ`.
-6. Проверить production API, форму, карточку, hero и отсутствие публичного вывода числа победителей.
+1. Запустить `scripts/prepare_amber_combine_release.py` с двумя подготовленными WebP-файлами. Скрипт добавит изображения, заменит homepage hero, дополнит канонические требования и включит скрытие квоты в публичном API.
+2. Выполнить typecheck, backend tests, site build и Playwright visual gate на desktop/mobile.
+3. Выпустить сначала registration backend, затем сайт, не создавая обычную production-заявку; при технической необходимости использовать ФИО, начинающееся с `ТЕСТ`.
+4. Проверить production API, форму, карточку, hero и отсутствие публичного вывода числа победителей, включая отсутствие numeric quota fields в JSON для нового события.

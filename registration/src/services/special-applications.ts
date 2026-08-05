@@ -27,6 +27,7 @@ type SpecialEventRow = {
   no_show_grace_count: number;
   no_show_penalty_points: number;
   previous_winner_weight_percent: number;
+  hide_public_quota: number;
 };
 
 type SpecialShowingRow = {
@@ -176,9 +177,14 @@ function publicSpecialEventView(event: SpecialEventRow, showings: SpecialShowing
       startsAt: showing.starts_at,
       displayLabel: showing.display_label,
       timeIsFinal: Boolean(showing.time_is_final),
-      physicalQuota: showing.physical_quota,
-      reservedSeats: showing.reserved_seats,
-      lotteryQuota: showing.lottery_quota,
+      ...(event.hide_public_quota
+        ? { quotaVisibility: 'hidden' as const }
+        : {
+            quotaVisibility: 'visible' as const,
+            physicalQuota: showing.physical_quota,
+            reservedSeats: showing.reserved_seats,
+            lotteryQuota: showing.lottery_quota,
+          }),
       drawStatus: showing.draw_status,
       applicationAvailable: unavailableReason === null,
       unavailableReason,
@@ -191,6 +197,7 @@ function publicSpecialEventView(event: SpecialEventRow, showings: SpecialShowing
     formatLabel: event.format_label,
     venueName: event.venue_name,
     applicationAvailable: event.public_state !== 'closed' && publicShowings.some((showing) => showing.applicationAvailable),
+    quotaVisibility: event.hide_public_quota ? 'hidden' as const : 'visible' as const,
     minStampCount: event.min_stamp_count,
     pointRules: {
       basePoints: event.base_points,

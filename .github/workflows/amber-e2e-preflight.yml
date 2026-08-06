@@ -1,0 +1,46 @@
+name: Amber production E2E preflight
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/amber-combine-jewelry-excursion
+    paths:
+      - .github/workflows/amber-e2e-preflight.yml
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      EMERGENCY_EXPORT_TOKEN: ${{ secrets.EMERGENCY_EXPORT_TOKEN }}
+      PII_PRIVATE_KEY_PEM_B64: ${{ secrets.PII_PRIVATE_KEY_PEM_B64 }}
+      S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+      S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+      S3_REGION: ${{ secrets.S3_REGION }}
+      YC_ACCESS_KEY_ID: ${{ secrets.YC_ACCESS_KEY_ID }}
+      YC_SECRET_ACCESS_KEY: ${{ secrets.YC_SECRET_ACCESS_KEY }}
+      YC_BUCKET_NAME: ${{ secrets.YC_BUCKET_NAME }}
+      YC_S3_ENDPOINT: ${{ secrets.YC_S3_ENDPOINT }}
+      YC_REGION: ${{ secrets.YC_REGION }}
+    steps:
+      - name: Report secret availability only
+        shell: bash
+        run: |
+          for name in \
+            FLY_API_TOKEN EMERGENCY_EXPORT_TOKEN PII_PRIVATE_KEY_PEM_B64 \
+            S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY S3_BUCKET S3_ENDPOINT S3_REGION \
+            YC_ACCESS_KEY_ID YC_SECRET_ACCESS_KEY YC_BUCKET_NAME YC_S3_ENDPOINT YC_REGION
+          do
+            if [ -n "${!name}" ]; then
+              echo "$name=present"
+            else
+              echo "$name=missing"
+            fi
+          done

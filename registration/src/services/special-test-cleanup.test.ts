@@ -205,7 +205,7 @@ test('cleanup refuses an application whose decrypted name is not prefixed TEST',
     s3ForcePathStyle: true,
   });
   const { publicKeyPemBase64, privateKeyPemBase64 } = keyPair();
-  const code = 'SP-NOT-TEST';
+  const code = 'TEST-SP-NOT-TEST';
 
   try {
     const { applicationId } = insertApplication(db, publicKeyPemBase64, {

@@ -8,7 +8,7 @@ on:
       - .github/workflows/release-amber-winner-preview.yml
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -34,39 +34,7 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Simplify the winner email to the approved data request
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          email_path = Path('registration/src/services/email-notifications.ts')
-          text = email_path.read_text(encoding='utf-8')
-          changes = [
-              ("  const consentLine = 'Отправляя паспортные данные ответным письмом, вы подтверждаете согласие на их обработку и передачу Калининградскому янтарному комбинату исключительно для оформления разового пропуска на эту экскурсию.';\n", ''),
-              ("    '2. Серию и номер паспорта гражданина Российской Федерации.',", "    '2. Серия и номер.',"),
-              ('        <li>серию и номер паспорта гражданина Российской Федерации.</li>', '        <li>серия и номер.</li>'),
-              ('    consentLine,\n', ''),
-          ]
-          for old, new in changes:
-              if old not in text:
-                  raise SystemExit(f'Winner-email anchor not found: {old[:100]}')
-              text = text.replace(old, new)
-          email_path.write_text(text, encoding='utf-8')
-
-          test_path = Path('registration/src/services/special-winner-email.test.ts')
-          test = test_path.read_text(encoding='utf-8')
-          test = test.replace(
-              '  assert.match(rendered.text, /серию и номер паспорта гражданина Российской Федерации/i);',
-              '  assert.match(rendered.text, /серия и номер/i);',
-          )
-          test = test.replace(
-              '  assert.match(rendered.text, /согласие на их обработку и передачу/i);',
-              '  assert.doesNotMatch(rendered.text, /согласие на их обработку и передачу/i);',
-          )
-          test_path.write_text(test, encoding='utf-8')
-          PY
-
-      - name: Validate backend email and raffle changes
+      - name: Verify final backend changes before release
         working-directory: registration
         run: |
           npm ci
@@ -77,18 +45,11 @@ jobs:
           npm run test:special-public-quota
           npm run test:special-draws
 
-      - name: Commit final email wording
-        run: |
-          git config user.name onedayonemasterpiece
-          git config user.email estershow6@gmail.com
-          git add registration/src/services/email-notifications.ts registration/src/services/special-winner-email.test.ts
-          git commit -m "fix: simplify amber winner passport request"
-          git push origin HEAD:feat/amber-combine-jewelry-excursion
-
-      - name: Install site deployment tools
+      - name: Install site image tooling
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq imagemagick awscli
+          sudo apt-get install -y -qq imagemagick
+          command -v aws
 
       - name: Build production site
         working-directory: site

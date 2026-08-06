@@ -1,0 +1,47 @@
+name: Amber TEST draw exclusion validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/amber-combine-jewelry-excursion
+    paths:
+      - .github/workflows/amber-test-draw-exclusion-validation.yml
+      - registration/src/services/special-applications.ts
+      - registration/src/services/special-draws.ts
+      - registration/src/services/special-test-cleanup.ts
+      - registration/src/services/special-test-cleanup.test.ts
+      - registration/src/services/special-test-draw-exclusion.test.ts
+      - registration/package.json
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: npm
+          cache-dependency-path: registration/package-lock.json
+
+      - name: Install dependencies
+        working-directory: registration
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: registration
+        run: npm run check
+
+      - name: Verify reversible cleanup
+        working-directory: registration
+        run: npm run test:special-test-cleanup
+
+      - name: Verify draw exclusion
+        working-directory: registration
+        run: npm run test:special-test-draw-exclusion

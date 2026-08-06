@@ -1,16 +1,26 @@
 # Минимальная задача кодовому агенту
 
-Репозиторий: `onedayonemasterpiece/kdg80`
+Сделай только одно: замени GitHub Actions secret `FLY_API_TOKEN` на новый проверенный app-scoped deploy token для `znanie-kgd80-fest`.
 
-Нужно сделать только одно: добавить в GitHub Actions repository secret `FLY_API_TOKEN` с действующим токеном доступа к Fly.io.
+```bash
+unset FLY_API_TOKEN
 
-Токен взять из уже настроенного локального доступа согласно `AGENTS.md`: сначала проверить `/home/dev/.config/fly/release.env`, при его отсутствии — `/home/dev/.fly/config.yml`.
+TOKEN="$(flyctl tokens create deploy \
+  --app znanie-kgd80-fest \
+  --name github-amber-e2e \
+  --expiry 24h)"
 
-Значение токена не выводить. После установки проверить только наличие имени секрета через `gh secret list`.
+FLY_API_TOKEN="$TOKEN" flyctl status -a znanie-kgd80-fest >/dev/null
+printf '%s' "$TOKEN" | gh secret set FLY_API_TOKEN \
+  --repo onedayonemasterpiece/kdg80
+unset TOKEN
+```
 
-Не менять код, ветку или PR. Не делать commit/push. Не выполнять deploy, тесты или дополнительные исследования.
+Используй уже авторизованную локальную Fly-сессию. В команды, логи и ответ значение токена не выводи.
 
-В ответе написать только одно из двух:
+Не меняй код, ветку или PR. Не делай commit/push. Не запускай deploy или тесты.
 
-- `FLY_API_TOKEN установлен`;
-- `FLY_API_TOKEN не установлен: <краткая причина>`.
+Ответь только:
+
+- `FLY_API_TOKEN заменён и проверен`;
+- либо `FLY_API_TOKEN не заменён: <краткая причина>`.

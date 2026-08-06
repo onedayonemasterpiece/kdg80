@@ -9,6 +9,7 @@ on:
       - .github/workflows/amber-vk-passport-discovery.yml
       - scripts/fetch_vk_passport_candidates.py
       - scripts/fetch_vk_passport_candidates_resilient.py
+      - scripts/sanitize_vk_passport_candidates.py
 
 permissions:
   contents: read
@@ -17,6 +18,7 @@ env:
   VK_ACCESS_TOKEN7: ${{ secrets.VK_ACCESS_TOKEN7 }}
   VK_SERVICE_TOKEN: ${{ secrets.VK_SERVICE_TOKEN }}
   VK_PASSPORT_OUTPUT: .codex-artifacts/vk-passport-candidates
+  VK_PASSPORT_SANITIZED_OUTPUT: .codex-artifacts/vk-passport-sanitized
 
 jobs:
   discover:
@@ -46,12 +48,16 @@ jobs:
       - name: Discover likely festival Passport photos
         run: python scripts/fetch_vk_passport_candidates_resilient.py
 
-      - name: Upload private candidate artifact
-        if: always()
+      - name: Remove handwritten names and create TEST fixtures
+        run: |
+          python scripts/sanitize_vk_passport_candidates.py
+          rm -rf "$VK_PASSPORT_OUTPUT"
+
+      - name: Upload PII-sanitized TEST fixture artifact
         uses: actions/upload-artifact@v4
         with:
-          name: amber-vk-passport-candidates
-          path: .codex-artifacts/vk-passport-candidates
-          if-no-files-found: warn
+          name: amber-vk-passport-sanitized
+          path: .codex-artifacts/vk-passport-sanitized
+          if-no-files-found: error
           retention-days: 3
           compression-level: 6

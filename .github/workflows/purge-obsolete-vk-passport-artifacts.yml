@@ -1,0 +1,44 @@
+name: Purge obsolete VK Passport artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/amber-combine-jewelry-excursion
+    paths:
+      - .github/workflows/purge-obsolete-vk-passport-artifacts.yml
+
+permissions:
+  actions: write
+  contents: read
+
+env:
+  SAFE_ARTIFACT_ID: '8959513334'
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Delete raw and superseded Passport artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
+            | jq -r --argjson safe "$SAFE_ARTIFACT_ID" '
+                .artifacts[]
+                | select(
+                    (.name == "amber-vk-passport-candidates" or .name == "amber-vk-passport-sanitized")
+                    and (.id != $safe)
+                  )
+                | .id
+              ' \
+            | sort -u \
+            | while read -r artifact_id; do
+                [ -n "$artifact_id" ] || continue
+                echo "Deleting obsolete private artifact $artifact_id"
+                gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id"
+              done
+
+          echo "Keeping sanitized artifact $SAFE_ARTIFACT_ID"

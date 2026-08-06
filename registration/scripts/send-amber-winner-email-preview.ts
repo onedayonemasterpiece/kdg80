@@ -3,6 +3,8 @@ import { createEmailNotificationService } from '../src/services/email-notificati
 
 const config = loadConfig();
 const target = process.env.AMBER_WINNER_PREVIEW_EMAIL?.trim() || 'info@kgd80.ru';
+const applicationCode = process.env.AMBER_WINNER_APPLICATION_CODE?.trim() || 'AMBER-2026-001';
+const fullName = process.env.AMBER_WINNER_FULL_NAME?.trim() || 'Максим';
 const service = createEmailNotificationService({
   enabled: config.postboxEnabled,
   endpoint: config.postboxEndpoint,
@@ -19,8 +21,8 @@ const service = createEmailNotificationService({
 });
 
 const result = await service.sendSpecialWinner({
-  applicationCode: 'ПРОЕКТ-ДЛЯ-СОГЛАСОВАНИЯ',
-  fullName: 'Максим',
+  applicationCode,
+  fullName,
   email: target,
   event: {
     slug: 'amber-combine-jewelry-excursion',
@@ -32,11 +34,10 @@ const result = await service.sendSpecialWinner({
     startsAt: '2026-08-11T11:00:00+02:00',
   },
   replyDeadline: '2026-08-10T11:00:00+02:00',
-  previewMode: true,
 });
 
 if (!result.sent) {
-  throw new Error(`Preview email was not sent: ${result.reason || 'unknown reason'}`);
+  throw new Error(`Winner email was not sent: ${result.reason || 'unknown reason'}`);
 }
 
 console.log(JSON.stringify({
@@ -44,4 +45,5 @@ console.log(JSON.stringify({
   messageId: result.messageId,
   subject: result.subject,
   target,
+  applicationCode,
 }));

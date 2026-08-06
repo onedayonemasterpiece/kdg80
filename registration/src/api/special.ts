@@ -241,8 +241,6 @@ function multipartApplicationPayloadFromParts(parts: MultipartPart[]): SpecialAp
     email: multipartField(parts, 'email'),
     phone: multipartField(parts, 'phone'),
     consentAccepted: multipartField(parts, 'consentAccepted') === 'on' || multipartField(parts, 'consentAccepted') === 'true',
-    russianCitizenshipConfirmed: multipartField(parts, 'russianCitizenshipConfirmed') === 'on'
-      || multipartField(parts, 'russianCitizenshipConfirmed') === 'true',
     website: multipartField(parts, 'website'),
     vkAuthToken: multipartField(parts, 'vkAuthToken'),
     photos: photosFromMultipart(parts),
@@ -1094,22 +1092,6 @@ async function sendSpecialApplicationEmailNotification(
   logger: FastifyBaseLogger,
   route: string,
 ): Promise<EmailSendResult> {
-  if (created.testApplication) {
-    logger.info({
-      route,
-      applicationId: created.applicationId,
-      status: created.status,
-      emailSent: false,
-      reason: 'test_application_suppressed',
-    }, 'special_application_email_notification_suppressed');
-    return {
-      sent: false,
-      provider: 'yandex-postbox',
-      messageId: null,
-      reason: 'test_application_suppressed',
-    };
-  }
-
   try {
     const emailNotification = await deps.emailNotifications.sendSpecialApplicationCreated(created);
     recordEmailNotification(deps.db, {

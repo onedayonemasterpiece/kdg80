@@ -4,11 +4,7 @@ import test from 'node:test';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import { encryptPii } from '../lib/crypto';
-import {
-  confirmSpecialApplicationRussianCitizenship,
-  listSpecialShowingsDueForAutoDraw,
-  runSpecialDraw,
-} from './special-draws';
+import { listSpecialShowingsDueForAutoDraw, runSpecialDraw } from './special-draws';
 
 function keys() {
   const { publicKey, privateKey } = generateKeyPairSync('rsa', {
@@ -22,18 +18,11 @@ function keys() {
   };
 }
 
-function insertCandidate(
-  db: Database.Database,
-  publicKeyPemBase64: string,
-  showingId: number,
-  code: string,
-  email: string,
-  citizenshipConfirmed: boolean,
-) {
+function insertCandidate(db: Database.Database, publicKeyPemBase64: string, showingId: number, code: string, email: string) {
   const encrypted = encryptPii(publicKeyPemBase64, {
-    fullName: code.includes('PENDING') ? 'Елена Ожидающая' : 'Анна Подтвержденная',
+    fullName: code.endsWith('ONE') ? 'Анна Первая' : 'Елена Вторая',
     email,
-    phone: code.includes('PENDING') ? '+79001111111' : '+79002222222',
+    phone: code.endsWith('ONE') ? '+79001111111' : '+79002222222',
   });
   const info = db.prepare(`
     INSERT INTO special_applications (
@@ -48,7 +37,7 @@ function insertCandidate(
     ) VALUES (
       ?, (SELECT special_event_id FROM special_event_showings WHERE id = ?),
       ?, ?, ?, ?,
-      ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, 0,
       'accepted', 1, 1, 1, 5, 0, 0, 10,
       'test', '{}', 'test', 'test', '2026-08-01T00:00:00.000Z'
     )
@@ -63,24 +52,22 @@ function insertCandidate(
     email,
     `${code}-phone`,
     JSON.stringify([showingId]),
-    citizenshipConfirmed ? 1 : 0,
   );
   const applicationId = Number(info.lastInsertRowid);
   db.prepare('INSERT INTO special_application_showings(application_id, showing_id) VALUES (?, ?)')
     .run(applicationId, showingId);
-  return applicationId;
 }
 
-test('amber draw starts exactly 48 hours before the excursion and excludes unconfirmed citizenship', () => {
+test('amber draw starts 48 hours before the excursion and does not filter applicants by a citizenship checkbox', () => {
   const db = new Database(':memory:');
   runMigrations(db);
   const { publicKeyPemBase64, privateKeyPemBase64 } = keys();
-  const showing = db.prepare(`
-    SELECT id
-    FROM special_event_showings
-    WHERE slug = '2026-08-11-1100'
-  `).get() as { id: number };
+  const showing = db.prepare(`SELECT id FROM special_event_showings WHERE slug = '2026-08-11-1100'`)
+    .get() as { id: number };
+  const event = db.prepare(`SELECT requires_russian_citizenship FROM special_events WHERE slug = 'amber-combine-jewelry-excursion'`)
+    .get() as { requires_russian_citizenship: number };
 
+  assert.equal(event.requires_russian_citizenship, 0);
   assert.equal(
     listSpecialShowingsDueForAutoDraw(db, new Date('2026-08-09T08:59:59.000Z'))
       .some((item) => item.showing.id === showing.id),
@@ -92,20 +79,12 @@ test('amber draw starts exactly 48 hours before the excursion and excludes uncon
   assert.equal(due.autoPublishAt, '2026-08-09T09:00:00.000Z');
   assert.equal(due.event.auto_draw_lead_hours, 48);
 
-  insertCandidate(db, publicKeyPemBase64, showing.id, 'AMBER-CONFIRMED', 'confirmed@example.com', true);
-  insertCandidate(db, publicKeyPemBase64, showing.id, 'AMBER-PENDING', 'pending@example.com', false);
-
-  const firstDraw = runSpecialDraw(db, showing.id, 'draft', privateKeyPemBase64);
-  assert.equal(firstDraw.totalCandidates, 1);
-  assert.equal(firstDraw.candidates[0].applicationCode, 'AMBER-CONFIRMED');
-
-  const confirmed = confirmSpecialApplicationRussianCitizenship(db, 'AMBER-PENDING');
-  assert.equal(confirmed?.application_code, 'AMBER-PENDING');
-
-  const secondDraw = runSpecialDraw(db, showing.id, 'draft', privateKeyPemBase64);
-  assert.equal(secondDraw.totalCandidates, 2);
+  insertCandidate(db, publicKeyPemBase64, showing.id, 'AMBER-ONE', 'one@example.com');
+  insertCandidate(db, publicKeyPemBase64, showing.id, 'AMBER-TWO', 'two@example.com');
+  const draw = runSpecialDraw(db, showing.id, 'draft', privateKeyPemBase64);
+  assert.equal(draw.totalCandidates, 2);
   assert.deepEqual(
-    new Set(secondDraw.candidates.map((candidate) => candidate.applicationCode)),
-    new Set(['AMBER-CONFIRMED', 'AMBER-PENDING']),
+    new Set(draw.candidates.map((candidate) => candidate.applicationCode)),
+    new Set(['AMBER-ONE', 'AMBER-TWO']),
   );
 });

@@ -26,7 +26,8 @@
     "test:special-test-draw-exclusion": "tsx --test src/services/special-test-draw-exclusion.test.ts",
     "test:special-social-reminders": "tsx --test src/services/special-social-reminders.test.ts",
     "test:special-amber-eligibility": "tsx --test src/services/special-amber-eligibility.test.ts src/services/special-winner-email.test.ts",
-    "send:amber-winner-preview": "tsx scripts/send-amber-winner-email-preview.ts"
+    "send:amber-winner-preview": "tsx scripts/send-amber-winner-email-preview.ts",
+    "create:amber-test-application": "tsx scripts/create-amber-test-application.ts"
   },
   "dependencies": {
     "@aws-sdk/client-kinesis": "^3.1077.0",

@@ -82,7 +82,6 @@ export type SpecialWinnerEmailInput = {
     startsAt: string;
   };
   replyDeadline: string;
-  previewMode?: boolean;
 };
 
 export type SpecialSocialActivityReminderEmailInput = {
@@ -286,7 +285,7 @@ export function renderSpecialApplicationEmail(input: SpecialApplicationEmailInpu
 export function renderSpecialWinnerEmail(input: SpecialWinnerEmailInput, timeZone: string) {
   const startsAt = formatDateTime(input.showing.startsAt, timeZone);
   const replyDeadline = formatDateTime(input.replyDeadline, timeZone);
-  const subject = `${input.previewMode ? '[ПРОЕКТ ДЛЯ СОГЛАСОВАНИЯ] ' : ''}Вы победили в розыгрыше: ${input.event.title}`;
+  const subject = `Вы победили в розыгрыше: ${input.event.title}`;
   const heroImageUrl = input.event.slug === 'amber-combine-jewelry-excursion'
     ? 'https://znanie-kgd80-fest.fly.dev/shared-assets/email/amber-combine-jewelry-production.png'
     : null;
@@ -318,7 +317,6 @@ export function renderSpecialWinnerEmail(input: SpecialWinnerEmailInput, timeZon
   <main style="max-width:640px;margin:0 auto;background:#fffaf2;border-radius:18px;overflow:hidden;border:1px solid #eadfce;">
     ${heroImageUrl ? `<img src="${escapeHtml(heroImageUrl)}" width="640" alt="Ювелирное производство Калининградского янтарного комбината" style="display:block;width:100%;height:auto;border:0;">` : ''}
     <section style="padding:28px;">
-    ${input.previewMode ? '<div style="margin:0 0 18px;padding:10px 12px;border-radius:10px;background:#172434;color:#ffffff;font-size:12px;font-weight:bold;letter-spacing:.06em;text-transform:uppercase;">Проект для согласования · это письмо ещё не отправляется победителям</div>' : ''}
     <p style="margin:0 0 10px;color:#9f3429;font-size:13px;font-weight:bold;letter-spacing:.08em;text-transform:uppercase;">Победа в розыгрыше</p>
     <h1 style="margin:0 0 18px;font-size:25px;line-height:1.2;">${escapeHtml(input.event.title)}</h1>
     ${paragraphsHtml([

@@ -801,9 +801,7 @@ export function getSpecialShowingForTelegram(
     event,
     showing,
     acceptedApplicationCount: acceptedRows.length,
-    eligibleApplicationCount: event.requires_russian_citizenship
-      ? candidates.filter((candidate) => candidate.russianCitizenshipConfirmed).length
-      : candidates.length,
+    eligibleApplicationCount: candidates.length,
     candidates,
     latestDraft,
     latestPublished,
@@ -828,10 +826,7 @@ export function runSpecialDraw(
   }
 
   const candidateRows = listCandidateRows(db, showing);
-  const allCandidates = mapParticipants(candidateRows, privateKeyPemBase64, loadBonusesForRows(db, candidateRows));
-  const candidates = event.requires_russian_citizenship
-    ? allCandidates.filter((candidate) => candidate.russianCitizenshipConfirmed)
-    : allCandidates;
+  const candidates = mapParticipants(candidateRows, privateKeyPemBase64, loadBonusesForRows(db, candidateRows));
   const draw = weightedDraw(candidates, showing.lottery_quota);
   const winners = draw.winners;
   const totalWeight = candidates.reduce((sum, candidate) => sum + getDistributedDrawWeight(candidate, draw.weightScale), 0);
@@ -956,24 +951,6 @@ export function getLatestSpecialDrawResult(
   return rowToDrawResult(row, event, showing, mapParticipants(decoratedRows, privateKeyPemBase64, loadBonusesForRows(db, decoratedRows)));
 }
 
-export function confirmSpecialApplicationRussianCitizenship(
-  db: Database.Database,
-  applicationCode: string,
-) {
-  const normalizedCode = applicationCode.trim();
-  if (!normalizedCode) {
-    return null;
-  }
-
-  return db.prepare(`
-    UPDATE special_applications
-    SET russian_citizenship_confirmed = 1
-    WHERE application_code = ?
-      AND status = 'accepted'
-    RETURNING id, application_code
-  `).get(normalizedCode) as { id: number; application_code: string } | undefined ?? null;
-}
-
 export function listSpecialApplicationPhotos(db: Database.Database, applicationId: number) {
   return db.prepare(`
     SELECT *
@@ -1018,9 +995,7 @@ export function formatSpecialShowingPanel(item: NonNullable<ReturnType<typeof ge
     `Физическая квота: ${item.showing.physical_quota}`,
     `Бронь: ${item.showing.reserved_seats}`,
     `Мест в розыгрыше: ${item.showing.lottery_quota}`,
-    `Принятых заявок: ${item.acceptedApplicationCount}`,
-    `Допущено к розыгрышу: ${item.eligibleApplicationCount}`,
-    item.event.requires_russian_citizenship ? 'Требование: гражданство Российской Федерации' : 'Требование по гражданству: нет',
+    `Допущенных заявок: ${item.acceptedApplicationCount}`,
     `Статус розыгрыша: ${item.showing.draw_status}`,
     item.latestDraft ? `Последний черновик: ${formatKaliningradDateTime(item.latestDraft.created_at)}` : 'Последний черновик: нет',
     item.latestPublished
@@ -1049,7 +1024,6 @@ export function formatSpecialShowingApplicants(item: NonNullable<ReturnType<type
     candidate.socialBonusPoints > 0
       ? `   Соцактивность VK: +${candidate.socialBonusPoints} балл., активных дней ${candidate.socialBonusActiveDays}, действий ${candidate.socialBonusEligibleActivityCount}`
       : null,
-    `   Гражданство РФ: ${candidate.russianCitizenshipConfirmed ? 'подтверждено' : 'не подтверждено'}`,
     `   Фото: ${candidate.acceptedPhotoCount}/${candidate.uniquePhotoCount}/${candidate.uploadedPhotoCount}`,
     `   Выбрано дат: ${candidate.selectedShowingCount}, вес на этот показ: ${formatShowingWeight(candidate.score, candidate.selectedShowingCount)} (${getDistributedDrawWeight(candidate, weightScale)} тех. билетиков)`,
     candidate.previousSpecialWinner ? `   Уже выигрывал спецрозыгрыш: да, коэффициент веса ${candidate.previousWinnerWeightPercent}%` : null,

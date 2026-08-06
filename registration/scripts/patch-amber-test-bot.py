@@ -2,6 +2,45 @@ from __future__ import annotations
 
 from pathlib import Path
 
+outbox_path = Path('src/services/telegram-outbox.ts')
+outbox_text = outbox_path.read_text(encoding='utf-8')
+outbox_anchor = """export function enqueueSpecialApplicationCreated(
+  db: Database.Database,
+  payload: {
+    applicationId: number;
+  },
+) {
+  db.prepare(`
+    INSERT INTO telegram_outbox(type, payload_json)
+    VALUES (?, ?)
+  `).run('special_application_created', JSON.stringify({
+    type: 'special_application_created',
+    applicationId: payload.applicationId,
+  } satisfies TelegramOutboxPayload));
+}
+"""
+outbox_value = """export function enqueueSpecialApplicationCreated(
+  db: Database.Database,
+  payload: {
+    applicationId: number;
+  },
+) {
+  const result = db.prepare(`
+    INSERT INTO telegram_outbox(type, payload_json)
+    VALUES (?, ?)
+  `).run('special_application_created', JSON.stringify({
+    type: 'special_application_created',
+    applicationId: payload.applicationId,
+  } satisfies TelegramOutboxPayload));
+  return Number(result.lastInsertRowid);
+}
+"""
+if 'return Number(result.lastInsertRowid);' not in outbox_text:
+    if outbox_anchor not in outbox_text:
+        raise SystemExit('special Telegram outbox enqueue anchor is missing')
+    outbox_text = outbox_text.replace(outbox_anchor, outbox_value, 1)
+outbox_path.write_text(outbox_text, encoding='utf-8')
+
 path = Path('scripts/create-amber-test-application.ts')
 text = path.read_text(encoding='utf-8')
 

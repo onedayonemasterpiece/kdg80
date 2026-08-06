@@ -27,7 +27,7 @@ env:
 jobs:
   production-e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 45
 
     steps:
       - name: Checkout feature branch
@@ -149,7 +149,7 @@ jobs:
         working-directory: registration
         run: npm ci
 
-      - name: Validate backend before deployment
+      - name: Validate backend code
         working-directory: registration
         run: |
           npm run check
@@ -159,78 +159,26 @@ jobs:
           npm run test:special-draws
           npm run test:special-social
 
-      - name: Save current Fly application configuration
+      - name: Verify the deployed backend and event page
         shell: bash
         run: |
-          flyctl config save \
-            -a "$APP_NAME" \
-            -c fly.e2e.toml \
-            -y
-          flyctl config validate \
-            -a "$APP_NAME" \
-            -c fly.e2e.toml
-
-      - name: Prepare minimal Docker build context
-        shell: bash
-        run: |
-          cat > .fly-e2e.dockerignore <<'EOF'
-          **
-          !registration/
-          !registration/package.json
-          !registration/package-lock.json
-          !registration/tsconfig.json
-          !registration/Dockerfile
-          !registration/src/
-          !registration/src/**
-          !registration/scripts/
-          !registration/scripts/**
-          !assets/
-          !assets/**
-          EOF
-
-      - name: Deploy registration backend
-        shell: bash
-        run: |
-          flyctl deploy . \
-            -a "$APP_NAME" \
-            -c fly.e2e.toml \
-            --dockerfile registration/Dockerfile \
-            --ignorefile .fly-e2e.dockerignore \
-            --remote-only \
-            --strategy rolling \
-            --wait-timeout 15m \
-            --build-context-warn-size 0 \
-            --yes
-
-      - name: Wait for production health
-        shell: bash
-        run: |
-          check_health() {
-            local url="$1"
-            for attempt in $(seq 1 36); do
-              if body=$(curl --fail --silent --show-error --max-time 20 "$url"); then
-                BODY="$body" python3 - <<'PY'
+          mkdir -p .codex-artifacts/amber-combine-production-application-e2e
+          curl --fail --silent --show-error --max-time 30 \
+            "https://${APP_NAME}.fly.dev/api/v1/health" \
+            > .codex-artifacts/amber-combine-production-application-e2e/health-before-e2e.json
+          curl --fail --silent --show-error --max-time 30 \
+            "https://kgd80.ru/special/amber-combine-jewelry-excursion/" \
+            > /dev/null
+          python3 - <<'PY'
           import json
-          import os
-          payload = json.loads(os.environ['BODY'])
+          from pathlib import Path
+          payload = json.loads(Path('.codex-artifacts/amber-combine-production-application-e2e/health-before-e2e.json').read_text())
           assert payload.get('ok') is True
           PY
-                echo "Healthy: $url"
-                return 0
-              fi
-              echo "Health attempt $attempt failed for $url"
-              sleep 5
-            done
-            return 1
-          }
-
-          check_health "https://${APP_NAME}.fly.dev/api/v1/health"
-          check_health "https://kgd80.ru/api/v1/health"
 
       - name: Capture Fly release metadata
         shell: bash
         run: |
-          mkdir -p .codex-artifacts/amber-combine-production-application-e2e
           flyctl status -a "$APP_NAME" --json \
             > .codex-artifacts/amber-combine-production-application-e2e/fly-status.json
           flyctl releases -a "$APP_NAME" --json \
@@ -253,18 +201,17 @@ jobs:
       - name: Verify production after cleanup
         shell: bash
         run: |
-          curl --fail --silent --show-error --max-time 20 \
+          curl --fail --silent --show-error --max-time 30 \
             "https://${APP_NAME}.fly.dev/api/v1/health" \
             > .codex-artifacts/amber-combine-production-application-e2e/health-after-cleanup.json
-          curl --fail --silent --show-error --max-time 20 \
-            "https://kgd80.ru/api/v1/health" \
-            > .codex-artifacts/amber-combine-production-application-e2e/public-health-after-cleanup.json
+          curl --fail --silent --show-error --max-time 30 \
+            "https://kgd80.ru/special/amber-combine-jewelry-excursion/" \
+            > /dev/null
           python3 - <<'PY'
           import json
           from pathlib import Path
-          for name in ('health-after-cleanup.json', 'public-health-after-cleanup.json'):
-              payload = json.loads((Path('.codex-artifacts/amber-combine-production-application-e2e') / name).read_text())
-              assert payload.get('ok') is True
+          payload = json.loads(Path('.codex-artifacts/amber-combine-production-application-e2e/health-after-cleanup.json').read_text())
+          assert payload.get('ok') is True
           PY
 
       - name: Upload QA evidence
@@ -273,6 +220,6 @@ jobs:
         with:
           name: amber-production-application-e2e
           path: .codex-artifacts/amber-combine-production-application-e2e
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 3
           compression-level: 6

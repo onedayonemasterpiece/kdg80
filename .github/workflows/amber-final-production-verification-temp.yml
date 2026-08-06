@@ -1,12 +1,9 @@
 name: Amber final production verification temp
-# trigger: 2026-08-06T22:15:00+02:00
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/amber-final-production-verification-temp.yml
+  pull_request_target:
+    types:
+      - ready_for_review
   workflow_dispatch:
 
 permissions:
@@ -20,6 +17,7 @@ env:
 
 jobs:
   verify-release-send-clean:
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.title == 'ops: run amber final production verification'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:

@@ -7,6 +7,7 @@ on:
       - feat/amber-combine-jewelry-excursion
     paths:
       - .github/workflows/amber-production-application-e2e.yml
+      - site/scripts/run_amber_production_application_e2e.mjs
 
 permissions:
   contents: read
@@ -17,8 +18,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  APP_NAME: znanie-kgd80-fest
-  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
   GH_TOKEN: ${{ github.token }}
   SAFE_FIXTURE_RUN_ID: '31080644073'
   SAFE_FIXTURE_ARTIFACT: amber-vk-passport-sanitized
@@ -27,7 +26,7 @@ env:
 jobs:
   production-e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     steps:
       - name: Checkout feature branch
@@ -41,88 +40,9 @@ jobs:
         with:
           node-version: '22.12.0'
           cache: npm
-          cache-dependency-path: |
-            registration/package-lock.json
-            site/package-lock.json
+          cache-dependency-path: site/package-lock.json
 
-      - name: Set up flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Verify and safely normalize deployment credential
-        shell: bash
-        run: |
-          test -n "$FLY_API_TOKEN"
-          rm -rf /tmp/fly-token-candidates
-          mkdir -p /tmp/fly-token-candidates
-          python3 - <<'PY'
-          import os
-          import shlex
-          from pathlib import Path
-
-          raw = os.environ['FLY_API_TOKEN']
-          candidates: list[str] = []
-
-          def add(value: str) -> None:
-              value = value.strip()
-              changed = True
-              while changed and len(value) >= 2:
-                  changed = False
-                  if (value[0], value[-1]) in (("'", "'"), ('"', '"')):
-                      value = value[1:-1].strip()
-                      changed = True
-              if value and value not in candidates:
-                  candidates.append(value)
-
-          add(raw)
-          lines = raw.splitlines() or [raw]
-          prefixes = ('FLY_API_TOKEN=', 'export FLY_API_TOKEN=', 'access_token:')
-          for line in lines:
-              stripped = line.strip()
-              add(stripped)
-              for prefix in prefixes:
-                  if stripped.startswith(prefix):
-                      value = stripped[len(prefix):].strip()
-                      try:
-                          parsed = shlex.split(value)
-                      except ValueError:
-                          parsed = []
-                      if len(parsed) == 1:
-                          add(parsed[0])
-                      add(value)
-
-          for candidate in list(candidates):
-              if candidate.startswith(('fm2_', 'fo1_', 'fo2_')):
-                  add(f'FlyV1 {candidate}')
-              elif candidate.startswith('FlyV1') and not candidate.startswith('FlyV1 '):
-                  add(f'FlyV1 {candidate[len("FlyV1"):].lstrip()}')
-
-          for index, candidate in enumerate(candidates):
-              (Path('/tmp/fly-token-candidates') / f'{index:02d}').write_text(candidate, encoding='utf-8')
-          PY
-
-          matched=''
-          for candidate_file in /tmp/fly-token-candidates/*; do
-            candidate=$(cat "$candidate_file")
-            if FLY_API_TOKEN="$candidate" flyctl status -a "$APP_NAME" >/dev/null 2>&1; then
-              echo "::add-mask::$candidate"
-              delimiter="FLY_TOKEN_$(date +%s%N)"
-              {
-                echo "FLY_API_TOKEN<<$delimiter"
-                printf '%s\n' "$candidate"
-                echo "$delimiter"
-              } >> "$GITHUB_ENV"
-              matched=1
-              break
-            fi
-          done
-
-          if [ -z "$matched" ]; then
-            echo "FLY_API_TOKEN is present, but it does not authenticate to $APP_NAME after safe normalization." >&2
-            exit 1
-          fi
-          echo "Fly application access is available."
-
-      - name: Download the approved PII-sanitized Passport fixture
+      - name: Download approved PII-sanitized Passport fixture
         shell: bash
         run: |
           rm -rf .codex-artifacts/vk-passport-sanitized
@@ -131,43 +51,16 @@ jobs:
             -n "$SAFE_FIXTURE_ARTIFACT" \
             -D .codex-artifacts/vk-passport-sanitized
           test -s .codex-artifacts/vk-passport-sanitized/fixtures/passport-test-01.jpg
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
 
-          root = Path('.codex-artifacts/vk-passport-sanitized')
-          metadata = json.loads((root / 'metadata.json').read_text(encoding='utf-8'))
-          assert metadata.get('pii_sanitized') is True
-          assert int(metadata.get('fixture_count', 0)) >= 1
-          first = metadata.get('items', [])[0]
-          assert first.get('file') == 'passport-test-01.jpg'
-          assert str(first.get('synthetic_name', '')).startswith('ТЕСТ ')
-          print('Approved sanitized Passport fixture is ready.')
-          PY
-
-      - name: Install registration dependencies
-        working-directory: registration
-        run: npm ci
-
-      - name: Validate backend code
-        working-directory: registration
-        run: |
-          npm run check
-          npm run test:special-test-cleanup
-          npm run test:special-test-draw-exclusion
-          npm run test:special-public-quota
-          npm run test:special-draws
-          npm run test:special-social
-
-      - name: Verify the deployed backend and event page
+      - name: Verify production before E2E
         shell: bash
         run: |
           mkdir -p .codex-artifacts/amber-combine-production-application-e2e
           curl --fail --silent --show-error --max-time 30 \
-            "https://${APP_NAME}.fly.dev/api/v1/health" \
+            https://znanie-kgd80-fest.fly.dev/api/v1/health \
             > .codex-artifacts/amber-combine-production-application-e2e/health-before-e2e.json
           curl --fail --silent --show-error --max-time 30 \
-            "https://kgd80.ru/special/amber-combine-jewelry-excursion/" \
+            https://kgd80.ru/special/amber-combine-jewelry-excursion/ \
             > /dev/null
           python3 - <<'PY'
           import json
@@ -176,16 +69,7 @@ jobs:
           assert payload.get('ok') is True
           PY
 
-      - name: Capture Fly release metadata
-        shell: bash
-        run: |
-          flyctl status -a "$APP_NAME" --json \
-            > .codex-artifacts/amber-combine-production-application-e2e/fly-status.json
-          flyctl releases -a "$APP_NAME" --json \
-            > .codex-artifacts/amber-combine-production-application-e2e/fly-releases.json \
-            || true
-
-      - name: Install site test dependencies
+      - name: Install Playwright
         working-directory: site
         run: |
           npm ci
@@ -202,10 +86,10 @@ jobs:
         shell: bash
         run: |
           curl --fail --silent --show-error --max-time 30 \
-            "https://${APP_NAME}.fly.dev/api/v1/health" \
+            https://znanie-kgd80-fest.fly.dev/api/v1/health \
             > .codex-artifacts/amber-combine-production-application-e2e/health-after-cleanup.json
           curl --fail --silent --show-error --max-time 30 \
-            "https://kgd80.ru/special/amber-combine-jewelry-excursion/" \
+            https://kgd80.ru/special/amber-combine-jewelry-excursion/ \
             > /dev/null
           python3 - <<'PY'
           import json

@@ -6,6 +6,7 @@ on:
       - feat/amber-combine-jewelry-excursion
     paths:
       - .github/workflows/send-amber-verification-emails.yml
+      - .github/amber-email-verification.trigger
   workflow_dispatch:
 
 permissions:
@@ -44,7 +45,7 @@ jobs:
           npm run test:special-public-quota
           npm run test:special-draws
 
-      - name: Deploy backend with TEST cleanup command
+      - name: Deploy backend with auditable TEST mail cleanup
         run: flyctl deploy --remote-only --app "$FLY_APP" --config fly.toml
 
       - name: Verify production backend has no citizenship confirmation control
@@ -82,7 +83,7 @@ jobs:
               f.write(f"AMBER_TEST_APPLICATION_SUBJECT={data['subject']}\n")
           PY
 
-      - name: Send the exact final winner email for the same TEST registration
+      - name: Send the exact final winner email and delete the TEST registration
         shell: bash
         run: |
           set -euo pipefail
@@ -98,25 +99,11 @@ jobs:
           assert data['applicationCode'] == os.environ['AMBER_TEST_APPLICATION_CODE']
           assert data['subject'].startswith('Вы победили в розыгрыше:')
           assert 'ПРОЕКТ' not in data['subject'].upper()
+          assert data['cleanup']['removedApplication'] == 1
+          assert data['cleanup']['removedProfile'] == 1
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f:
               f.write(f"AMBER_FINAL_WINNER_MESSAGE_ID={data['messageId']}\n")
               f.write(f"AMBER_FINAL_WINNER_SUBJECT={data['subject']}\n")
-          PY
-
-      - name: Delete the TEST registration after both emails were accepted
-        shell: bash
-        run: |
-          set -euo pipefail
-          flyctl ssh console -a "$FLY_APP" -C "sh -lc 'cd /app/registration && AMBER_TEST_APPLICATION_CODE=\"$AMBER_TEST_APPLICATION_CODE\" npm run cleanup:amber-test-application'" | tee /tmp/cleanup.log
-          json="$(grep -E '^\{"cleaned":true' /tmp/cleanup.log | tail -n 1)"
-          [[ -n "$json" ]]
-          printf '%s' "$json" >/tmp/cleanup.json
-          python3 - <<'PY'
-          import json
-          data = json.load(open('/tmp/cleanup.json', encoding='utf-8'))
-          assert data['cleaned'] is True
-          assert data['removedApplication'] == 1
-          assert data['removedProfile'] == 1
           PY
 
       - name: Print auditable result

@@ -115,6 +115,7 @@ def patch_cleanup_test() -> bool:
     replacements = {
         "const code = 'SP-TEST-CLEANUP';": "const code = 'TEST-SP-CLEANUP';",
         "const code = 'SP-TEST-CLEANUP-1';": "const code = 'TEST-SP-CLEANUP-1';",
+        "const code = 'SP-NOT-TEST';": "const code = 'TEST-SP-NOT-TEST';",
     }
     for old, new in replacements.items():
         if new not in text:

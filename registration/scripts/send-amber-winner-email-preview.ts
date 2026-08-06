@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { loadConfig } from '../src/config';
 import { createDatabase } from '../src/db/client';
 import { runMigrations } from '../src/db/migrate';
@@ -7,8 +8,56 @@ import { cleanupSpecialTestApplication } from '../src/services/special-test-clea
 
 const config = loadConfig();
 const target = process.env.AMBER_WINNER_PREVIEW_EMAIL?.trim() || 'info@kgd80.ru';
-const applicationCode = process.env.AMBER_WINNER_APPLICATION_CODE?.trim() || 'AMBER-2026-001';
+let applicationCode = process.env.AMBER_WINNER_APPLICATION_CODE?.trim() || '';
 const fullName = process.env.AMBER_WINNER_FULL_NAME?.trim() || 'Максим';
+
+type GeneratedTestApplication = {
+  applicationCode: string;
+  applicationId: number;
+  telegramOutboxId: number;
+  telegramDelivered: boolean;
+  sent: boolean;
+  messageId: string | null;
+  subject: string | null;
+  target: string;
+};
+
+let generatedTestApplication: GeneratedTestApplication | null = null;
+if (!applicationCode) {
+  const command = spawnSync('npm', ['run', 'create:amber-test-application'], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      AMBER_TEST_EMAIL: target,
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  const stdout = command.stdout || '';
+  const stderr = command.stderr || '';
+  const jsonLine = stdout
+    .split(/\r?\n/u)
+    .reverse()
+    .find((line) => line.startsWith('{"applicationCode":'));
+
+  if (command.status !== 0 || !jsonLine) {
+    throw new Error(`Visible TEST application creation failed.\n${stdout}\n${stderr}`);
+  }
+
+  generatedTestApplication = JSON.parse(jsonLine) as GeneratedTestApplication;
+  if (
+    !generatedTestApplication.sent
+    || !generatedTestApplication.telegramDelivered
+    || generatedTestApplication.target !== target
+    || !generatedTestApplication.applicationCode.startsWith('TEST-AMBER-MAIL-')
+  ) {
+    throw new Error(`Visible TEST application did not complete: ${jsonLine}`);
+  }
+
+  applicationCode = generatedTestApplication.applicationCode;
+}
+
 const service = createEmailNotificationService({
   enabled: config.postboxEnabled,
   endpoint: config.postboxEndpoint,
@@ -86,6 +135,7 @@ console.log(JSON.stringify({
   subject: result.subject,
   target,
   applicationCode,
+  generatedTestApplication,
   cleanup: cleanup ? {
     removedApplication: cleanup.removedApplication,
     removedProfile: cleanup.removedProfile,

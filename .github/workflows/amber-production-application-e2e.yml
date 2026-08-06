@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: amber-production-application-e2e
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   APP_NAME: znanie-kgd80-fest

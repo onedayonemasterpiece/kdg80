@@ -23,6 +23,7 @@
     "test:special-draws": "tsx --test src/services/special-draws.test.ts",
     "test:special-public-quota": "tsx --test src/services/special-public-quota.test.ts",
     "test:special-test-cleanup": "tsx --test src/services/special-test-cleanup.test.ts",
+    "test:special-test-draw-exclusion": "tsx --test src/services/special-test-draw-exclusion.test.ts",
     "test:special-social-reminders": "tsx --test src/services/special-social-reminders.test.ts"
   },
   "dependencies": {

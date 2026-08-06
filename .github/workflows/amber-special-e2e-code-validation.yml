@@ -1,0 +1,53 @@
+name: Amber special E2E code validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/amber-combine-jewelry-excursion
+    paths:
+      - .github/workflows/amber-special-e2e-code-validation.yml
+      - registration/src/api/special.ts
+      - registration/src/lib/storage.ts
+      - registration/src/services/special-applications.ts
+      - registration/src/services/special-test-cleanup.ts
+      - registration/src/services/special-test-cleanup.test.ts
+      - registration/package.json
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: npm
+          cache-dependency-path: registration/package-lock.json
+
+      - name: Install registration dependencies
+        working-directory: registration
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: registration
+        run: npm run check
+
+      - name: Test special cleanup
+        working-directory: registration
+        run: npm run test:special-test-cleanup
+
+      - name: Test hidden quota contract
+        working-directory: registration
+        run: npm run test:special-public-quota
+
+      - name: Test special draw and social scoring
+        working-directory: registration
+        run: |
+          npm run test:special-draws
+          npm run test:special-social

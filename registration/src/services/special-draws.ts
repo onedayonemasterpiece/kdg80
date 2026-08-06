@@ -462,6 +462,7 @@ function listCandidateRows(
     WHERE aps.showing_id = ?
       AND a.status = 'accepted'
       AND a.score > 0
+      AND a.application_code NOT LIKE 'TEST-%'
     ORDER BY a.created_at ASC, a.id ASC
   `).all(showing.id) as SpecialApplicationRow[];
 
@@ -726,6 +727,7 @@ export function listSpecialEventsForTelegram(db: Database.Database) {
         WHERE aps.showing_id = ?
           AND a.status = 'accepted'
           AND a.score > 0
+          AND a.application_code NOT LIKE 'TEST-%'
       `).get(showing.id) as { count: number };
       const latestPublished = getLatestDrawRow(db, showing.id, 'published');
       return {

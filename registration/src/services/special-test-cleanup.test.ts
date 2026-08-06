@@ -100,7 +100,7 @@ function insertApplication(
 
 test('cleanup token is deterministic and rejects altered values', () => {
   const secret = 'test-fingerprint-secret';
-  const code = 'SP-TEST-CLEANUP';
+  const code = 'TEST-SP-CLEANUP';
   const token = createSpecialTestCleanupToken(secret, code);
   assert.equal(verifySpecialTestCleanupToken(secret, code, token), true);
   assert.equal(verifySpecialTestCleanupToken(secret, code, `${token}x`), false);
@@ -124,7 +124,7 @@ test('special TEST application cleanup removes DB rows and private photos', asyn
     s3ForcePathStyle: true,
   });
   const { publicKeyPemBase64, privateKeyPemBase64 } = keyPair();
-  const code = 'SP-TEST-CLEANUP-1';
+  const code = 'TEST-SP-CLEANUP-1';
 
   try {
     const { applicationId, profileId } = insertApplication(db, publicKeyPemBase64, {

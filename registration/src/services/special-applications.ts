@@ -1089,6 +1089,7 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     );
   }
 
+  const testApplication = isSpecialTestFullName(fullName);
   const fullNameFingerprint = computeFingerprint(deps.fingerprintSecret, fullName.toLowerCase());
   const emailFingerprint = computeFingerprint(deps.fingerprintSecret, email);
   const phoneFingerprint = computeFingerprint(deps.fingerprintSecret, phone);
@@ -1107,7 +1108,9 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     throw new SpecialApplicationError(409, 'duplicate_application', duplicate.message);
   }
 
-  const applicationCode = crypto.randomUUID();
+  const applicationCode = testApplication
+    ? `TEST-${crypto.randomUUID()}`
+    : crypto.randomUUID();
   const analysis = await analyzePhotos(Array.isArray(payload.photos) ? payload.photos : []);
   const photoResults: Array<AnalyzedPhoto & {
     storageKey: string;

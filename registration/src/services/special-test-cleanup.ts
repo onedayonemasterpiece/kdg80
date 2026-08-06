@@ -60,6 +60,14 @@ export async function cleanupSpecialTestApplication(
   },
 ) {
   const applicationCode = options.applicationCode.trim();
+  if (!applicationCode.startsWith('TEST-')) {
+    throw new SpecialTestCleanupError(
+      403,
+      'not_a_test_application_code',
+      'Удаление разрешено только для заявок с техническим кодом TEST-.',
+    );
+  }
+
   const row = db.prepare(`
     SELECT
       id,

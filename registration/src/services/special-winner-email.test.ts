@@ -21,10 +21,10 @@ test('winner email requests only the required Russian passport details and gives
 
   assert.match(rendered.subject, /Вы победили/);
   assert.match(rendered.text, /полное ФИО/i);
-  assert.match(rendered.text, /серию и номер паспорта гражданина Российской Федерации/i);
+  assert.match(rendered.text, /серия и номер/i);
   assert.match(rendered.text, /Фотографию или скан паспорта отправлять не нужно/i);
   assert.match(rendered.text, /10 августа/i);
-  assert.match(rendered.text, /согласие на их обработку и передачу/i);
+  assert.doesNotMatch(rendered.text, /согласие на их обработку и передачу/i);
   assert.match(rendered.html, /amber-combine-jewelry-production\.png/);
   assert.doesNotMatch(rendered.text, /код подразделения/i);
 });

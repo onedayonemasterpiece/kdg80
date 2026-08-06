@@ -17,7 +17,7 @@ env:
 jobs:
   release-and-send:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,9 +28,7 @@ jobs:
         with:
           node-version: 22.12.0
           cache: npm
-          cache-dependency-path: |
-            registration/package-lock.json
-            site/package-lock.json
+          cache-dependency-path: registration/package-lock.json
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
@@ -45,74 +43,10 @@ jobs:
           npm run test:special-public-quota
           npm run test:special-draws
 
-      - name: Install site image tooling
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq imagemagick
-          command -v aws
-
-      - name: Build production site
-        working-directory: site
-        run: |
-          npm ci
-          npm run build
-
-      - name: Read current production storage credentials without logging them
-        shell: bash
-        run: |
-          set -euo pipefail
-          read_fly_var() {
-            local primary="$1"
-            local fallback="$2"
-            local value
-            value="$(flyctl ssh console -a "$FLY_APP" -C "sh -lc 'printenv ${primary} || true'" 2>/dev/null | tail -n 1 | tr -d '\r')"
-            if [[ -z "$value" && -n "$fallback" ]]; then
-              value="$(flyctl ssh console -a "$FLY_APP" -C "sh -lc 'printenv ${fallback} || true'" 2>/dev/null | tail -n 1 | tr -d '\r')"
-            fi
-            printf '%s' "$value"
-          }
-
-          BUCKET="$(read_fly_var S3_BUCKET YC_BUCKET_NAME)"
-          ENDPOINT="$(read_fly_var S3_ENDPOINT YC_S3_ENDPOINT)"
-          REGION="$(read_fly_var S3_REGION YC_REGION)"
-          ACCESS_KEY="$(read_fly_var S3_ACCESS_KEY_ID YC_ACCESS_KEY_ID)"
-          SECRET_KEY="$(read_fly_var S3_SECRET_ACCESS_KEY YC_SECRET_ACCESS_KEY)"
-          ENDPOINT="${ENDPOINT:-https://storage.yandexcloud.net}"
-          REGION="${REGION:-ru-central1}"
-
-          [[ -n "$BUCKET" && -n "$ACCESS_KEY" && -n "$SECRET_KEY" ]]
-          echo "::add-mask::$ACCESS_KEY"
-          echo "::add-mask::$SECRET_KEY"
-          {
-            echo "YC_BUCKET_NAME=$BUCKET"
-            echo "YC_S3_ENDPOINT=$ENDPOINT"
-            echo "YC_REGION=$REGION"
-            echo "YC_ACCESS_KEY_ID=$ACCESS_KEY"
-            echo "YC_SECRET_ACCESS_KEY=$SECRET_KEY"
-          } >> "$GITHUB_ENV"
-
-      - name: Publish the updated public page without bucket listing
-        shell: bash
-        run: |
-          export AWS_ACCESS_KEY_ID="$YC_ACCESS_KEY_ID"
-          export AWS_SECRET_ACCESS_KEY="$YC_SECRET_ACCESS_KEY"
-          export AWS_DEFAULT_REGION="$YC_REGION"
-          aws --endpoint-url "$YC_S3_ENDPOINT" s3 cp site/dist "s3://$YC_BUCKET_NAME/" \
-            --recursive --no-progress \
-            --exclude 'tickets/*' \
-            --exclude 'exports/*' \
-            --exclude 'preview-*' \
-            --exclude 'preview-*/*' \
-            --exclude 'yandex_*.html' \
-            --exclude 'robots.txt' \
-            --exclude 'sitemap.xml' \
-            --exclude 'llms.txt' \
-            --exclude 'llms-full.txt'
-
       - name: Deploy registration backend
         run: flyctl deploy --remote-only --app "$FLY_APP" --config fly.toml
 
-      - name: Verify production page, API and email image
+      - name: Verify production backend and email image
         shell: bash
         run: |
           set -euo pipefail
@@ -124,9 +58,6 @@ jobs:
           done
           grep -q '"ok":true' /tmp/health.json
           curl -fsSI "https://${FLY_APP}.fly.dev/shared-assets/email/amber-combine-jewelry-production.png" | grep -q '200'
-          curl -fsS 'https://kgd80.ru/special/amber-combine-jewelry-excursion/' >/tmp/amber-page.html
-          grep -q '9 августа 2026 года в 11:00' /tmp/amber-page.html
-          grep -q 'гражданином Российской Федерации' /tmp/amber-page.html
 
       - name: Send the real production-rendered approval email through Yandex Postbox
         shell: bash
@@ -135,3 +66,8 @@ jobs:
           flyctl ssh console -a "$FLY_APP" -C "sh -lc 'cd /app/registration && AMBER_WINNER_PREVIEW_EMAIL=info@kgd80.ru npm run send:amber-winner-preview'" | tee /tmp/preview-send.log
           grep -q '"sent":true' /tmp/preview-send.log
           grep -q 'info@kgd80.ru' /tmp/preview-send.log
+
+      - name: Capture deployed release
+        shell: bash
+        run: |
+          flyctl releases -a "$FLY_APP" --json | head -c 4000

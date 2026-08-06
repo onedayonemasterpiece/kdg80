@@ -1,5 +1,5 @@
 name: Amber final production verification temp
-# trigger: 2026-08-06T22:24:00+02:00
+# trigger: 2026-08-06T22:29:00+02:00
 
 on:
   push:

@@ -31,7 +31,10 @@ export function isSpecialTestFullName(value: unknown) {
     .trim()
     .replace(/\s+/gu, ' ')
     .toLocaleUpperCase('ru-RU');
-  return normalized === 'ТЕСТ' || normalized.startsWith('ТЕСТ ');
+  return normalized === 'ТЕСТ'
+    || normalized.startsWith('ТЕСТ ')
+    || normalized === 'TEST'
+    || normalized.startsWith('TEST ');
 }
 
 export function createSpecialTestCleanupToken(secret: string, applicationCode: string) {
@@ -106,7 +109,7 @@ export async function cleanupSpecialTestApplication(
     throw new SpecialTestCleanupError(
       403,
       'not_a_test_application',
-      'Удаление разрешено только для заявок, где ФИО начинается с «ТЕСТ».',
+      'Удаление разрешено только для заявок, где ФИО начинается с «ТЕСТ» или «TEST».',
     );
   }
 

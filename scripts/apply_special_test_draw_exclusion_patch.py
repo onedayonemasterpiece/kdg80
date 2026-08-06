@@ -38,13 +38,19 @@ def patch_applications() -> bool:
         "    : crypto.randomUUID();\n",
         "TEST-prefixed application code",
     )
-    text = replace_once(
-        text,
+
+    late_declaration = (
         "  const testApplication = isSpecialTestFullName(fullName);\n"
-        "  if (!testApplication) {\n",
-        "  if (!testApplication) {\n",
-        "late TEST classification removal",
+        "  if (!testApplication) {\n"
     )
+    declaration_count = text.count("  const testApplication = isSpecialTestFullName(fullName);\n")
+    if declaration_count == 2 and late_declaration in text:
+        text = text.replace(late_declaration, "  if (!testApplication) {\n", 1)
+    elif declaration_count != 1:
+        raise RuntimeError(
+            f"Expected exactly one final TEST classification declaration, found {declaration_count}."
+        )
+
     if text == original:
         return False
     APPLICATIONS.write_text(text, encoding="utf-8")

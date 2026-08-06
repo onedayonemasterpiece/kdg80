@@ -52,8 +52,10 @@ jobs:
         shell: bash
         run: |
           test -n "$FLY_API_TOKEN"
-          flyctl auth whoami >/dev/null
-          echo "Fly credential is available."
+          # App-scoped deploy tokens cannot answer `auth whoami`, but they can
+          # access the target app. Validate the permission actually needed here.
+          flyctl status -a "$APP_NAME" >/dev/null
+          echo "Fly application access is available."
 
       - name: Download the approved PII-sanitized Passport fixture
         shell: bash

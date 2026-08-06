@@ -1,0 +1,57 @@
+name: Apply amber 48h draw and winner email changes
+
+on:
+  push:
+    branches:
+      - feat/amber-combine-jewelry-excursion
+    paths:
+      - .github/workflows/apply-amber-48h-citizenship-winner-email.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/amber-combine-jewelry-excursion
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+          cache-dependency-path: |
+            registration/package-lock.json
+            site/package-lock.json
+      - name: Apply deterministic patch
+        run: python3 scripts/apply_amber_48h_citizenship_winner_email.py
+      - name: Validate registration backend
+        working-directory: registration
+        run: |
+          npm ci
+          npm run check
+          npm run test:special-amber-eligibility
+          npm run test:special-test-cleanup
+          npm run test:special-test-draw-exclusion
+          npm run test:special-public-quota
+          npm run test:special-draws
+          npm run test:special-social
+      - name: Build site
+        working-directory: site
+        run: |
+          npm ci
+          npm run build
+      - name: Commit implementation
+        run: |
+          git config user.name onedayonemasterpiece
+          git config user.email estershow6@gmail.com
+          git add registration site docs "Исходные данные/Спецмероприятия/specialregistration.md"
+          if git diff --cached --quiet; then
+            echo "No implementation changes to commit."
+            exit 1
+          fi
+          git commit -m "feat: move amber draw to 48h and prepare winner emails"
+          git push origin HEAD:feat/amber-combine-jewelry-excursion

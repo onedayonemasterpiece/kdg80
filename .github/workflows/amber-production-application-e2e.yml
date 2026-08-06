@@ -90,9 +90,6 @@ jobs:
                           add(parsed[0])
                       add(value)
 
-          # A common extraction error keeps only the macaroon fragment and drops
-          # the required `FlyV1 ` prefix. Recover that exact documented wrapper
-          # without printing any candidate value.
           for candidate in list(candidates):
               if candidate.startswith(('fm2_', 'fo1_', 'fo2_')):
                   add(f'FlyV1 {candidate}')
@@ -198,8 +195,8 @@ jobs:
           flyctl deploy . \
             -a "$APP_NAME" \
             -c .codex-artifacts/fly/fly.toml \
-            --dockerfile registration/Dockerfile \
-            --ignorefile .codex-artifacts/fly/dockerignore \
+            --dockerfile "$GITHUB_WORKSPACE/registration/Dockerfile" \
+            --ignorefile "$GITHUB_WORKSPACE/.codex-artifacts/fly/dockerignore" \
             --remote-only \
             --strategy rolling \
             --wait-timeout 15m \

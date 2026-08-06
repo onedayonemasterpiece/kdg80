@@ -48,13 +48,72 @@ jobs:
       - name: Set up flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Verify deployment credential
+      - name: Verify and safely normalize deployment credential
         shell: bash
         run: |
           test -n "$FLY_API_TOKEN"
-          # App-scoped deploy tokens cannot answer `auth whoami`, but they can
-          # access the target app. Validate the permission actually needed here.
-          flyctl status -a "$APP_NAME" >/dev/null
+          rm -rf /tmp/fly-token-candidates
+          mkdir -p /tmp/fly-token-candidates
+          python3 - <<'PY'
+          import os
+          import shlex
+          from pathlib import Path
+
+          raw = os.environ['FLY_API_TOKEN']
+          candidates: list[str] = []
+
+          def add(value: str) -> None:
+              value = value.strip()
+              changed = True
+              while changed and len(value) >= 2:
+                  changed = False
+                  if (value[0], value[-1]) in (("'", "'"), ('"', '"')):
+                      value = value[1:-1].strip()
+                      changed = True
+              if value and value not in candidates:
+                  candidates.append(value)
+
+          add(raw)
+          lines = raw.splitlines() or [raw]
+          prefixes = ('FLY_API_TOKEN=', 'export FLY_API_TOKEN=', 'access_token:')
+          for line in lines:
+              stripped = line.strip()
+              add(stripped)
+              for prefix in prefixes:
+                  if stripped.startswith(prefix):
+                      value = stripped[len(prefix):].strip()
+                      try:
+                          parsed = shlex.split(value)
+                      except ValueError:
+                          parsed = []
+                      if len(parsed) == 1:
+                          add(parsed[0])
+                      add(value)
+
+          for index, candidate in enumerate(candidates):
+              (Path('/tmp/fly-token-candidates') / f'{index:02d}').write_text(candidate, encoding='utf-8')
+          PY
+
+          matched=''
+          for candidate_file in /tmp/fly-token-candidates/*; do
+            candidate=$(cat "$candidate_file")
+            if FLY_API_TOKEN="$candidate" flyctl status -a "$APP_NAME" >/dev/null 2>&1; then
+              echo "::add-mask::$candidate"
+              delimiter="FLY_TOKEN_$(date +%s%N)"
+              {
+                echo "FLY_API_TOKEN<<$delimiter"
+                printf '%s\n' "$candidate"
+                echo "$delimiter"
+              } >> "$GITHUB_ENV"
+              matched=1
+              break
+            fi
+          done
+
+          if [ -z "$matched" ]; then
+            echo "FLY_API_TOKEN is present, but it does not authenticate to $APP_NAME after safe normalization." >&2
+            exit 1
+          fi
           echo "Fly application access is available."
 
       - name: Download the approved PII-sanitized Passport fixture

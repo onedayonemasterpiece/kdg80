@@ -76,12 +76,12 @@ const structuredData = {
           <li><strong>Специальный доступ</strong><span>на действующее ювелирное производство</span></li>
           <li><strong>Количество мест ограничено</strong><span>победителей определит розыгрыш</span></li>
         </ul>
-        <p class="special-note"><strong>Важно:</strong> заявка не является билетом. Участие возможно только после персонального подтверждения победы организаторами. Точку сбора и требования пропускного режима победители получат отдельно.</p>
+        <p class="special-note"><strong>Важно:</strong> заявка не является билетом. К розыгрышу допускаются только граждане Российской Федерации. Победителям потребуется ответить на письмо организатора и предоставить полное ФИО, серию и номер паспорта гражданина РФ для оформления пропуска. Фотографию или скан паспорта отправлять не нужно.</p>
         <div class="special-access-note" aria-label="Как попасть на экскурсию">
           <strong>Как попасть</strong>
           <p>Подать заявку могут участники, посетившие не менее пяти событий фестиваля и подтвердившие посещения штампами в Паспорте участника фестиваля. Пять штампов дают допуск к розыгрышу; каждое следующее подтверждённое посещение увеличивает вес заявки.</p>
           <a href="/programma/">Посмотреть программу фестиваля</a>
-          <span>Розыгрыш запланирован автоматически за сутки до экскурсии — 10 августа 2026 года.</span>
+          <span>Розыгрыш и отправка писем победителям запланированы за 48 часов до экскурсии — 9 августа 2026 года в 11:00.</span>
         </div>
       </section>
 
@@ -129,6 +129,11 @@ const structuredData = {
           <div class="special-files" data-special-files></div>
           <div class="special-precheck" data-special-precheck hidden></div>
         </fieldset>
+
+        <label class="special-consent">
+          <input name="russianCitizenshipConfirmed" type="checkbox" required />
+          <span>Подтверждаю, что являюсь гражданином Российской Федерации и в случае победы предоставлю полное ФИО, серию и номер паспорта гражданина РФ для оформления пропуска на предприятие.</span>
+        </label>
 
         <label class="special-consent">
           <input name="consentAccepted" type="checkbox" required />
@@ -507,6 +512,9 @@ const structuredData = {
       payload.append('website', String(formData.get('website') || ''));
       if (formData.get('consentAccepted') === 'on') {
         payload.append('consentAccepted', 'on');
+      }
+      if (formData.get('russianCitizenshipConfirmed') === 'on') {
+        payload.append('russianCitizenshipConfirmed', 'on');
       }
       if (selectedShowingSlugs) {
         selectedShowingSlugs.forEach((slug) => payload.append('selectedShowingSlugs', String(slug)));
@@ -1186,6 +1194,7 @@ const structuredData = {
               email: String(formData.get('email') || ''),
               phone: String(formData.get('phone') || ''),
               consentAccepted: formData.get('consentAccepted') === 'on',
+              russianCitizenshipConfirmed: formData.get('russianCitizenshipConfirmed') === 'on',
               website: String(formData.get('website') || ''),
               photos,
             }),
@@ -1197,7 +1206,7 @@ const structuredData = {
         setStatus(
           data.status === 'accepted' ? 'success' : 'error',
           data.status === 'accepted'
-            ? 'Заявка принята к розыгрышу. Это не билет; результаты будут подведены отдельно.'
+            ? 'Заявка принята к розыгрышу. Результаты будут подведены 9 августа; победители получат письмо на указанный email.'
             : data.rejectionReason || 'Заявка не допущена к розыгрышу.',
         );
         summaryEl.hidden = false;

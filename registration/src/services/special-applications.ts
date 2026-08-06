@@ -29,6 +29,10 @@ type SpecialEventRow = {
   no_show_penalty_points: number;
   previous_winner_weight_percent: number;
   hide_public_quota: number;
+  auto_draw_lead_hours: number;
+  requires_russian_citizenship: number;
+  winner_email_enabled: number;
+  winner_response_deadline_hours: number;
 };
 
 type SpecialShowingRow = {
@@ -58,6 +62,7 @@ export type SpecialApplicationPayload = {
   email: string;
   phone: string;
   consentAccepted: boolean;
+  russianCitizenshipConfirmed?: boolean;
   photos: SpecialPhotoPayload[];
   website?: string;
   vkAuthToken?: string;
@@ -199,6 +204,7 @@ function publicSpecialEventView(event: SpecialEventRow, showings: SpecialShowing
     venueName: event.venue_name,
     applicationAvailable: event.public_state !== 'closed' && publicShowings.some((showing) => showing.applicationAvailable),
     quotaVisibility: event.hide_public_quota ? 'hidden' as const : 'visible' as const,
+    requiresRussianCitizenship: Boolean(event.requires_russian_citizenship),
     minStampCount: event.min_stamp_count,
     pointRules: {
       basePoints: event.base_points,
@@ -1052,6 +1058,14 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     throw new SpecialApplicationError(410, 'special_event_closed', 'Заявки на это спецмероприятие закрыты.');
   }
 
+  if (loaded.event.requires_russian_citizenship && !payload.russianCitizenshipConfirmed) {
+    throw new SpecialApplicationError(
+      400,
+      'russian_citizenship_confirmation_required',
+      'Подтвердите гражданство Российской Федерации. К розыгрышу допускаются только граждане РФ.',
+    );
+  }
+
   const selectedSlugs = Array.isArray(payload.selectedShowingSlugs)
     ? payload.selectedShowingSlugs.map((item) => String(item).trim()).filter(Boolean)
     : [];
@@ -1217,6 +1231,7 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
         vk_auth_verified_at,
         vk_auth_scope,
         selected_showing_ids_json,
+        russian_citizenship_confirmed,
         status,
         rejection_reason,
         uploaded_photo_count,
@@ -1252,6 +1267,7 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
         @vkAuthVerifiedAt,
         @vkAuthScope,
         @selectedShowingIdsJson,
+        @russianCitizenshipConfirmed,
         @status,
         @rejectionReason,
         @uploadedPhotoCount,
@@ -1285,6 +1301,7 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
       vkAuthVerifiedAt: vkAuth ? new Date().toISOString() : null,
       vkAuthScope: vkAuth?.scope ?? null,
       selectedShowingIdsJson: JSON.stringify(selectedShowingIds),
+      russianCitizenshipConfirmed: payload.russianCitizenshipConfirmed ? 1 : 0,
       status,
       rejectionReason: rejectionReason || null,
       uploadedPhotoCount: analysis.uploadedPhotoCount,
@@ -1363,11 +1380,9 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     throw error;
   }
 
-  if (!testApplication) {
-    enqueueSpecialApplicationCreated(deps.db, {
-      applicationId,
-    });
-  }
+  enqueueSpecialApplicationCreated(deps.db, {
+    applicationId,
+  });
 
   return {
     applicationId,
@@ -1376,6 +1391,7 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     fullName,
     email,
     phone,
+    russianCitizenshipConfirmed: Boolean(payload.russianCitizenshipConfirmed),
     status,
     rejectionReason: rejectionReason || null,
     event: publicSpecialEventView(loaded.event, loaded.showings),

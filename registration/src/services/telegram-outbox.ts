@@ -284,7 +284,7 @@ function formatRegistrationCreatedMessage(payload: {
   ].join('\n');
 }
 
-function formatSpecialApplicationCreatedMessage(payload: {
+export function formatSpecialApplicationCreatedMessage(payload: {
   applicationCode: string;
   fullName: string;
   title: string;
@@ -307,8 +307,10 @@ function formatSpecialApplicationCreatedMessage(payload: {
   };
   score: number;
 }) {
+  const testApplication = payload.applicationCode.startsWith('TEST-');
   const lines = [
-    'Новая заявка на розыгрыш',
+    testApplication ? 'ТЕСТОВАЯ заявка на розыгрыш' : 'Новая заявка на розыгрыш',
+    testApplication ? 'Технический E2E: заявка будет удалена после проверки.' : null,
     `ФИО: ${payload.fullName}`,
     `Спецмероприятие: ${payload.title}`,
     `Формат и площадка: ${payload.formatLabel}, ${payload.venueName}`,

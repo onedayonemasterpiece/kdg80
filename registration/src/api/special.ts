@@ -241,6 +241,8 @@ function multipartApplicationPayloadFromParts(parts: MultipartPart[]): SpecialAp
     email: multipartField(parts, 'email'),
     phone: multipartField(parts, 'phone'),
     consentAccepted: multipartField(parts, 'consentAccepted') === 'on' || multipartField(parts, 'consentAccepted') === 'true',
+    russianCitizenshipConfirmed: multipartField(parts, 'russianCitizenshipConfirmed') === 'on'
+      || multipartField(parts, 'russianCitizenshipConfirmed') === 'true',
     website: multipartField(parts, 'website'),
     vkAuthToken: multipartField(parts, 'vkAuthToken'),
     photos: photosFromMultipart(parts),

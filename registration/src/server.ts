@@ -213,6 +213,9 @@ if (telegramBot) {
     privateKeyPemBase64: config.piiPrivateKeyPemBase64,
     timeZone: config.timeZone,
     syncPublicStateManifest,
+    emailNotifications,
+    fingerprintSecret: config.piiFingerprintSecret,
+    postboxConfigurationSetName: config.postboxConfigurationSetName,
   });
 
   if (config.piiPrivateKeyPemBase64) {

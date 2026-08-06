@@ -11,6 +11,10 @@ type SpecialEventRow = {
   format_label: string;
   venue_name: string;
   previous_winner_weight_percent: number;
+  auto_draw_lead_hours: number;
+  requires_russian_citizenship: number;
+  winner_email_enabled: number;
+  winner_response_deadline_hours: number;
 };
 
 type SpecialShowingRow = {
@@ -36,6 +40,7 @@ type SpecialApplicationRow = {
   pii_alg: string;
   selected_showing_ids_json: string;
   status: string;
+  russian_citizenship_confirmed: number;
   uploaded_photo_count: number;
   unique_photo_count: number;
   accepted_photo_count: number;
@@ -107,6 +112,7 @@ export type SpecialParticipant = {
   selectedShowingCount: number;
   previousSpecialWinner: boolean;
   previousWinnerWeightPercent: number;
+  russianCitizenshipConfirmed: boolean;
   createdAt: string;
 };
 
@@ -189,7 +195,8 @@ function maskPhone(phone: string) {
 
 function getEventById(db: Database.Database, eventId: number) {
   return db.prepare(`
-    SELECT id, slug, title, format_label, venue_name, previous_winner_weight_percent
+    SELECT id, slug, title, format_label, venue_name, previous_winner_weight_percent,
+      auto_draw_lead_hours, requires_russian_citizenship, winner_email_enabled, winner_response_deadline_hours
     FROM special_events
     WHERE id = ?
     LIMIT 1
@@ -339,6 +346,10 @@ export function listSpecialShowingsDueForAutoDraw(
       e.format_label AS event_format_label,
       e.venue_name AS event_venue_name,
       e.previous_winner_weight_percent AS event_previous_winner_weight_percent,
+      e.auto_draw_lead_hours AS event_auto_draw_lead_hours,
+      e.requires_russian_citizenship AS event_requires_russian_citizenship,
+      e.winner_email_enabled AS event_winner_email_enabled,
+      e.winner_response_deadline_hours AS event_winner_response_deadline_hours,
       s.id AS showing_id,
       s.special_event_id AS showing_special_event_id,
       s.slug AS showing_slug,
@@ -353,7 +364,7 @@ export function listSpecialShowingsDueForAutoDraw(
     INNER JOIN special_events e ON e.id = s.special_event_id
     WHERE s.draw_status NOT IN ('published', 'final')
       AND s.lottery_quota > 0
-      AND datetime(?) >= datetime(s.starts_at, '-24 hours')
+      AND datetime(?) >= datetime(s.starts_at, printf('-%d hours', e.auto_draw_lead_hours))
       AND datetime(?) < datetime(s.starts_at)
       AND NOT EXISTS (
         SELECT 1
@@ -369,6 +380,10 @@ export function listSpecialShowingsDueForAutoDraw(
     event_format_label: string;
     event_venue_name: string;
     event_previous_winner_weight_percent: number;
+    event_auto_draw_lead_hours: number;
+    event_requires_russian_citizenship: number;
+    event_winner_email_enabled: number;
+    event_winner_response_deadline_hours: number;
     showing_id: number;
     showing_special_event_id: number;
     showing_slug: string;
@@ -389,6 +404,10 @@ export function listSpecialShowingsDueForAutoDraw(
       format_label: row.event_format_label,
       venue_name: row.event_venue_name,
       previous_winner_weight_percent: row.event_previous_winner_weight_percent,
+      auto_draw_lead_hours: row.event_auto_draw_lead_hours,
+      requires_russian_citizenship: row.event_requires_russian_citizenship,
+      winner_email_enabled: row.event_winner_email_enabled,
+      winner_response_deadline_hours: row.event_winner_response_deadline_hours,
     },
     showing: {
       id: row.showing_id,
@@ -402,7 +421,9 @@ export function listSpecialShowingsDueForAutoDraw(
       lottery_quota: row.showing_lottery_quota,
       draw_status: row.showing_draw_status,
     },
-    autoPublishAt: new Date(new Date(row.showing_starts_at).getTime() - 24 * 60 * 60 * 1000).toISOString(),
+    autoPublishAt: new Date(
+      new Date(row.showing_starts_at).getTime() - row.event_auto_draw_lead_hours * 60 * 60 * 1000,
+    ).toISOString(),
   } satisfies SpecialAutoDrawDueShowing));
 }
 
@@ -544,6 +565,7 @@ function mapParticipants(
         selectedShowingCount: countSelectedShowings(row.selected_showing_ids_json),
         previousSpecialWinner: Boolean(row.previous_special_winner),
         previousWinnerWeightPercent: row.previous_winner_weight_percent,
+        russianCitizenshipConfirmed: Boolean(row.russian_citizenship_confirmed),
         createdAt: row.created_at,
       } satisfies SpecialParticipant];
     } catch {
@@ -648,6 +670,7 @@ function snapshotParticipant(participant: SpecialParticipant) {
     selectedShowingCount: participant.selectedShowingCount,
     previousSpecialWinner: participant.previousSpecialWinner,
     previousWinnerWeightPercent: participant.previousWinnerWeightPercent,
+    russianCitizenshipConfirmed: participant.russianCitizenshipConfirmed,
     createdAt: participant.createdAt,
   };
 }
@@ -713,7 +736,8 @@ function rowToDrawResult(
 
 export function listSpecialEventsForTelegram(db: Database.Database) {
   const events = db.prepare(`
-    SELECT id, slug, title, format_label, venue_name, previous_winner_weight_percent
+    SELECT id, slug, title, format_label, venue_name, previous_winner_weight_percent,
+      auto_draw_lead_hours, requires_russian_citizenship, winner_email_enabled, winner_response_deadline_hours
     FROM special_events
     ORDER BY created_at ASC, id ASC
   `).all() as SpecialEventRow[];
@@ -777,6 +801,9 @@ export function getSpecialShowingForTelegram(
     event,
     showing,
     acceptedApplicationCount: acceptedRows.length,
+    eligibleApplicationCount: event.requires_russian_citizenship
+      ? candidates.filter((candidate) => candidate.russianCitizenshipConfirmed).length
+      : candidates.length,
     candidates,
     latestDraft,
     latestPublished,
@@ -801,7 +828,10 @@ export function runSpecialDraw(
   }
 
   const candidateRows = listCandidateRows(db, showing);
-  const candidates = mapParticipants(candidateRows, privateKeyPemBase64, loadBonusesForRows(db, candidateRows));
+  const allCandidates = mapParticipants(candidateRows, privateKeyPemBase64, loadBonusesForRows(db, candidateRows));
+  const candidates = event.requires_russian_citizenship
+    ? allCandidates.filter((candidate) => candidate.russianCitizenshipConfirmed)
+    : allCandidates;
   const draw = weightedDraw(candidates, showing.lottery_quota);
   const winners = draw.winners;
   const totalWeight = candidates.reduce((sum, candidate) => sum + getDistributedDrawWeight(candidate, draw.weightScale), 0);
@@ -926,6 +956,24 @@ export function getLatestSpecialDrawResult(
   return rowToDrawResult(row, event, showing, mapParticipants(decoratedRows, privateKeyPemBase64, loadBonusesForRows(db, decoratedRows)));
 }
 
+export function confirmSpecialApplicationRussianCitizenship(
+  db: Database.Database,
+  applicationCode: string,
+) {
+  const normalizedCode = applicationCode.trim();
+  if (!normalizedCode) {
+    return null;
+  }
+
+  return db.prepare(`
+    UPDATE special_applications
+    SET russian_citizenship_confirmed = 1
+    WHERE application_code = ?
+      AND status = 'accepted'
+    RETURNING id, application_code
+  `).get(normalizedCode) as { id: number; application_code: string } | undefined ?? null;
+}
+
 export function listSpecialApplicationPhotos(db: Database.Database, applicationId: number) {
   return db.prepare(`
     SELECT *
@@ -970,7 +1018,9 @@ export function formatSpecialShowingPanel(item: NonNullable<ReturnType<typeof ge
     `Физическая квота: ${item.showing.physical_quota}`,
     `Бронь: ${item.showing.reserved_seats}`,
     `Мест в розыгрыше: ${item.showing.lottery_quota}`,
-    `Допущенных заявок: ${item.acceptedApplicationCount}`,
+    `Принятых заявок: ${item.acceptedApplicationCount}`,
+    `Допущено к розыгрышу: ${item.eligibleApplicationCount}`,
+    item.event.requires_russian_citizenship ? 'Требование: гражданство Российской Федерации' : 'Требование по гражданству: нет',
     `Статус розыгрыша: ${item.showing.draw_status}`,
     item.latestDraft ? `Последний черновик: ${formatKaliningradDateTime(item.latestDraft.created_at)}` : 'Последний черновик: нет',
     item.latestPublished
@@ -999,6 +1049,7 @@ export function formatSpecialShowingApplicants(item: NonNullable<ReturnType<type
     candidate.socialBonusPoints > 0
       ? `   Соцактивность VK: +${candidate.socialBonusPoints} балл., активных дней ${candidate.socialBonusActiveDays}, действий ${candidate.socialBonusEligibleActivityCount}`
       : null,
+    `   Гражданство РФ: ${candidate.russianCitizenshipConfirmed ? 'подтверждено' : 'не подтверждено'}`,
     `   Фото: ${candidate.acceptedPhotoCount}/${candidate.uniquePhotoCount}/${candidate.uploadedPhotoCount}`,
     `   Выбрано дат: ${candidate.selectedShowingCount}, вес на этот показ: ${formatShowingWeight(candidate.score, candidate.selectedShowingCount)} (${getDistributedDrawWeight(candidate, weightScale)} тех. билетиков)`,
     candidate.previousSpecialWinner ? `   Уже выигрывал спецрозыгрыш: да, коэффициент веса ${candidate.previousWinnerWeightPercent}%` : null,

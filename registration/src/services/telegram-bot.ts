@@ -31,6 +31,7 @@ import { formatAdminDiagnostics } from './admin-diagnostics';
 import { searchRegistrationsByFullName } from './registration-search';
 import {
   buildSpecialDrawXlsxBuffer,
+  confirmSpecialApplicationRussianCitizenship,
   formatSpecialDrawResult,
   formatSpecialEventPanel,
   formatSpecialEventsPanel,
@@ -108,6 +109,7 @@ function formatHelp(role: TelegramAdminRole) {
     lines.push('/registration_close <slug> — закрыть регистрацию на событие.');
     lines.push('/export_all — общий XLSX по всем событиям.');
     lines.push('/spec — спецмероприятия, черновой и опубликованный розыгрыш.');
+    lines.push('/citizenship_confirm <код заявки> — подтвердить гражданство РФ для ранее поданной заявки.');
     lines.push('/health — диагностика очередей OCR/LLM и Telegram outbox.');
     lines.push('/backup_sqlite — резервная копия SQLite.');
     lines.push('/cleanup_test_run <run_id> — удалить тестовые регистрации конкретного прогона.');
@@ -625,6 +627,29 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
     }
 
     await sendSpecialEventsPanel(ctx, deps.db);
+  });
+
+  bot.command('citizenship_confirm', async (ctx) => {
+    const admin = requireAdminRole(String(ctx.from?.id ?? ''));
+    if (!admin || admin.role !== 'superadmin') {
+      await ctx.reply('Подтверждать гражданство может только суперадмин.');
+      return;
+    }
+
+    const commandText = ctx.message?.text ?? '';
+    const applicationCode = commandText.replace(/^\/citizenship_confirm(@\w+)?/u, '').trim();
+    if (!applicationCode) {
+      await ctx.reply('Укажите код заявки: /citizenship_confirm <код заявки>');
+      return;
+    }
+
+    const confirmed = confirmSpecialApplicationRussianCitizenship(deps.db, applicationCode);
+    if (!confirmed) {
+      await ctx.reply('Принятая заявка с таким кодом не найдена.');
+      return;
+    }
+
+    await ctx.reply(`Гражданство РФ подтверждено для заявки ${confirmed.application_code}.`);
   });
 
   bot.command('health', async (ctx) => {

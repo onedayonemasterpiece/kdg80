@@ -31,7 +31,16 @@ def font(size: int) -> ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def sanitize(source: Path, target: Path, index: int) -> tuple[int, int]:
+def sanitization_bottom(index: int) -> float:
+    # Fixture 01 was visually verified: the handwritten field ends above 62.5%
+    # and all five stamps begin below it, so it remains the E2E fixture. Other
+    # photographs use a deliberately deeper mask because their camera crops can
+    # move the handwritten line downward. They are retained only as a private
+    # reference set; preserving every stamp is secondary to removing identity.
+    return 0.625 if index == 1 else 0.78
+
+
+def sanitize(source: Path, target: Path, index: int) -> tuple[int, int, float]:
     with Image.open(source) as raw:
         image = ImageOps.exif_transpose(raw).convert("RGB")
     width, height = image.size
@@ -39,12 +48,13 @@ def sanitize(source: Path, target: Path, index: int) -> tuple[int, int]:
 
     # Photographs have different crops even though the Passport is a fixed
     # half-A4 form. Cover the entire middle form band, not only the nominal FIO
-    # line: this removes handwritten names that shift vertically after cropping,
-    # while preserving the stamp field below for OCR/E2E verification.
+    # line, so shifted handwritten names cannot remain visible.
     left = 0
     right = width
-    top = int(height * 0.34)
-    bottom = int(height * 0.625)
+    top_fraction = 0.30
+    bottom_fraction = sanitization_bottom(index)
+    top = int(height * top_fraction)
+    bottom = int(height * bottom_fraction)
     fill = (226, 234, 232)
     draw.rectangle((left, top, right, bottom), fill=fill)
 
@@ -57,7 +67,7 @@ def sanitize(source: Path, target: Path, index: int) -> tuple[int, int]:
 
     target.parent.mkdir(parents=True, exist_ok=True)
     image.save(target, format="JPEG", quality=93, subsampling=0, optimize=True)
-    return width, height
+    return width, height, bottom_fraction
 
 
 def contact_sheet(files: list[Path], output: Path) -> None:
@@ -113,7 +123,7 @@ def main() -> int:
 
         index = len(fixtures) + 1
         target = fixtures_dir / f"passport-test-{index:02d}.jpg"
-        sanitized_width, sanitized_height = sanitize(source, target, index)
+        sanitized_width, sanitized_height, bottom_fraction = sanitize(source, target, index)
         fixtures.append({
             "file": target.name,
             "source_group_id": int(item.get("group_id", 0) or 0),
@@ -125,7 +135,8 @@ def main() -> int:
             "width": sanitized_width,
             "height": sanitized_height,
             "pii_sanitized": True,
-            "sanitization_band_y": [0.34, 0.625],
+            "sanitization_band_y": [0.30, bottom_fraction],
+            "e2e_fixture": index == 1,
             "synthetic_name": f"ТЕСТ ЯНТАРНЫЙ КОМБИНАТ {index:02d}",
         })
         fixture_files.append(target)
@@ -140,6 +151,7 @@ def main() -> int:
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "pii_sanitized": True,
             "fixture_count": len(fixtures),
+            "e2e_fixture": "fixtures/passport-test-01.jpg",
             "items": fixtures,
         }, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -147,12 +159,14 @@ def main() -> int:
     contact_sheet(fixture_files, OUTPUT_ROOT / "contact-sheet-sanitized.jpg")
     (OUTPUT_ROOT / "README.txt").write_text(
         "Sanitized festival Passport fixtures for TEST-only E2E.\n"
-        "The complete middle form band containing handwritten FIO is covered; synthetic names begin with ТЕСТ.\n"
+        "The identity band is fully covered; synthetic names begin with ТЕСТ.\n"
+        "Only fixtures/passport-test-01.jpg is approved for the 5-stamp E2E.\n"
         "Do not use these images for real applications or publish them publicly.\n",
         encoding="utf-8",
     )
 
     print(f"Sanitized TEST Passport fixtures: {len(fixtures)}")
+    print("Approved 5-stamp E2E fixture: fixtures/passport-test-01.jpg")
     return 0
 
 

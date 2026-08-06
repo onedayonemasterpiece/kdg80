@@ -1363,7 +1363,6 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     throw error;
   }
 
-  const testApplication = isSpecialTestFullName(fullName);
   if (!testApplication) {
     enqueueSpecialApplicationCreated(deps.db, {
       applicationId,

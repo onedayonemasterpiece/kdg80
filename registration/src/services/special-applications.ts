@@ -6,6 +6,7 @@ import { LlmProviderError, runLlmLimited } from '../lib/llm-rate-limiter';
 import { normalizeEmail, normalizeFullName, normalizePhone } from '../lib/normalize';
 import { getVkAuthSession } from '../api/vk-auth';
 import { enqueueSpecialApplicationCreated } from './telegram-outbox';
+import { isSpecialTestFullName } from './special-test-cleanup';
 import { findSpecialVolunteerMatch } from './special-volunteers';
 
 const SPECIAL_PHOTO_PREFIX = (process.env.SPECIAL_PHOTO_PREFIX?.trim() || 'exports/special-passports')
@@ -1359,12 +1360,16 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     throw error;
   }
 
-  enqueueSpecialApplicationCreated(deps.db, {
-    applicationId,
-  });
+  const testApplication = isSpecialTestFullName(fullName);
+  if (!testApplication) {
+    enqueueSpecialApplicationCreated(deps.db, {
+      applicationId,
+    });
+  }
 
   return {
     applicationId,
+    testApplication,
     applicationCode,
     fullName,
     email,

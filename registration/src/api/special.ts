@@ -1,8 +1,14 @@
 import type Database from 'better-sqlite3';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import type { StoragePublisher } from '../lib/storage';
-import type { EmailNotificationService } from '../services/email-notifications';
+import type { EmailNotificationService, EmailSendResult } from '../services/email-notifications';
 import { recordEmailNotification } from '../services/email-stats';
+import {
+  cleanupSpecialTestApplication,
+  createSpecialTestCleanupToken,
+  SpecialTestCleanupError,
+  verifySpecialTestCleanupToken,
+} from '../services/special-test-cleanup';
 import {
   checkSpecialApplicationPhotos,
   createSpecialApplication,
@@ -1078,6 +1084,68 @@ function renderPreviewPage(eventJson: string) {
 </html>`;
 }
 
+type CreatedSpecialApplication = Awaited<ReturnType<typeof createSpecialApplication>>;
+
+async function sendSpecialApplicationEmailNotification(
+  created: CreatedSpecialApplication,
+  deps: SpecialApiDeps,
+  logger: FastifyBaseLogger,
+  route: string,
+): Promise<EmailSendResult> {
+  if (created.testApplication) {
+    logger.info({
+      route,
+      applicationId: created.applicationId,
+      status: created.status,
+      emailSent: false,
+      reason: 'test_application_suppressed',
+    }, 'special_application_email_notification_suppressed');
+    return {
+      sent: false,
+      provider: 'yandex-postbox',
+      messageId: null,
+      reason: 'test_application_suppressed',
+    };
+  }
+
+  try {
+    const emailNotification = await deps.emailNotifications.sendSpecialApplicationCreated(created);
+    recordEmailNotification(deps.db, {
+      entityType: 'special_application',
+      entityId: created.applicationId,
+      template: 'special_application_created',
+      recipientEmail: created.email,
+      subject: emailNotification.subject || `Заявка на спецмероприятие: ${created.event.title}`,
+      configurationSetName: deps.postboxConfigurationSetName,
+      fingerprintSecret: deps.fingerprintSecret,
+      result: emailNotification,
+    });
+    logger.info({
+      route,
+      applicationId: created.applicationId,
+      status: created.status,
+      emailSent: emailNotification.sent,
+      messageId: emailNotification.messageId,
+      reason: emailNotification.reason,
+    }, 'special_application_email_notification_result');
+    return emailNotification;
+  } catch (error) {
+    logger.error({ err: error, route, applicationId: created.applicationId }, 'special_application_email_notification_failed');
+    return {
+      sent: false,
+      provider: 'yandex-postbox',
+      messageId: null,
+      reason: 'send_failed',
+    };
+  }
+}
+
+function testCleanupTokenFor(created: CreatedSpecialApplication, deps: SpecialApiDeps) {
+  return created.testApplication && deps.fingerprintSecret
+    ? createSpecialTestCleanupToken(deps.fingerprintSecret, created.applicationCode)
+    : undefined;
+}
+
 export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiDeps) {
   if (!app.hasContentTypeParser(/^multipart\/form-data/u)) {
     app.addContentTypeParser(/^multipart\/form-data/u, {
@@ -1115,6 +1183,80 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
     return event;
   });
 
+
+  app.delete('/api/v1/special/test-applications/:applicationCode', {
+    config: {
+      rateLimit: {
+        max: 6,
+        timeWindow: '1 minute',
+      },
+    },
+  }, async (request, reply) => {
+    noIndex(reply);
+
+    if (!deps.fingerprintSecret || !deps.privateKeyPemBase64) {
+      reply.code(503);
+      return {
+        error: 'special_test_cleanup_not_ready',
+        message: 'Безопасное удаление тестовой заявки пока не настроено на сервере.',
+      };
+    }
+
+    const applicationCode = String((request.params as Record<string, unknown>).applicationCode ?? '').trim();
+    const cleanupToken = request.body && typeof request.body === 'object'
+      ? String((request.body as Record<string, unknown>).cleanupToken ?? '')
+      : '';
+
+    if (!applicationCode || !verifySpecialTestCleanupToken(deps.fingerprintSecret, applicationCode, cleanupToken)) {
+      reply.code(403);
+      return {
+        error: 'invalid_test_cleanup_token',
+        message: 'Токен удаления тестовой заявки недействителен.',
+      };
+    }
+
+    try {
+      const result = await cleanupSpecialTestApplication(deps.db, {
+        applicationCode,
+        privateKeyPemBase64: deps.privateKeyPemBase64,
+        storagePublisher: deps.storagePublisher,
+      });
+
+      if (!result) {
+        reply.code(404);
+        return {
+          error: 'test_application_not_found',
+          message: 'Тестовая заявка уже удалена или не найдена.',
+        };
+      }
+
+      request.log.info({
+        applicationCode,
+        removedPrivateAssets: result.removedPrivateAssets,
+        removedProfile: result.removedProfile,
+      }, 'special_test_application_cleaned');
+      return {
+        status: 'deleted',
+        ...result,
+      };
+    } catch (error) {
+      if (error instanceof SpecialTestCleanupError) {
+        reply.code(error.statusCode);
+        return {
+          error: error.code,
+          message: error.message,
+        };
+      }
+
+      request.log.error({ err: error, applicationCode }, 'special_test_application_cleanup_failed');
+      reply.code(500);
+      return {
+        error: 'server_error',
+        message: 'Не удалось удалить тестовую заявку.',
+      };
+    }
+  });
+
   app.post('/api/v1/special/applications', {
     bodyLimit: SPECIAL_BODY_LIMIT_BYTES,
     config: {
@@ -1147,40 +1289,18 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
         userAgent: request.headers['user-agent'],
       });
 
-      let emailNotification;
-      try {
-        emailNotification = await deps.emailNotifications.sendSpecialApplicationCreated(created);
-        recordEmailNotification(deps.db, {
-          entityType: 'special_application',
-          entityId: created.applicationId,
-          template: 'special_application_created',
-          recipientEmail: created.email,
-          subject: emailNotification.subject || `Заявка на спецмероприятие: ${created.event.title}`,
-          configurationSetName: deps.postboxConfigurationSetName,
-          fingerprintSecret: deps.fingerprintSecret,
-          result: emailNotification,
-        });
-        request.log.info({
-          applicationId: created.applicationId,
-          status: created.status,
-          emailSent: emailNotification.sent,
-          messageId: emailNotification.messageId,
-          reason: emailNotification.reason,
-        }, 'special_application_email_notification_result');
-      } catch (error) {
-        request.log.error({ err: error, applicationId: created.applicationId }, 'special_application_email_notification_failed');
-        emailNotification = {
-          sent: false,
-          provider: 'yandex-postbox' as const,
-          messageId: null,
-          reason: 'send_failed',
-        };
-      }
+      const emailNotification = await sendSpecialApplicationEmailNotification(
+        created,
+        deps,
+        request.log,
+        'applications-json',
+      );
 
       reply.code(201);
       return {
         ...created,
         emailNotification,
+        testCleanupToken: testCleanupTokenFor(created, deps),
       };
     } catch (error) {
       if (error instanceof SpecialApplicationError) {
@@ -1249,35 +1369,12 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
         userAgent: request.headers['user-agent'],
       });
 
-      let emailNotification;
-      try {
-        emailNotification = await deps.emailNotifications.sendSpecialApplicationCreated(created);
-        recordEmailNotification(deps.db, {
-          entityType: 'special_application',
-          entityId: created.applicationId,
-          template: 'special_application_created',
-          recipientEmail: created.email,
-          subject: emailNotification.subject || `Заявка на спецмероприятие: ${created.event.title}`,
-          configurationSetName: deps.postboxConfigurationSetName,
-          fingerprintSecret: deps.fingerprintSecret,
-          result: emailNotification,
-        });
-        request.log.info({
-          route: 'applications-multipart',
-          applicationId: created.applicationId,
-          emailSent: emailNotification.sent,
-          messageId: emailNotification.messageId,
-          reason: emailNotification.reason,
-        }, 'special_application_email_notification_result');
-      } catch (error) {
-        request.log.error({ err: error, route: 'applications-multipart', applicationId: created.applicationId }, 'special_application_email_notification_failed');
-        emailNotification = {
-          sent: false,
-          provider: 'yandex-postbox' as const,
-          messageId: null,
-          reason: 'send_failed',
-        };
-      }
+      const emailNotification = await sendSpecialApplicationEmailNotification(
+        created,
+        deps,
+        request.log,
+        'applications-multipart',
+      );
 
       reply.code(201);
       request.log.info({
@@ -1290,6 +1387,7 @@ export async function registerSpecialApi(app: FastifyInstance, deps: SpecialApiD
       return {
         ...created,
         emailNotification,
+        testCleanupToken: testCleanupTokenFor(created, deps),
       };
     } catch (error) {
       if (error instanceof SpecialApplicationError) {

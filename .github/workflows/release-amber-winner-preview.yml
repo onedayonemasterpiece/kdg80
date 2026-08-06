@@ -1,0 +1,176 @@
+name: Release amber winner email preview
+
+on:
+  push:
+    branches:
+      - feat/amber-combine-jewelry-excursion
+    paths:
+      - .github/workflows/release-amber-winner-preview.yml
+
+permissions:
+  contents: write
+
+env:
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+  FLY_APP: znanie-kgd80-fest
+
+jobs:
+  release-and-send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/amber-combine-jewelry-excursion
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+          cache-dependency-path: |
+            registration/package-lock.json
+            site/package-lock.json
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Simplify the winner email to the approved data request
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          email_path = Path('registration/src/services/email-notifications.ts')
+          text = email_path.read_text(encoding='utf-8')
+          changes = [
+              ("  const consentLine = 'Отправляя паспортные данные ответным письмом, вы подтверждаете согласие на их обработку и передачу Калининградскому янтарному комбинату исключительно для оформления разового пропуска на эту экскурсию.';\n", ''),
+              ("    '2. Серию и номер паспорта гражданина Российской Федерации.',", "    '2. Серия и номер.',"),
+              ('        <li>серию и номер паспорта гражданина Российской Федерации.</li>', '        <li>серия и номер.</li>'),
+              ('      consentLine,\n', ''),
+          ]
+          for old, new in changes:
+              if old not in text:
+                  raise SystemExit(f'Winner-email anchor not found: {old[:100]}')
+              text = text.replace(old, new)
+          email_path.write_text(text, encoding='utf-8')
+
+          test_path = Path('registration/src/services/special-winner-email.test.ts')
+          test = test_path.read_text(encoding='utf-8')
+          test = test.replace(
+              '  assert.match(rendered.text, /серию и номер паспорта гражданина Российской Федерации/i);',
+              '  assert.match(rendered.text, /серия и номер/i);',
+          )
+          test = test.replace(
+              '  assert.match(rendered.text, /согласие на их обработку и передачу/i);',
+              '  assert.doesNotMatch(rendered.text, /согласие на их обработку и передачу/i);',
+          )
+          test_path.write_text(test, encoding='utf-8')
+          PY
+
+      - name: Validate backend email and raffle changes
+        working-directory: registration
+        run: |
+          npm ci
+          npm run check
+          npm run test:special-amber-eligibility
+          npm run test:special-test-cleanup
+          npm run test:special-test-draw-exclusion
+          npm run test:special-public-quota
+          npm run test:special-draws
+
+      - name: Commit final email wording
+        run: |
+          git config user.name onedayonemasterpiece
+          git config user.email estershow6@gmail.com
+          git add registration/src/services/email-notifications.ts registration/src/services/special-winner-email.test.ts
+          git commit -m "fix: simplify amber winner passport request"
+          git push origin HEAD:feat/amber-combine-jewelry-excursion
+
+      - name: Install site deployment tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq imagemagick awscli
+
+      - name: Build production site
+        working-directory: site
+        run: |
+          npm ci
+          npm run build
+
+      - name: Read current production storage credentials without logging them
+        shell: bash
+        run: |
+          set -euo pipefail
+          read_fly_var() {
+            local primary="$1"
+            local fallback="$2"
+            local value
+            value="$(flyctl ssh console -a "$FLY_APP" -C "sh -lc 'printenv ${primary} || true'" 2>/dev/null | tail -n 1 | tr -d '\r')"
+            if [[ -z "$value" && -n "$fallback" ]]; then
+              value="$(flyctl ssh console -a "$FLY_APP" -C "sh -lc 'printenv ${fallback} || true'" 2>/dev/null | tail -n 1 | tr -d '\r')"
+            fi
+            printf '%s' "$value"
+          }
+
+          BUCKET="$(read_fly_var S3_BUCKET YC_BUCKET_NAME)"
+          ENDPOINT="$(read_fly_var S3_ENDPOINT YC_S3_ENDPOINT)"
+          REGION="$(read_fly_var S3_REGION YC_REGION)"
+          ACCESS_KEY="$(read_fly_var S3_ACCESS_KEY_ID YC_ACCESS_KEY_ID)"
+          SECRET_KEY="$(read_fly_var S3_SECRET_ACCESS_KEY YC_SECRET_ACCESS_KEY)"
+          ENDPOINT="${ENDPOINT:-https://storage.yandexcloud.net}"
+          REGION="${REGION:-ru-central1}"
+
+          [[ -n "$BUCKET" && -n "$ACCESS_KEY" && -n "$SECRET_KEY" ]]
+          echo "::add-mask::$ACCESS_KEY"
+          echo "::add-mask::$SECRET_KEY"
+          {
+            echo "YC_BUCKET_NAME=$BUCKET"
+            echo "YC_S3_ENDPOINT=$ENDPOINT"
+            echo "YC_REGION=$REGION"
+            echo "YC_ACCESS_KEY_ID=$ACCESS_KEY"
+            echo "YC_SECRET_ACCESS_KEY=$SECRET_KEY"
+          } >> "$GITHUB_ENV"
+
+      - name: Publish the updated public page
+        shell: bash
+        run: |
+          export AWS_ACCESS_KEY_ID="$YC_ACCESS_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$YC_SECRET_ACCESS_KEY"
+          export AWS_DEFAULT_REGION="$YC_REGION"
+          aws --endpoint-url "$YC_S3_ENDPOINT" s3 sync site/dist "s3://$YC_BUCKET_NAME/" \
+            --delete --no-progress \
+            --exclude 'tickets/*' \
+            --exclude 'exports/*' \
+            --exclude 'preview-*' \
+            --exclude 'preview-*/*' \
+            --exclude 'yandex_*.html' \
+            --exclude 'robots.txt' \
+            --exclude 'sitemap.xml' \
+            --exclude 'llms.txt' \
+            --exclude 'llms-full.txt'
+
+      - name: Deploy registration backend
+        run: flyctl deploy --remote-only --app "$FLY_APP" --config fly.toml
+
+      - name: Verify production page, API and email image
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..30}; do
+            if curl -fsS "https://${FLY_APP}.fly.dev/api/v1/health" >/tmp/health.json; then
+              break
+            fi
+            sleep 4
+          done
+          grep -q '"ok":true' /tmp/health.json
+          curl -fsSI "https://${FLY_APP}.fly.dev/shared-assets/email/amber-combine-jewelry-production.png" | grep -q '200'
+          curl -fsS 'https://kgd80.ru/special/amber-combine-jewelry-excursion/' >/tmp/amber-page.html
+          grep -q '9 августа 2026 года в 11:00' /tmp/amber-page.html
+          grep -q 'гражданином Российской Федерации' /tmp/amber-page.html
+
+      - name: Send the real production-rendered approval email through Yandex Postbox
+        shell: bash
+        run: |
+          set -euo pipefail
+          flyctl ssh console -a "$FLY_APP" -C "sh -lc 'cd /app/registration && AMBER_WINNER_PREVIEW_EMAIL=info@kgd80.ru npm run send:amber-winner-preview'" | tee /tmp/preview-send.log
+          grep -q '"sent":true' /tmp/preview-send.log
+          grep -q 'info@kgd80.ru' /tmp/preview-send.log

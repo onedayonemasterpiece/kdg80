@@ -91,7 +91,7 @@ async function main() {
 
   const runSuffix = `${Date.now()}-${randomDigits(4)}`;
   const formData = {
-    fullName: 'ТЕСТ ЯНТАРНЫЙ КОМБИНАТ 01',
+    fullName: 'ТЕСТ Янтарный Комбинат',
     email: `amber-e2e-${runSuffix}@example.com`,
     phone: `+7999${randomDigits(7)}`,
   };

@@ -1,0 +1,130 @@
+name: Send final amber verification emails
+
+on:
+  push:
+    branches:
+      - feat/amber-combine-jewelry-excursion
+    paths:
+      - .github/workflows/send-amber-verification-emails.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+  FLY_APP: znanie-kgd80-fest
+
+jobs:
+  send-and-clean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/amber-combine-jewelry-excursion
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+          cache-dependency-path: registration/package-lock.json
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Validate corrected backend and final winner template
+        working-directory: registration
+        run: |
+          npm ci
+          npm run check
+          npm run test:special-amber-eligibility
+          npm run test:special-test-cleanup
+          npm run test:special-test-draw-exclusion
+          npm run test:special-public-quota
+          npm run test:special-draws
+
+      - name: Deploy backend with TEST cleanup command
+        run: flyctl deploy --remote-only --app "$FLY_APP" --config fly.toml
+
+      - name: Verify production backend has no citizenship confirmation control
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..30}; do
+            if curl -fsS "https://${FLY_APP}.fly.dev/api/v1/health" >/tmp/health.json; then
+              break
+            fi
+            sleep 4
+          done
+          grep -q '"ok":true' /tmp/health.json
+          curl -fsS "https://${FLY_APP}.fly.dev/api/v1/special/events/amber-combine-jewelry-excursion?token=amber-combine-jewelry-20260811" >/tmp/amber-event.json
+          grep -q '"requiresRussianCitizenship":false' /tmp/amber-event.json
+          curl -fsSI "https://${FLY_APP}.fly.dev/shared-assets/email/amber-combine-jewelry-production.png" | grep -q '200'
+
+      - name: Create TEST registration and send its normal application email
+        shell: bash
+        run: |
+          set -euo pipefail
+          flyctl ssh console -a "$FLY_APP" -C "sh -lc 'cd /app/registration && AMBER_TEST_EMAIL=info@kgd80.ru npm run create:amber-test-application'" | tee /tmp/application.log
+          json="$(grep -E '^\{"applicationCode":' /tmp/application.log | tail -n 1)"
+          [[ -n "$json" ]]
+          printf '%s' "$json" >/tmp/application.json
+          python3 - <<'PY'
+          import json, os
+          data = json.load(open('/tmp/application.json', encoding='utf-8'))
+          assert data['sent'] is True
+          assert data['target'] == 'info@kgd80.ru'
+          assert data['applicationCode'].startswith('TEST-AMBER-MAIL-')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f:
+              f.write(f"AMBER_TEST_APPLICATION_CODE={data['applicationCode']}\n")
+              f.write(f"AMBER_TEST_APPLICATION_MESSAGE_ID={data['messageId']}\n")
+              f.write(f"AMBER_TEST_APPLICATION_SUBJECT={data['subject']}\n")
+          PY
+
+      - name: Send the exact final winner email for the same TEST registration
+        shell: bash
+        run: |
+          set -euo pipefail
+          flyctl ssh console -a "$FLY_APP" -C "sh -lc 'cd /app/registration && AMBER_WINNER_PREVIEW_EMAIL=info@kgd80.ru AMBER_WINNER_APPLICATION_CODE=\"$AMBER_TEST_APPLICATION_CODE\" AMBER_WINNER_FULL_NAME=Максим npm run send:amber-winner-preview'" | tee /tmp/winner.log
+          json="$(grep -E '^\{"sent":true' /tmp/winner.log | tail -n 1)"
+          [[ -n "$json" ]]
+          printf '%s' "$json" >/tmp/winner.json
+          python3 - <<'PY'
+          import json, os
+          data = json.load(open('/tmp/winner.json', encoding='utf-8'))
+          assert data['sent'] is True
+          assert data['target'] == 'info@kgd80.ru'
+          assert data['applicationCode'] == os.environ['AMBER_TEST_APPLICATION_CODE']
+          assert data['subject'].startswith('Вы победили в розыгрыше:')
+          assert 'ПРОЕКТ' not in data['subject'].upper()
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f:
+              f.write(f"AMBER_FINAL_WINNER_MESSAGE_ID={data['messageId']}\n")
+              f.write(f"AMBER_FINAL_WINNER_SUBJECT={data['subject']}\n")
+          PY
+
+      - name: Delete the TEST registration after both emails were accepted
+        shell: bash
+        run: |
+          set -euo pipefail
+          flyctl ssh console -a "$FLY_APP" -C "sh -lc 'cd /app/registration && AMBER_TEST_APPLICATION_CODE=\"$AMBER_TEST_APPLICATION_CODE\" npm run cleanup:amber-test-application'" | tee /tmp/cleanup.log
+          json="$(grep -E '^\{"cleaned":true' /tmp/cleanup.log | tail -n 1)"
+          [[ -n "$json" ]]
+          printf '%s' "$json" >/tmp/cleanup.json
+          python3 - <<'PY'
+          import json
+          data = json.load(open('/tmp/cleanup.json', encoding='utf-8'))
+          assert data['cleaned'] is True
+          assert data['removedApplication'] == 1
+          assert data['removedProfile'] == 1
+          PY
+
+      - name: Print auditable result
+        run: |
+          echo "TEST application code: $AMBER_TEST_APPLICATION_CODE"
+          echo "Application email message ID: $AMBER_TEST_APPLICATION_MESSAGE_ID"
+          echo "Application email subject: $AMBER_TEST_APPLICATION_SUBJECT"
+          echo "Winner email message ID: $AMBER_FINAL_WINNER_MESSAGE_ID"
+          echo "Winner email subject: $AMBER_FINAL_WINNER_SUBJECT"
+          echo "TEST registration cleanup: completed"
+          flyctl releases -a "$FLY_APP" --json | head -c 2000

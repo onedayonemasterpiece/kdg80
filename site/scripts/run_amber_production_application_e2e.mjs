@@ -136,18 +136,24 @@ async function main() {
     const applicationResponse = await applicationResponsePromise;
     const applicationBody = await jsonOrNull(applicationResponse);
 
+    // Capture cleanup credentials before validating the accepted response. A TEST
+    // application must still be removed if a later assertion fails.
+    apiOrigin = new URL(applicationResponse.url()).origin;
+    applicationCode = typeof applicationBody?.applicationCode === 'string'
+      ? applicationBody.applicationCode
+      : null;
+    cleanupToken = typeof applicationBody?.testCleanupToken === 'string'
+      ? applicationBody.testCleanupToken
+      : null;
+
     assert(applicationResponse.status() === 201, `Application HTTP ${applicationResponse.status()}: ${JSON.stringify(applicationBody)}`);
     assert(applicationBody?.status === 'accepted', `Application was not accepted: ${JSON.stringify(applicationBody)}`);
     assert(Number(applicationBody?.scoring?.stampCount || 0) >= 5, 'Accepted application has fewer than 5 stamps');
     assert(applicationBody?.testApplication === true, 'Server did not classify the submission as a TEST application');
+    assert(applicationCode?.startsWith('TEST-'), 'TEST application code does not use the TEST- prefix');
+    assert(cleanupToken, 'Application response did not include testCleanupToken');
     assert(applicationBody?.emailNotification?.sent === false, 'TEST application unexpectedly sent an email');
     assert(applicationBody?.emailNotification?.reason === 'test_application_suppressed', 'TEST email suppression reason is missing');
-
-    applicationCode = String(applicationBody.applicationCode || '');
-    cleanupToken = String(applicationBody.testCleanupToken || '');
-    apiOrigin = new URL(applicationResponse.url()).origin;
-    assert(applicationCode, 'Application response did not include applicationCode');
-    assert(cleanupToken, 'Application response did not include testCleanupToken');
 
     await page.locator('[data-special-status][data-kind="success"]').waitFor({
       state: 'visible',
@@ -164,7 +170,10 @@ async function main() {
     assert(cleanup.response.status === 200, `Cleanup HTTP ${cleanup.response.status}: ${JSON.stringify(cleanup.body)}`);
     assert(cleanup.body?.status === 'deleted', `Cleanup did not report deleted: ${JSON.stringify(cleanup.body)}`);
     assert(cleanup.body?.removedApplication === 1, 'Cleanup did not remove exactly one application');
+    assert(cleanup.body?.removedProfile === 1, 'Cleanup did not remove the orphan TEST profile');
     assert(Number(cleanup.body?.removedPrivateAssets || 0) >= 1, 'Cleanup did not remove private photo assets');
+    assert(Number(cleanup.body?.removedTelegramOutboxRows || 0) === 0, 'A Telegram outbox row was created for the TEST application');
+    assert(Number(cleanup.body?.removedEmailNotifications || 0) === 0, 'An email notification row was created for the TEST application');
     cleanupCompleted = true;
 
     const secondCleanup = await cleanupApplication({ apiOrigin, applicationCode, cleanupToken });
@@ -177,9 +186,11 @@ async function main() {
       pageUrl,
       fixture: path.basename(fixturePath),
       precheckStampCount,
+      applicationHttpStatus: applicationResponse.status(),
       applicationStatus: applicationBody.status,
       responseStampCount: applicationBody.scoring.stampCount,
       emailSuppressed: applicationBody.emailNotification.reason === 'test_application_suppressed',
+      cleanupHttpStatus: cleanup.response.status,
       cleanupStatus: cleanup.body.status,
       removedApplication: cleanup.body.removedApplication,
       removedProfile: cleanup.body.removedProfile,

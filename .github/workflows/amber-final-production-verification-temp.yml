@@ -1,13 +1,13 @@
-name: Amber final production verification temp
-# trigger: 2026-08-06T22:29:00+02:00
+name: Amber final production verification
 
-on:
-  push:
-    branches:
-      - feat/amber-combine-jewelry-excursion
-    paths:
-      - .github/workflows/amber-final-production-verification-temp.yml
+"on":
   workflow_dispatch:
+
+# This workflow deploys production and sends real verification emails.
+# Keep it manual-only and serialize accidental duplicate requests.
+concurrency:
+  group: amber-final-production-verification
+  cancel-in-progress: false
 
 permissions:
   contents: write

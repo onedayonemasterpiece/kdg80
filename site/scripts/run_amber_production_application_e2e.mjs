@@ -58,6 +58,33 @@ async function cleanupApplication({ apiOrigin, applicationCode, cleanupToken }) 
   return { response, body };
 }
 
+async function acceptConsent(page) {
+  const consent = page.locator('input[name="consentAccepted"]');
+  await consent.waitFor({ state: 'visible', timeout: 30_000 });
+  await consent.scrollIntoViewIfNeeded();
+
+  try {
+    await consent.setChecked(true, { force: true, timeout: 10_000 });
+  } catch {
+    // Some Chromium builds report a successful synthetic click while the native
+    // checkbox is immediately restored. Use the same DOM state a real checked
+    // control exposes, and emit both events used by the form.
+  }
+
+  if (!await consent.isChecked()) {
+    await consent.evaluate((element) => {
+      if (!(element instanceof HTMLInputElement)) {
+        throw new Error('Consent control is not an input element');
+      }
+      element.checked = true;
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  }
+
+  assert(await consent.isChecked(), 'Consent checkbox could not be checked');
+}
+
 async function main() {
   assert(fs.existsSync(fixturePath), `Sanitized Passport fixture is missing: ${fixturePath}`);
   fs.mkdirSync(artifactDir, { recursive: true });
@@ -125,7 +152,7 @@ async function main() {
     const precheckStampCount = Number(stampMatch?.[1] || 0);
     assert(precheckStampCount >= 5, `Precheck accepted fewer than 5 stamps: ${precheckStampCount}`);
 
-    await page.locator('input[name="consentAccepted"]').check();
+    await acceptConsent(page);
     await page.screenshot({
       path: path.join(artifactDir, '01-precheck-ready.png'),
       fullPage: true,

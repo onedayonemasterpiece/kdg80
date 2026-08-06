@@ -8,6 +8,7 @@ on:
     paths:
       - .github/workflows/amber-vk-passport-discovery.yml
       - scripts/fetch_vk_passport_candidates.py
+      - scripts/fetch_vk_passport_candidates_resilient.py
 
 permissions:
   contents: read
@@ -43,7 +44,7 @@ jobs:
           echo "VK credentials are available to the runner."
 
       - name: Discover likely festival Passport photos
-        run: python scripts/fetch_vk_passport_candidates.py
+        run: python scripts/fetch_vk_passport_candidates_resilient.py
 
       - name: Upload private candidate artifact
         if: always()

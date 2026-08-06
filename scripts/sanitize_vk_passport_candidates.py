@@ -37,19 +37,20 @@ def sanitize(source: Path, target: Path, index: int) -> tuple[int, int]:
     width, height = image.size
     draw = ImageDraw.Draw(image)
 
-    # The festival Passport is a fixed half-A4 form. The handwritten FIO field
-    # occupies this narrow horizontal band in portrait photographs. Cover a
-    # deliberately generous band so no original handwriting remains visible.
-    left = int(width * 0.025)
-    right = int(width * 0.975)
-    top = int(height * 0.525)
-    bottom = int(height * 0.615)
+    # Photographs have different crops even though the Passport is a fixed
+    # half-A4 form. Cover the entire middle form band, not only the nominal FIO
+    # line: this removes handwritten names that shift vertically after cropping,
+    # while preserving the stamp field below for OCR/E2E verification.
+    left = 0
+    right = width
+    top = int(height * 0.34)
+    bottom = int(height * 0.625)
     fill = (226, 234, 232)
     draw.rectangle((left, top, right, bottom), fill=fill)
 
     synthetic_name = f"ТЕСТ ЯНТАРНЫЙ КОМБИНАТ {index:02d}"
     text_font = font(max(34, int(height * 0.0225)))
-    text_x = left + int(width * 0.035)
+    text_x = int(width * 0.06)
     text_bbox = draw.textbbox((0, 0), synthetic_name, font=text_font)
     text_y = top + max(4, (bottom - top - (text_bbox[3] - text_bbox[1])) // 2)
     draw.text((text_x, text_y), synthetic_name, font=text_font, fill=(30, 38, 38))
@@ -124,6 +125,7 @@ def main() -> int:
             "width": sanitized_width,
             "height": sanitized_height,
             "pii_sanitized": True,
+            "sanitization_band_y": [0.34, 0.625],
             "synthetic_name": f"ТЕСТ ЯНТАРНЫЙ КОМБИНАТ {index:02d}",
         })
         fixture_files.append(target)
@@ -145,7 +147,7 @@ def main() -> int:
     contact_sheet(fixture_files, OUTPUT_ROOT / "contact-sheet-sanitized.jpg")
     (OUTPUT_ROOT / "README.txt").write_text(
         "Sanitized festival Passport fixtures for TEST-only E2E.\n"
-        "Original handwritten FIO is covered; synthetic names begin with ТЕСТ.\n"
+        "The complete middle form band containing handwritten FIO is covered; synthetic names begin with ТЕСТ.\n"
         "Do not use these images for real applications or publish them publicly.\n",
         encoding="utf-8",
     )

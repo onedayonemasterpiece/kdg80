@@ -162,19 +162,18 @@ jobs:
       - name: Save current Fly application configuration
         shell: bash
         run: |
-          mkdir -p .codex-artifacts/fly
           flyctl config save \
             -a "$APP_NAME" \
-            -c .codex-artifacts/fly/fly.toml \
+            -c fly.e2e.toml \
             -y
           flyctl config validate \
             -a "$APP_NAME" \
-            -c .codex-artifacts/fly/fly.toml
+            -c fly.e2e.toml
 
       - name: Prepare minimal Docker build context
         shell: bash
         run: |
-          cat > .codex-artifacts/fly/dockerignore <<'EOF'
+          cat > .fly-e2e.dockerignore <<'EOF'
           **
           !registration/
           !registration/package.json
@@ -194,9 +193,9 @@ jobs:
         run: |
           flyctl deploy . \
             -a "$APP_NAME" \
-            -c .codex-artifacts/fly/fly.toml \
-            --dockerfile "$GITHUB_WORKSPACE/registration/Dockerfile" \
-            --ignorefile "$GITHUB_WORKSPACE/.codex-artifacts/fly/dockerignore" \
+            -c fly.e2e.toml \
+            --dockerfile registration/Dockerfile \
+            --ignorefile .fly-e2e.dockerignore \
             --remote-only \
             --strategy rolling \
             --wait-timeout 15m \

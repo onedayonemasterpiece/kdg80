@@ -77,20 +77,26 @@ def patch_cleanup() -> bool:
 def patch_draws() -> bool:
     original = DRAWS.read_text(encoding="utf-8")
     text = original
-    old = (
-        "      AND a.status = 'accepted'\n"
-        "      AND a.score > 0\n"
+    patterns = (
+        (
+            "      AND a.status = 'accepted'\n"
+            "      AND a.score > 0\n",
+            "      AND a.status = 'accepted'\n"
+            "      AND a.score > 0\n"
+            "      AND a.application_code NOT LIKE 'TEST-%'\n",
+            "draw candidate query",
+        ),
+        (
+            "          AND a.status = 'accepted'\n"
+            "          AND a.score > 0\n",
+            "          AND a.status = 'accepted'\n"
+            "          AND a.score > 0\n"
+            "          AND a.application_code NOT LIKE 'TEST-%'\n",
+            "Telegram accepted-candidate count query",
+        ),
     )
-    new = (
-        "      AND a.status = 'accepted'\n"
-        "      AND a.score > 0\n"
-        "      AND a.application_code NOT LIKE 'TEST-%'\n"
-    )
-    if new not in text:
-        count = text.count(old)
-        if count < 2:
-            raise RuntimeError(f"Expected at least two accepted-application queries, found {count}.")
-        text = text.replace(old, new)
+    for old, new, label in patterns:
+        text = replace_once(text, old, new, label)
     if text == original:
         return False
     DRAWS.write_text(text, encoding="utf-8")

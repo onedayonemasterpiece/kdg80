@@ -42,17 +42,37 @@ jobs:
         run: python3 scripts/apply_amber_48h_citizenship_winner_email.py
       - name: Finalize email visual, legacy eligibility and preview sender
         run: python3 scripts/finalize_amber_48h_citizenship_winner_email.py
+      - name: Point email renderer to backend-served PNG
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          replacements = {
+              'https://kgd80.ru/generated/special/amber-combine-jewelry-production-email.jpg':
+                  'https://znanie-kgd80-fest.fly.dev/shared-assets/email/amber-combine-jewelry-production.png',
+              'amber-combine-jewelry-production-email\\.jpg':
+                  'amber-combine-jewelry-production\\.png',
+          }
+          for name in [
+              'registration/src/services/email-notifications.ts',
+              'registration/src/services/special-winner-email.test.ts',
+          ]:
+              path = Path(name)
+              text = path.read_text(encoding='utf-8')
+              for old, new in replacements.items():
+                  text = text.replace(old, new)
+              path.write_text(text, encoding='utf-8')
+          PY
       - name: Install image tools
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg imagemagick
-      - name: Create email-compatible JPEG hero
+      - name: Create email-compatible PNG hero served by backend
         run: |
+          mkdir -p assets/email
           ffmpeg -hide_banner -loglevel error -y \
             -i site/public/generated/special/amber-combine-jewelry-production-og.webp \
-            -q:v 2 \
-            site/public/generated/special/amber-combine-jewelry-production-email.jpg
-          test -s site/public/generated/special/amber-combine-jewelry-production-email.jpg
+            assets/email/amber-combine-jewelry-production.png
+          test -s assets/email/amber-combine-jewelry-production.png
       - name: Validate registration backend
         working-directory: registration
         run: |
@@ -74,7 +94,7 @@ jobs:
         run: |
           git config user.name onedayonemasterpiece
           git config user.email estershow6@gmail.com
-          git add registration site docs "Исходные данные/Спецмероприятия/specialregistration.md"
+          git add assets registration site docs "Исходные данные/Спецмероприятия/specialregistration.md"
           if git diff --cached --quiet; then
             echo "No implementation changes to commit."
             exit 1

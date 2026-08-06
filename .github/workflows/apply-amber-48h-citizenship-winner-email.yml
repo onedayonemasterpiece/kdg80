@@ -13,7 +13,7 @@ permissions:
 jobs:
   apply-and-validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,6 +40,150 @@ jobs:
           PY
       - name: Apply deterministic patch
         run: python3 scripts/apply_amber_48h_citizenship_winner_email.py
+      - name: Finalize email visual, legacy eligibility and preview sender
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          # Keep the three already accepted amber applications in the draw.
+          migration = Path('registration/src/db/migrations/019_special_winner_communications.sql')
+          text = migration.read_text(encoding='utf-8')
+          anchor = "WHERE slug = 'amber-combine-jewelry-excursion';\n"
+          legacy = """
+
+-- Applications accepted before this rule was published remain eligible;
+-- Russian citizenship is finally verified by the passport details supplied by winners.
+UPDATE special_applications
+SET russian_citizenship_confirmed = 1
+WHERE special_event_id = (
+  SELECT id FROM special_events
+  WHERE slug = 'amber-combine-jewelry-excursion'
+  LIMIT 1
+)
+  AND status = 'accepted';
+"""
+          if legacy.strip() not in text:
+              if anchor not in text:
+                  raise SystemExit('amber migration anchor not found')
+              text = text.replace(anchor, anchor + legacy, 1)
+              migration.write_text(text, encoding='utf-8')
+
+          # Extend the pre-existing mock after EmailNotificationService gained sendSpecialWinner.
+          mock_path = Path('registration/src/services/special-social-reminders.test.ts')
+          text = mock_path.read_text(encoding='utf-8')
+          old = """    async sendSpecialApplicationCreated() {
+      throw new Error('not used');
+    },
+    async sendSpecialSocialActivityReminder(input) {"""
+          new = """    async sendSpecialApplicationCreated() {
+      throw new Error('not used');
+    },
+    async sendSpecialWinner() {
+      throw new Error('not used');
+    },
+    async sendSpecialSocialActivityReminder(input) {"""
+          if old not in text:
+              raise SystemExit('special-social-reminders mock anchor not found')
+          mock_path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # Add an actual hero image and a visible preview banner to the same renderer used in production.
+          email_path = Path('registration/src/services/email-notifications.ts')
+          text = email_path.read_text(encoding='utf-8')
+          text = text.replace(
+              "  replyDeadline: string;\n};\n\nexport type SpecialSocialActivityReminderEmailInput",
+              "  replyDeadline: string;\n  previewMode?: boolean;\n};\n\nexport type SpecialSocialActivityReminderEmailInput",
+              1,
+          )
+          start = text.index('export function renderSpecialWinnerEmail')
+          end = text.index('export function renderSpecialSocialActivityReminderEmail')
+          segment = text[start:end]
+          segment = segment.replace(
+              "  const subject = `Вы победили в розыгрыше: ${input.event.title}`;",
+              "  const subject = `${input.previewMode ? '[ПРОЕКТ ДЛЯ СОГЛАСОВАНИЯ] ' : ''}Вы победили в розыгрыше: ${input.event.title}`;\n  const heroImageUrl = input.event.slug === 'amber-combine-jewelry-excursion'\n    ? 'https://kgd80.ru/generated/special/amber-combine-jewelry-production-email.jpg'\n    : null;",
+              1,
+          )
+          old_main = '  <main style="max-width:640px;margin:0 auto;background:#fffaf2;border-radius:18px;padding:28px;border:1px solid #eadfce;">\n    <p style="margin:0 0 10px;color:#9f3429;font-size:13px;font-weight:bold;letter-spacing:.08em;text-transform:uppercase;">Победа в розыгрыше</p>'
+          new_main = '  <main style="max-width:640px;margin:0 auto;background:#fffaf2;border-radius:18px;overflow:hidden;border:1px solid #eadfce;">\n    ${heroImageUrl ? `<img src="${escapeHtml(heroImageUrl)}" width="640" alt="Ювелирное производство Калининградского янтарного комбината" style="display:block;width:100%;height:auto;border:0;">` : \'\'}\n    <section style="padding:28px;">\n    ${input.previewMode ? \'<div style="margin:0 0 18px;padding:10px 12px;border-radius:10px;background:#172434;color:#ffffff;font-size:12px;font-weight:bold;letter-spacing:.06em;text-transform:uppercase;">Проект для согласования · это письмо ещё не отправляется победителям</div>\' : \'\'}\n    <p style="margin:0 0 10px;color:#9f3429;font-size:13px;font-weight:bold;letter-spacing:.08em;text-transform:uppercase;">Победа в розыгрыше</p>'
+          if old_main not in segment:
+              raise SystemExit('winner email main block anchor not found')
+          segment = segment.replace(old_main, new_main, 1)
+          old_end = '    <p style="margin:0;color:#554f48;">${footerHtml()}</p>\n  </main>'
+          new_end = '    <p style="margin:0;color:#554f48;">${footerHtml()}</p>\n    </section>\n  </main>'
+          if old_end not in segment:
+              raise SystemExit('winner email closing block anchor not found')
+          segment = segment.replace(old_end, new_end, 1)
+          text = text[:start] + segment + text[end:]
+          email_path.write_text(text, encoding='utf-8')
+
+          # Strengthen the renderer test with the real public image URL.
+          test_path = Path('registration/src/services/special-winner-email.test.ts')
+          text = test_path.read_text(encoding='utf-8')
+          anchor = "  assert.match(rendered.text, /согласие на их обработку и передачу/i);\n"
+          addition = "  assert.match(rendered.html, /amber-combine-jewelry-production-email\\.jpg/);\n"
+          if addition not in text:
+              if anchor not in text:
+                  raise SystemExit('winner email test anchor not found')
+              test_path.write_text(text.replace(anchor, anchor + addition, 1), encoding='utf-8')
+
+          # A one-shot operational script sends the exact production renderer through Yandex Postbox.
+          preview = Path('registration/scripts/send-amber-winner-email-preview.ts')
+          preview.write_text("""import { loadConfig } from '../src/config';
+import { createEmailNotificationService } from '../src/services/email-notifications';
+
+const config = loadConfig();
+const target = process.env.AMBER_WINNER_PREVIEW_EMAIL?.trim() || 'info@kgd80.ru';
+const service = createEmailNotificationService({
+  enabled: config.postboxEnabled,
+  endpoint: config.postboxEndpoint,
+  region: config.postboxRegion,
+  accessKeyId: config.postboxAccessKeyId,
+  secretAccessKey: config.postboxSecretAccessKey,
+  fromEmail: config.postboxFromEmail,
+  fromName: config.postboxFromName,
+  replyToEmail: config.postboxReplyToEmail,
+  configurationSetName: config.postboxConfigurationSetName,
+  archiveBccEmail: config.postboxArchiveBccEmail,
+  timeZone: config.timeZone,
+  sendTimeoutMs: config.postboxSendTimeoutMs,
+});
+
+const result = await service.sendSpecialWinner({
+  applicationCode: 'ПРОЕКТ-ДЛЯ-СОГЛАСОВАНИЯ',
+  fullName: 'Максим',
+  email: target,
+  event: {
+    slug: 'amber-combine-jewelry-excursion',
+    title: 'Экскурсия на ювелирное производство Калининградского янтарного комбината',
+    venueName: 'Калининградский янтарный комбинат, посёлок Янтарный',
+  },
+  showing: {
+    displayLabel: '11 августа 11:00 · ювелирное производство Янтарного комбината',
+    startsAt: '2026-08-11T11:00:00+02:00',
+  },
+  replyDeadline: '2026-08-10T11:00:00+02:00',
+  previewMode: true,
+});
+
+if (!result.sent) {
+  throw new Error(`Preview email was not sent: ${result.reason || 'unknown reason'}`);
+}
+
+console.log(JSON.stringify({ sent: result.sent, messageId: result.messageId, subject: result.subject, target }));
+""", encoding='utf-8')
+
+          package_path = Path('registration/package.json')
+          package = json.loads(package_path.read_text(encoding='utf-8'))
+          package['scripts']['send:amber-winner-preview'] = 'tsx scripts/send-amber-winner-email-preview.ts'
+          package_path.write_text(json.dumps(package, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+      - name: Create email-compatible JPEG hero
+        run: |
+          ffmpeg -hide_banner -loglevel error -y \
+            -i site/public/generated/special/amber-combine-jewelry-production-og.webp \
+            -q:v 2 \
+            site/public/generated/special/amber-combine-jewelry-production-email.jpg
+          test -s site/public/generated/special/amber-combine-jewelry-production-email.jpg
       - name: Validate registration backend
         working-directory: registration
         run: |
@@ -51,6 +195,7 @@ jobs:
           npm run test:special-public-quota
           npm run test:special-draws
           npm run test:special-social
+          npm run test:special-social-reminders
       - name: Build site
         working-directory: site
         run: |

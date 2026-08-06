@@ -7,6 +7,8 @@ name: Amber final production verification temp
       - main
     paths:
       - .github/workflows/amber-final-production-verification-temp.yml
+  schedule:
+    - cron: "*/5 * * * *"
 
 permissions:
   contents: write

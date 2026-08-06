@@ -1,0 +1,44 @@
+name: Apply special TEST draw exclusion
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/amber-combine-jewelry-excursion
+    paths:
+      - .github/workflows/apply-special-test-draw-exclusion.yml
+      - scripts/apply_special_test_draw_exclusion_patch.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/amber-combine-jewelry-excursion
+          fetch-depth: 0
+
+      - name: Apply TEST draw-isolation patch
+        run: python3 scripts/apply_special_test_draw_exclusion_patch.py
+
+      - name: Commit patch if needed
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "Patch already applied."
+            exit 0
+          fi
+          git config user.name "codex-agent"
+          git config user.email "codex-agent@example.local"
+          git add \
+            registration/src/services/special-applications.ts \
+            registration/src/services/special-test-cleanup.ts \
+            registration/src/services/special-draws.ts \
+            registration/src/services/special-test-cleanup.test.ts
+          git commit -m "test: isolate TEST applications from production draws"
+          git push origin HEAD:feat/amber-combine-jewelry-excursion

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/amber-combine-jewelry-excursion
+      - ops/amber-email-verification
     paths:
       - .github/workflows/send-amber-verification-emails.yml
       - .github/amber-email-verification.trigger
@@ -19,7 +20,7 @@ env:
 jobs:
   send-and-clean:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,7 +31,9 @@ jobs:
         with:
           node-version: 22.12.0
           cache: npm
-          cache-dependency-path: registration/package-lock.json
+          cache-dependency-path: |
+            registration/package-lock.json
+            site/package-lock.json
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
@@ -44,6 +47,78 @@ jobs:
           npm run test:special-test-draw-exclusion
           npm run test:special-public-quota
           npm run test:special-draws
+
+      - name: Build corrected public page
+        working-directory: site
+        run: |
+          npm ci
+          npm run build
+
+      - name: Publish corrected page and compiled assets
+        env:
+          YC_ACCESS_KEY_ID: ${{ secrets.YC_ACCESS_KEY_ID }}
+          YC_SECRET_ACCESS_KEY: ${{ secrets.YC_SECRET_ACCESS_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$YC_ACCESS_KEY_ID"
+          test -n "$YC_SECRET_ACCESS_KEY"
+          export AWS_ACCESS_KEY_ID="$YC_ACCESS_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$YC_SECRET_ACCESS_KEY"
+          export AWS_DEFAULT_REGION=ru-central1
+          endpoint='https://storage.yandexcloud.net'
+          bucket='kgd80.ru'
+          page='site/dist/special/amber-combine-jewelry-excursion/index.html'
+          test -f "$page"
+
+          mapfile -t compiled_assets < <(
+            grep -oE '/_astro/[^"'"'"'<> ?]+' "$page" | sed 's/[#?].*$//' | sort -u
+          )
+
+          for asset in "${compiled_assets[@]}"; do
+            source="site/dist${asset}"
+            key="${asset#/}"
+            test -f "$source" || continue
+            content_type='application/octet-stream'
+            case "$source" in
+              *.css) content_type='text/css; charset=utf-8' ;;
+              *.js|*.mjs) content_type='application/javascript; charset=utf-8' ;;
+              *.svg) content_type='image/svg+xml' ;;
+              *.woff2) content_type='font/woff2' ;;
+              *.woff) content_type='font/woff' ;;
+            esac
+            aws --endpoint-url "$endpoint" s3api put-object \
+              --bucket "$bucket" \
+              --key "$key" \
+              --body "$source" \
+              --content-type "$content_type" \
+              --cache-control 'public, max-age=31536000, immutable' >/dev/null
+          done
+
+          aws --endpoint-url "$endpoint" s3api put-object \
+            --bucket "$bucket" \
+            --key 'special/amber-combine-jewelry-excursion/index.html' \
+            --body "$page" \
+            --content-type 'text/html; charset=utf-8' \
+            --cache-control 'no-store, no-cache, must-revalidate, max-age=0' >/dev/null
+
+      - name: Verify corrected live form
+        shell: bash
+        run: |
+          set -euo pipefail
+          live_url="https://kgd80.ru/special/amber-combine-jewelry-excursion/?release=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          for attempt in {1..20}; do
+            curl -fsS -H 'Cache-Control: no-cache' "$live_url" >/tmp/live-amber-page.html
+            if grep -q 'подать заявку могут только граждане Российской Федерации' /tmp/live-amber-page.html \
+              && ! grep -q 'name="russianCitizenshipConfirmed"' /tmp/live-amber-page.html \
+              && ! grep -q 'Подтверждаю, что являюсь гражданином Российской Федерации' /tmp/live-amber-page.html; then
+              break
+            fi
+            sleep 3
+          done
+          grep -q 'подать заявку могут только граждане Российской Федерации' /tmp/live-amber-page.html
+          ! grep -q 'name="russianCitizenshipConfirmed"' /tmp/live-amber-page.html
+          ! grep -q 'Подтверждаю, что являюсь гражданином Российской Федерации' /tmp/live-amber-page.html
 
       - name: Deploy backend with auditable TEST mail cleanup
         run: flyctl deploy --remote-only --app "$FLY_APP" --config fly.toml
@@ -69,7 +144,7 @@ jobs:
           set -euo pipefail
           flyctl ssh console -a "$FLY_APP" -C "sh -lc 'cd /app/registration && AMBER_TEST_EMAIL=info@kgd80.ru npm run create:amber-test-application'" | tee /tmp/application.log
           json="$(grep -E '^\{"applicationCode":' /tmp/application.log | tail -n 1)"
-          [[ -n "$json" ]]
+          test -n "$json"
           printf '%s' "$json" >/tmp/application.json
           python3 - <<'PY'
           import json, os
@@ -89,7 +164,7 @@ jobs:
           set -euo pipefail
           flyctl ssh console -a "$FLY_APP" -C "sh -lc 'cd /app/registration && AMBER_WINNER_PREVIEW_EMAIL=info@kgd80.ru AMBER_WINNER_APPLICATION_CODE=\"$AMBER_TEST_APPLICATION_CODE\" AMBER_WINNER_FULL_NAME=Максим npm run send:amber-winner-preview'" | tee /tmp/winner.log
           json="$(grep -E '^\{"sent":true' /tmp/winner.log | tail -n 1)"
-          [[ -n "$json" ]]
+          test -n "$json"
           printf '%s' "$json" >/tmp/winner.json
           python3 - <<'PY'
           import json, os

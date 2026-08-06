@@ -1,7 +1,11 @@
 name: Amber final production verification temp
-# trigger: 2026-08-06T21:49:00+02:00
 
 on:
+  workflow_run:
+    workflows:
+      - Amber release inspect
+    types:
+      - completed
   push:
     branches:
       - main

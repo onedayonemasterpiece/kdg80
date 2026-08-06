@@ -1,14 +1,13 @@
-name: Amber final production verification temp
+name: Amber final production verification
 
 "on":
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/amber-final-production-verification-temp.yml
-  schedule:
-    - cron: "*/5 * * * *"
+
+# This workflow deploys production and sends real verification emails.
+# Keep it manual-only and serialize accidental duplicate requests.
+concurrency:
+  group: amber-final-production-verification
+  cancel-in-progress: false
 
 permissions:
   contents: write

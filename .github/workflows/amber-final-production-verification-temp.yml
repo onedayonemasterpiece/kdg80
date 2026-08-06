@@ -1,16 +1,10 @@
 name: Amber final production verification temp
 
 on:
-  workflow_run:
-    workflows:
-      - Amber release inspect
+  issues:
     types:
-      - completed
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/amber-final-production-verification-temp.yml
+      - opened
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -21,6 +15,7 @@ env:
 
 jobs:
   verify-release-send-clean:
+    if: github.event_name != 'issues' || github.event.issue.title == 'ops: run amber final production verification'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:

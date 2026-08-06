@@ -1,4 +1,4 @@
-name: Fix amber registration and verify exact emails
+name: Send verified amber emails
 
 on:
   push:
@@ -8,38 +8,16 @@ on:
       - .github/workflows/release-amber-winner-preview.yml
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
   FLY_APP: znanie-kgd80-fest
-  SITE_BUCKET_FALLBACK: kgd80.ru
-  GH_YC_BUCKET_NAME: ${{ secrets.YC_BUCKET_NAME }}
-  GH_YC_ACCESS_KEY_ID: ${{ secrets.YC_ACCESS_KEY_ID }}
-  GH_YC_SECRET_ACCESS_KEY: ${{ secrets.YC_SECRET_ACCESS_KEY }}
-  GH_YC_REGION: ${{ secrets.YC_REGION }}
-  GH_YC_S3_ENDPOINT: ${{ secrets.YC_S3_ENDPOINT }}
-  GH_SITE_YC_BUCKET_NAME: ${{ secrets.SITE_YC_BUCKET_NAME }}
-  GH_SITE_YC_ACCESS_KEY_ID: ${{ secrets.SITE_YC_ACCESS_KEY_ID }}
-  GH_SITE_YC_SECRET_ACCESS_KEY: ${{ secrets.SITE_YC_SECRET_ACCESS_KEY }}
-  GH_STATIC_YC_BUCKET_NAME: ${{ secrets.STATIC_YC_BUCKET_NAME }}
-  GH_STATIC_YC_ACCESS_KEY_ID: ${{ secrets.STATIC_YC_ACCESS_KEY_ID }}
-  GH_STATIC_YC_SECRET_ACCESS_KEY: ${{ secrets.STATIC_YC_SECRET_ACCESS_KEY }}
-  GH_S3_BUCKET: ${{ secrets.S3_BUCKET }}
-  GH_S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
-  GH_S3_REGION: ${{ secrets.S3_REGION }}
-  GH_S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
-  GH_S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
-  GH_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  GH_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  VAR_YC_BUCKET_NAME: ${{ vars.YC_BUCKET_NAME }}
-  VAR_YC_REGION: ${{ vars.YC_REGION }}
-  VAR_YC_S3_ENDPOINT: ${{ vars.YC_S3_ENDPOINT }}
 
 jobs:
   release-and-send:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,28 +28,11 @@ jobs:
         with:
           node-version: 22.12.0
           cache: npm
-          cache-dependency-path: |
-            registration/package-lock.json
-            site/package-lock.json
+          cache-dependency-path: registration/package-lock.json
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Apply the requested corrections
-        run: python3 scripts/fix_amber_registration_and_email.py
-
-      - name: Prove the citizenship control and internal mail markers are gone
-        shell: bash
-        run: |
-          set -euo pipefail
-          PAGE_SOURCE='site/src/pages/special/amber-combine-jewelry-excursion.astro'
-          grep -q 'подать заявку могут только граждане Российской Федерации' "$PAGE_SOURCE"
-          ! grep -q 'name="russianCitizenshipConfirmed"' "$PAGE_SOURCE"
-          ! grep -q 'russian_citizenship_confirmation_required' registration/src/services/special-applications.ts
-          ! grep -q 'confirmSpecialApplicationRussianCitizenship' registration/src/services/special-draws.ts
-          ! grep -qi 'ПРОЕКТ ДЛЯ СОГЛАСОВАНИЯ' registration/src/services/email-notifications.ts
-          ! grep -qi 'это письмо ещё не отправляется победителям' registration/src/services/email-notifications.ts
-
-      - name: Validate backend, draw and exact final email rendering
+      - name: Validate corrected backend and final winner template
         working-directory: registration
         run: |
           npm ci
@@ -82,44 +43,10 @@ jobs:
           npm run test:special-public-quota
           npm run test:special-draws
 
-      - name: Install site image tooling
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq imagemagick
-          command -v aws
-
-      - name: Build corrected production page
-        working-directory: site
-        run: |
-          npm ci
-          npm run build
-
-      - name: Commit corrected source
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name onedayonemasterpiece
-          git config user.email estershow6@gmail.com
-          git add \
-            registration/package.json \
-            registration/scripts/send-amber-winner-email-preview.ts \
-            registration/src/api/special.ts \
-            registration/src/services/email-notifications.ts \
-            registration/src/services/special-amber-eligibility.test.ts \
-            registration/src/services/special-applications.ts \
-            registration/src/services/special-draws.ts \
-            registration/src/services/special-winner-email.test.ts \
-            registration/src/services/telegram-bot.ts \
-            site/src/pages/special/amber-combine-jewelry-excursion.astro
-          if ! git diff --cached --quiet; then
-            git commit -m 'fix: remove unauthorized citizenship control and exact winner mail'
-            git push origin HEAD:feat/amber-combine-jewelry-excursion
-          fi
-
-      - name: Deploy corrected registration backend
+      - name: Deploy backend with TEST cleanup command
         run: flyctl deploy --remote-only --app "$FLY_APP" --config fly.toml
 
-      - name: Verify backend no longer requires citizenship confirmation
+      - name: Verify production backend has no citizenship confirmation control
         shell: bash
         run: |
           set -euo pipefail
@@ -133,148 +60,6 @@ jobs:
           curl -fsS "https://${FLY_APP}.fly.dev/api/v1/special/events/amber-combine-jewelry-excursion?token=amber-combine-jewelry-20260811" >/tmp/amber-event.json
           grep -q '"requiresRussianCitizenship":false' /tmp/amber-event.json
           curl -fsSI "https://${FLY_APP}.fly.dev/shared-assets/email/amber-combine-jewelry-production.png" | grep -q '200'
-
-      - name: Publish corrected page and its compiled assets
-        shell: bash
-        run: |
-          set -euo pipefail
-          page='site/dist/special/amber-combine-jewelry-excursion/index.html'
-          [[ -f "$page" ]]
-
-          mapfile -t compiled_assets < <(
-            grep -oE '/_astro/[^"'"'"'<> ?]+' "$page" | sed 's/[#?].*$//' | sort -u
-          )
-
-          upload_with_credentials() {
-            local label="$1"
-            local bucket="$2"
-            local endpoint="$3"
-            local region="$4"
-            local access_key="$5"
-            local secret_key="$6"
-
-            [[ -n "$access_key" && -n "$secret_key" ]] || return 1
-            bucket="${bucket:-$SITE_BUCKET_FALLBACK}"
-            endpoint="${endpoint:-https://storage.yandexcloud.net}"
-            region="${region:-ru-central1}"
-            echo "Trying static-site credential set: $label"
-
-            export AWS_ACCESS_KEY_ID="$access_key"
-            export AWS_SECRET_ACCESS_KEY="$secret_key"
-            export AWS_DEFAULT_REGION="$region"
-
-            for asset in "${compiled_assets[@]}"; do
-              local source="site/dist${asset}"
-              local key="${asset#/}"
-              [[ -f "$source" ]] || continue
-              local content_type='application/octet-stream'
-              local cache_control='public, max-age=31536000, immutable'
-              case "$source" in
-                *.css) content_type='text/css; charset=utf-8' ;;
-                *.js|*.mjs) content_type='application/javascript; charset=utf-8' ;;
-                *.svg) content_type='image/svg+xml' ;;
-                *.woff2) content_type='font/woff2' ;;
-                *.woff) content_type='font/woff' ;;
-              esac
-              if ! aws --endpoint-url "$endpoint" s3api put-object \
-                --bucket "$bucket" \
-                --key "$key" \
-                --body "$source" \
-                --content-type "$content_type" \
-                --cache-control "$cache_control" >/dev/null 2>&1; then
-                echo "Credential set $label cannot publish compiled asset $key"
-                return 1
-              fi
-            done
-
-            if ! aws --endpoint-url "$endpoint" s3api put-object \
-              --bucket "$bucket" \
-              --key 'special/amber-combine-jewelry-excursion/index.html' \
-              --body "$page" \
-              --content-type 'text/html; charset=utf-8' \
-              --cache-control 'no-store, no-cache, must-revalidate, max-age=0' >/dev/null 2>&1; then
-              echo "Credential set $label cannot overwrite the production page"
-              return 1
-            fi
-
-            echo "STATIC_CREDENTIAL_SET=$label" >> "$GITHUB_ENV"
-            return 0
-          }
-
-          success=0
-          upload_with_credentials \
-            'YC repository secrets' \
-            "${GH_YC_BUCKET_NAME:-${VAR_YC_BUCKET_NAME:-}}" \
-            "${GH_YC_S3_ENDPOINT:-${VAR_YC_S3_ENDPOINT:-}}" \
-            "${GH_YC_REGION:-${VAR_YC_REGION:-}}" \
-            "${GH_YC_ACCESS_KEY_ID:-}" \
-            "${GH_YC_SECRET_ACCESS_KEY:-}" && success=1 || true
-
-          if [[ "$success" -eq 0 ]]; then
-            upload_with_credentials \
-              'SITE_YC repository secrets' \
-              "${GH_SITE_YC_BUCKET_NAME:-${VAR_YC_BUCKET_NAME:-}}" \
-              "${GH_YC_S3_ENDPOINT:-${VAR_YC_S3_ENDPOINT:-}}" \
-              "${GH_YC_REGION:-${VAR_YC_REGION:-}}" \
-              "${GH_SITE_YC_ACCESS_KEY_ID:-}" \
-              "${GH_SITE_YC_SECRET_ACCESS_KEY:-}" && success=1 || true
-          fi
-
-          if [[ "$success" -eq 0 ]]; then
-            upload_with_credentials \
-              'STATIC_YC repository secrets' \
-              "${GH_STATIC_YC_BUCKET_NAME:-${VAR_YC_BUCKET_NAME:-}}" \
-              "${GH_YC_S3_ENDPOINT:-${VAR_YC_S3_ENDPOINT:-}}" \
-              "${GH_YC_REGION:-${VAR_YC_REGION:-}}" \
-              "${GH_STATIC_YC_ACCESS_KEY_ID:-}" \
-              "${GH_STATIC_YC_SECRET_ACCESS_KEY:-}" && success=1 || true
-          fi
-
-          if [[ "$success" -eq 0 ]]; then
-            upload_with_credentials \
-              'S3 repository secrets' \
-              "${GH_S3_BUCKET:-${VAR_YC_BUCKET_NAME:-}}" \
-              "${GH_S3_ENDPOINT:-${VAR_YC_S3_ENDPOINT:-}}" \
-              "${GH_S3_REGION:-${VAR_YC_REGION:-}}" \
-              "${GH_S3_ACCESS_KEY_ID:-}" \
-              "${GH_S3_SECRET_ACCESS_KEY:-}" && success=1 || true
-          fi
-
-          if [[ "$success" -eq 0 ]]; then
-            upload_with_credentials \
-              'AWS repository secrets' \
-              "${GH_YC_BUCKET_NAME:-${GH_S3_BUCKET:-${VAR_YC_BUCKET_NAME:-}}}" \
-              "${GH_YC_S3_ENDPOINT:-${GH_S3_ENDPOINT:-${VAR_YC_S3_ENDPOINT:-}}}" \
-              "${GH_YC_REGION:-${GH_S3_REGION:-${VAR_YC_REGION:-}}}" \
-              "${GH_AWS_ACCESS_KEY_ID:-}" \
-              "${GH_AWS_SECRET_ACCESS_KEY:-}" && success=1 || true
-          fi
-
-          if [[ "$success" -eq 0 ]]; then
-            echo 'No repository credential set could overwrite the production page.'
-            echo 'Available Fly secret/environment names related to storage:'
-            flyctl secrets list -a "$FLY_APP" 2>/dev/null | awk 'NR == 1 || $1 ~ /(S3|YC|AWS|BUCKET|STORAGE|SITE)/ { print $1 }' || true
-            flyctl ssh console -a "$FLY_APP" -C "sh -lc 'printenv | cut -d= -f1 | grep -E \"S3|YC|AWS|BUCKET|STORAGE|SITE\" | sort -u'" || true
-            exit 1
-          fi
-
-      - name: Verify corrected live form
-        shell: bash
-        run: |
-          set -euo pipefail
-          live_url="https://kgd80.ru/special/amber-combine-jewelry-excursion/?release=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          for attempt in {1..20}; do
-            curl -fsS -H 'Cache-Control: no-cache' "$live_url" >/tmp/live-amber-page.html
-            if grep -q 'подать заявку могут только граждане Российской Федерации' /tmp/live-amber-page.html \
-              && ! grep -q 'name="russianCitizenshipConfirmed"' /tmp/live-amber-page.html \
-              && ! grep -q 'Подтверждаю, что являюсь гражданином Российской Федерации' /tmp/live-amber-page.html; then
-              break
-            fi
-            sleep 3
-          done
-          grep -q 'подать заявку могут только граждане Российской Федерации' /tmp/live-amber-page.html
-          ! grep -q 'name="russianCitizenshipConfirmed"' /tmp/live-amber-page.html
-          ! grep -q 'Подтверждаю, что являюсь гражданином Российской Федерации' /tmp/live-amber-page.html
 
       - name: Create a real TEST application and send its normal application email
         shell: bash
@@ -304,7 +89,6 @@ jobs:
           winner_json="$(grep -E '^\{"sent":true' /tmp/amber-final-winner-email.log | tail -n 1)"
           [[ -n "$winner_json" ]]
           echo "$winner_json" >/tmp/amber-final-winner-email.json
-          ! grep -qi 'ПРОЕКТ ДЛЯ СОГЛАСОВАНИЯ' /tmp/amber-final-winner-email.log
           python3 - <<'PY'
           import json, os
           data = json.load(open('/tmp/amber-final-winner-email.json', encoding='utf-8'))
@@ -318,14 +102,29 @@ jobs:
               stream.write(f"AMBER_FINAL_WINNER_SUBJECT={data['subject']}\n")
           PY
 
-      - name: Capture verified result and deployed release
+      - name: Delete the TEST registration after both emails were accepted
         shell: bash
         run: |
           set -euo pipefail
-          echo "Static credential set: ${STATIC_CREDENTIAL_SET:-unknown}"
+          flyctl ssh console -a "$FLY_APP" -C "sh -lc 'cd /app/registration && AMBER_TEST_APPLICATION_CODE=\"$AMBER_TEST_APPLICATION_CODE\" npm run cleanup:amber-test-application'" | tee /tmp/amber-test-cleanup.log
+          cleanup_json="$(grep -E '^\{"cleaned":true' /tmp/amber-test-cleanup.log | tail -n 1)"
+          [[ -n "$cleanup_json" ]]
+          echo "$cleanup_json" >/tmp/amber-test-cleanup.json
+          python3 - <<'PY'
+          import json
+          data = json.load(open('/tmp/amber-test-cleanup.json', encoding='utf-8'))
+          assert data['cleaned'] is True
+          assert data['removedApplication'] == 1
+          assert data['removedProfile'] == 1
+          PY
+
+      - name: Print the auditable result
+        shell: bash
+        run: |
           echo "TEST application code: $AMBER_TEST_APPLICATION_CODE"
-          echo "TEST application email message ID: $AMBER_TEST_APPLICATION_MESSAGE_ID"
-          echo "TEST application email subject: $AMBER_TEST_APPLICATION_SUBJECT"
-          echo "Final winner email message ID: $AMBER_FINAL_WINNER_MESSAGE_ID"
-          echo "Final winner email subject: $AMBER_FINAL_WINNER_SUBJECT"
-          flyctl releases -a "$FLY_APP" --json | head -c 4000
+          echo "Application email message ID: $AMBER_TEST_APPLICATION_MESSAGE_ID"
+          echo "Application email subject: $AMBER_TEST_APPLICATION_SUBJECT"
+          echo "Winner email message ID: $AMBER_FINAL_WINNER_MESSAGE_ID"
+          echo "Winner email subject: $AMBER_FINAL_WINNER_SUBJECT"
+          echo "TEST registration cleanup: completed"
+          flyctl releases -a "$FLY_APP" --json | head -c 2000

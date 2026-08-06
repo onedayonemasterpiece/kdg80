@@ -1,0 +1,212 @@
+name: Amber production application E2E
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/amber-combine-jewelry-excursion
+    paths:
+      - .github/workflows/amber-production-application-e2e.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: amber-production-application-e2e
+  cancel-in-progress: false
+
+env:
+  APP_NAME: znanie-kgd80-fest
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+  GH_TOKEN: ${{ github.token }}
+  SAFE_FIXTURE_RUN_ID: '31080644073'
+  SAFE_FIXTURE_ARTIFACT: amber-vk-passport-sanitized
+  NO_COLOR: '1'
+
+jobs:
+  production-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/amber-combine-jewelry-excursion
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: npm
+          cache-dependency-path: |
+            registration/package-lock.json
+            site/package-lock.json
+
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Verify deployment credential
+        shell: bash
+        run: |
+          test -n "$FLY_API_TOKEN"
+          flyctl auth whoami >/dev/null
+          echo "Fly credential is available."
+
+      - name: Download the approved PII-sanitized Passport fixture
+        shell: bash
+        run: |
+          rm -rf .codex-artifacts/vk-passport-sanitized
+          mkdir -p .codex-artifacts/vk-passport-sanitized
+          gh run download "$SAFE_FIXTURE_RUN_ID" \
+            -n "$SAFE_FIXTURE_ARTIFACT" \
+            -D .codex-artifacts/vk-passport-sanitized
+          test -s .codex-artifacts/vk-passport-sanitized/fixtures/passport-test-01.jpg
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('.codex-artifacts/vk-passport-sanitized')
+          metadata = json.loads((root / 'metadata.json').read_text(encoding='utf-8'))
+          assert metadata.get('pii_sanitized') is True
+          assert int(metadata.get('fixture_count', 0)) >= 1
+          first = metadata.get('items', [])[0]
+          assert first.get('file') == 'passport-test-01.jpg'
+          assert str(first.get('synthetic_name', '')).startswith('ТЕСТ ')
+          print('Approved sanitized Passport fixture is ready.')
+          PY
+
+      - name: Install registration dependencies
+        working-directory: registration
+        run: npm ci
+
+      - name: Validate backend before deployment
+        working-directory: registration
+        run: |
+          npm run check
+          npm run test:special-test-cleanup
+          npm run test:special-test-draw-exclusion
+          npm run test:special-public-quota
+          npm run test:special-draws
+          npm run test:special-social
+
+      - name: Save current Fly application configuration
+        shell: bash
+        run: |
+          mkdir -p .codex-artifacts/fly
+          flyctl config save \
+            -a "$APP_NAME" \
+            -c .codex-artifacts/fly/fly.toml \
+            -y
+          flyctl config validate \
+            -a "$APP_NAME" \
+            -c .codex-artifacts/fly/fly.toml
+
+      - name: Prepare minimal Docker build context
+        shell: bash
+        run: |
+          cat > .codex-artifacts/fly/dockerignore <<'EOF'
+          **
+          !registration/
+          !registration/package.json
+          !registration/package-lock.json
+          !registration/tsconfig.json
+          !registration/Dockerfile
+          !registration/src/
+          !registration/src/**
+          !registration/scripts/
+          !registration/scripts/**
+          !assets/
+          !assets/**
+          EOF
+
+      - name: Deploy registration backend
+        shell: bash
+        run: |
+          flyctl deploy . \
+            -a "$APP_NAME" \
+            -c .codex-artifacts/fly/fly.toml \
+            --dockerfile registration/Dockerfile \
+            --ignorefile .codex-artifacts/fly/dockerignore \
+            --remote-only \
+            --strategy rolling \
+            --wait-timeout 15m \
+            --build-context-warn-size 0 \
+            --yes
+
+      - name: Wait for production health
+        shell: bash
+        run: |
+          check_health() {
+            local url="$1"
+            for attempt in $(seq 1 36); do
+              if body=$(curl --fail --silent --show-error --max-time 20 "$url"); then
+                BODY="$body" python3 - <<'PY'
+          import json
+          import os
+          payload = json.loads(os.environ['BODY'])
+          assert payload.get('ok') is True
+          PY
+                echo "Healthy: $url"
+                return 0
+              fi
+              echo "Health attempt $attempt failed for $url"
+              sleep 5
+            done
+            return 1
+          }
+
+          check_health "https://${APP_NAME}.fly.dev/api/v1/health"
+          check_health "https://kgd80.ru/api/v1/health"
+
+      - name: Capture Fly release metadata
+        shell: bash
+        run: |
+          mkdir -p .codex-artifacts/amber-combine-production-application-e2e
+          flyctl status -a "$APP_NAME" --json \
+            > .codex-artifacts/amber-combine-production-application-e2e/fly-status.json
+          flyctl releases -a "$APP_NAME" --json \
+            > .codex-artifacts/amber-combine-production-application-e2e/fly-releases.json \
+            || true
+
+      - name: Install site test dependencies
+        working-directory: site
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run accepted production application and reversible cleanup
+        working-directory: site
+        env:
+          AMBER_E2E_FIXTURE: ../.codex-artifacts/vk-passport-sanitized/fixtures/passport-test-01.jpg
+          AMBER_E2E_ARTIFACT_DIR: ../.codex-artifacts/amber-combine-production-application-e2e
+        run: npm run test:amber-production-application
+
+      - name: Verify production after cleanup
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --max-time 20 \
+            "https://${APP_NAME}.fly.dev/api/v1/health" \
+            > .codex-artifacts/amber-combine-production-application-e2e/health-after-cleanup.json
+          curl --fail --silent --show-error --max-time 20 \
+            "https://kgd80.ru/api/v1/health" \
+            > .codex-artifacts/amber-combine-production-application-e2e/public-health-after-cleanup.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          for name in ('health-after-cleanup.json', 'public-health-after-cleanup.json'):
+              payload = json.loads((Path('.codex-artifacts/amber-combine-production-application-e2e') / name).read_text())
+              assert payload.get('ok') is True
+          PY
+
+      - name: Upload QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amber-production-application-e2e
+          path: .codex-artifacts/amber-combine-production-application-e2e
+          if-no-files-found: warn
+          retention-days: 3
+          compression-level: 6

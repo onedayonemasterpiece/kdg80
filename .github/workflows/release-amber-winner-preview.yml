@@ -91,14 +91,14 @@ jobs:
             echo "YC_SECRET_ACCESS_KEY=$SECRET_KEY"
           } >> "$GITHUB_ENV"
 
-      - name: Publish the updated public page
+      - name: Publish the updated public page without bucket listing
         shell: bash
         run: |
           export AWS_ACCESS_KEY_ID="$YC_ACCESS_KEY_ID"
           export AWS_SECRET_ACCESS_KEY="$YC_SECRET_ACCESS_KEY"
           export AWS_DEFAULT_REGION="$YC_REGION"
-          aws --endpoint-url "$YC_S3_ENDPOINT" s3 sync site/dist "s3://$YC_BUCKET_NAME/" \
-            --delete --no-progress \
+          aws --endpoint-url "$YC_S3_ENDPOINT" s3 cp site/dist "s3://$YC_BUCKET_NAME/" \
+            --recursive --no-progress \
             --exclude 'tickets/*' \
             --exclude 'exports/*' \
             --exclude 'preview-*' \

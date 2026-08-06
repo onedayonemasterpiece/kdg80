@@ -90,6 +90,15 @@ jobs:
                           add(parsed[0])
                       add(value)
 
+          # A common extraction error keeps only the macaroon fragment and drops
+          # the required `FlyV1 ` prefix. Recover that exact documented wrapper
+          # without printing any candidate value.
+          for candidate in list(candidates):
+              if candidate.startswith(('fm2_', 'fo1_', 'fo2_')):
+                  add(f'FlyV1 {candidate}')
+              elif candidate.startswith('FlyV1') and not candidate.startswith('FlyV1 '):
+                  add(f'FlyV1 {candidate[len("FlyV1"):].lstrip()}')
+
           for index, candidate in enumerate(candidates):
               (Path('/tmp/fly-token-candidates') / f'{index:02d}').write_text(candidate, encoding='utf-8')
           PY

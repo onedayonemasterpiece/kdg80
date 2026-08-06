@@ -71,7 +71,7 @@
 ## Выпуск и проверки
 
 - Production URL: `https://kgd80.ru/special/amber-combine-jewelry-excursion/`.
-- Registration backend: Fly release `v111`, приложение `znanie-kgd80-fest`.
+- Registration backend: Fly release `v110`, приложение `znanie-kgd80-fest`.
 - Typecheck, focused backend tests, site build и Playwright visual gate desktop/mobile пройдены.
 - Публичный API возвращает `quotaVisibility: hidden` без числовых quota-полей.
 - Профиль Fly `256 MB RAM + 512 MB swap` выдержал production photo-check с пятью файлами и multipart-body `15,8 MB` без OOM; при одновременных тяжёлых загрузках память требует наблюдения.

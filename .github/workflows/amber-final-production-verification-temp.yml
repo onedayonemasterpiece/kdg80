@@ -1,9 +1,8 @@
 name: Amber final production verification temp
 
 on:
-  pull_request_target:
-    types:
-      - reopened
+  schedule:
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -17,7 +16,6 @@ env:
 
 jobs:
   verify-release-send-clean:
-    if: github.event_name != 'pull_request_target' || github.event.pull_request.title == 'ops: run amber final production verification'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:

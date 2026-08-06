@@ -26,6 +26,18 @@ jobs:
           cache-dependency-path: |
             registration/package-lock.json
             site/package-lock.json
+      - name: Make deterministic patch anchors tolerant of repeated matches
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply_amber_48h_citizenship_winner_email.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''    count = text.count(old)\n    if count != 1:\n        raise RuntimeError(f"{path}: expected one exact match, got {count}: {old[:120]!r}")\n    write(path, text.replace(old, new, 1))'''
+          new = '''    count = text.count(old)\n    if count < 1:\n        raise RuntimeError(f"{path}: expected at least one exact match, got {count}: {old[:120]!r}")\n    write(path, text.replace(old, new, 1))'''
+          if old not in text:
+              raise SystemExit('replace_once helper not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
       - name: Apply deterministic patch
         run: python3 scripts/apply_amber_48h_citizenship_winner_email.py
       - name: Validate registration backend

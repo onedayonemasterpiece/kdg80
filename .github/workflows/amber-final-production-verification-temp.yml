@@ -3,7 +3,7 @@ name: Amber final production verification temp
 "on":
   workflow_dispatch:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "55 20 6 8 *"
 
 permissions:
   contents: write

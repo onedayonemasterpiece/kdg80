@@ -18,7 +18,8 @@
     "build": "node scripts/prepare_public_assets.mjs && astro build && node scripts/verify_public_assets.mjs",
     "preview": "node scripts/prepare_public_assets.mjs && astro preview",
     "astro": "astro",
-    "passport:pdf": "npm run build && node ../scripts/generate-passport-pdf.mjs"
+    "passport:pdf": "npm run build && node ../scripts/generate-passport-pdf.mjs",
+    "test:amber-production-application": "node scripts/run_amber_production_application_e2e.mjs"
   },
   "dependencies": {
     "astro": "^6.0.5",

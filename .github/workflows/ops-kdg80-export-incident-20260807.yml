@@ -1,0 +1,79 @@
+name: KDG80 export incident diagnostics
+
+"on":
+  push:
+    branches:
+      - ops/kdg80-export-incident-20260807
+    paths:
+      - .github/workflows/ops-kdg80-export-incident-20260807.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ops-kdg80-export-incident-20260807
+  cancel-in-progress: false
+
+env:
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+  FLY_APP: znanie-kgd80-fest
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Set up pinned flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+        with:
+          version: 0.4.78
+
+      - name: Verify credential presence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FLY_API_TOKEN:-}"
+          echo "FLY_API_TOKEN_PRESENT=true"
+
+      - name: Read Fly application and machine state
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== fly status ==='
+          flyctl status --app "${FLY_APP}" || true
+          echo '=== fly scale ==='
+          flyctl scale show --app "${FLY_APP}" || true
+          echo '=== fly machines ==='
+          flyctl machine list --app "${FLY_APP}" || true
+
+      - name: Read Telegram webhook status without secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_command="node -e 'const token=process.env.TELEGRAM_BOT_TOKEN;if(!token){console.log(JSON.stringify({telegram_bot_token_present:false}));process.exit(0)};fetch(\`https://api.telegram.org/bot\${token}/getWebhookInfo\`).then(r=>r.json()).then(x=>{const y=x&&x.result?x.result:{};let host=null;try{host=y.url?new URL(y.url).host:null}catch{};console.log(JSON.stringify({telegram_bot_token_present:true,ok:x.ok===true,url_host:host,pending_update_count:y.pending_update_count??null,last_error_date:y.last_error_date??null,last_error_message:y.last_error_message??null,max_connections:y.max_connections??null,allowed_updates:y.allowed_updates??null},null,2))}).catch(e=>{console.log(JSON.stringify({telegram_bot_token_present:true,probe_error:String(e&&e.message||e)}));process.exitCode=1})'"
+          flyctl ssh console --app "${FLY_APP}" --pty=false --command "${remote_command}"
+
+      - name: Read process and memory state
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_command="sh -lc 'echo === processes ===; ps -eo pid,ppid,rss,vsz,etimes,comm,args | grep -E \"node|npm|tsx|tini\" | grep -v grep || true; echo === memory ===; grep -E \"^(MemTotal|MemFree|MemAvailable|SwapTotal|SwapFree):\" /proc/meminfo || true; echo === node-status ===; for p in \$(pgrep -f \"node|tsx\" || true); do echo PID=\$p; grep -E \"^(Name|State|VmPeak|VmSize|VmRSS|VmHWM|VmSwap|Threads):\" /proc/\$p/status 2>/dev/null || true; done; echo === data-volume ===; df -h /data || true; ls -lh /data/registration.sqlite* 2>/dev/null || true'"
+          flyctl ssh console --app "${FLY_APP}" --pty=false --command "${remote_command}"
+
+      - name: Read only incident-relevant recent logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          raw="$(mktemp)"
+          filtered="$(mktemp)"
+          trap 'rm -f "${raw}" "${filtered}"' EXIT
+          timeout 30s flyctl logs --app "${FLY_APP}" --no-tail >"${raw}" 2>&1 || true
+          grep -Ei 'telegram|webhook|timeout|timed out|oom|out of memory|killed|signal|restart|fatal|unhandled|heap|memory|exit code|machine.*(start|stop)' "${raw}" \
+            | tail -n 400 \
+            | sed -E \
+                -e 's/[0-9]{8,}:[A-Za-z0-9_-]{20,}/[BOT_TOKEN]/g' \
+                -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[EMAIL]/g' \
+                -e 's/(secret|token|key)=([^ &]+)/\1=[REDACTED]/gi' \
+            >"${filtered}" || true
+          echo "MATCHED_LOG_LINES=$(wc -l < "${filtered}" | tr -d ' ')"
+          cat "${filtered}"

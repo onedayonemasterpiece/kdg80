@@ -2,6 +2,10 @@ name: Amber final production verification
 
 "on":
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/amber-final-production-verification-temp.yml
 
 # Manual production check: creates a visible TEST application, sends two real
 # emails to info@kgd80.ru and removes all generated TEST records afterwards.

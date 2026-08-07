@@ -49,6 +49,7 @@ export type StoragePublisher = {
   publishPublicAsset(file: PublicStorageFile): Promise<void>;
   publishPrivateAsset(file: PrivateStorageFile): Promise<void>;
   readPrivateAsset(key: string): Promise<Buffer>;
+  deletePrivateAsset(key: string): Promise<void>;
 };
 
 function trimSlashes(value: string) {
@@ -124,6 +125,12 @@ function createS3Publisher(config: StorageConfig): StoragePublisher {
 
       return Buffer.from(await body.transformToByteArray());
     },
+    async deletePrivateAsset(key) {
+      await client.send(new DeleteObjectCommand({
+        Bucket: config.s3Bucket!,
+        Key: key,
+      }));
+    },
     async publishTicketArtifacts(bundle) {
       for (const file of bundle.files) {
         await this.publishPublicAsset(file);
@@ -160,6 +167,9 @@ function createLocalPublisher(config: StorageConfig): StoragePublisher {
     },
     async readPrivateAsset(key) {
       return fs.readFileSync(path.join(config.localPublicRoot, key));
+    },
+    async deletePrivateAsset(key) {
+      fs.rmSync(path.join(config.localPublicRoot, key), { force: true });
     },
     async publishTicketArtifacts(bundle) {
       for (const file of bundle.files) {

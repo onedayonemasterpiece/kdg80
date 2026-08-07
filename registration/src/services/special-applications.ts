@@ -6,6 +6,7 @@ import { LlmProviderError, runLlmLimited } from '../lib/llm-rate-limiter';
 import { normalizeEmail, normalizeFullName, normalizePhone } from '../lib/normalize';
 import { getVkAuthSession } from '../api/vk-auth';
 import { enqueueSpecialApplicationCreated } from './telegram-outbox';
+import { isSpecialTestFullName } from './special-test-cleanup';
 import { findSpecialVolunteerMatch } from './special-volunteers';
 
 const SPECIAL_PHOTO_PREFIX = (process.env.SPECIAL_PHOTO_PREFIX?.trim() || 'exports/special-passports')
@@ -27,6 +28,11 @@ type SpecialEventRow = {
   no_show_grace_count: number;
   no_show_penalty_points: number;
   previous_winner_weight_percent: number;
+  hide_public_quota: number;
+  auto_draw_lead_hours: number;
+  requires_russian_citizenship: number;
+  winner_email_enabled: number;
+  winner_response_deadline_hours: number;
 };
 
 type SpecialShowingRow = {
@@ -176,9 +182,14 @@ function publicSpecialEventView(event: SpecialEventRow, showings: SpecialShowing
       startsAt: showing.starts_at,
       displayLabel: showing.display_label,
       timeIsFinal: Boolean(showing.time_is_final),
-      physicalQuota: showing.physical_quota,
-      reservedSeats: showing.reserved_seats,
-      lotteryQuota: showing.lottery_quota,
+      ...(event.hide_public_quota
+        ? { quotaVisibility: 'hidden' as const }
+        : {
+            quotaVisibility: 'visible' as const,
+            physicalQuota: showing.physical_quota,
+            reservedSeats: showing.reserved_seats,
+            lotteryQuota: showing.lottery_quota,
+          }),
       drawStatus: showing.draw_status,
       applicationAvailable: unavailableReason === null,
       unavailableReason,
@@ -191,6 +202,8 @@ function publicSpecialEventView(event: SpecialEventRow, showings: SpecialShowing
     formatLabel: event.format_label,
     venueName: event.venue_name,
     applicationAvailable: event.public_state !== 'closed' && publicShowings.some((showing) => showing.applicationAvailable),
+    quotaVisibility: event.hide_public_quota ? 'hidden' as const : 'visible' as const,
+    requiresRussianCitizenship: Boolean(event.requires_russian_citizenship),
     minStampCount: event.min_stamp_count,
     pointRules: {
       basePoints: event.base_points,
@@ -1081,6 +1094,7 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     );
   }
 
+  const testApplication = isSpecialTestFullName(fullName);
   const fullNameFingerprint = computeFingerprint(deps.fingerprintSecret, fullName.toLowerCase());
   const emailFingerprint = computeFingerprint(deps.fingerprintSecret, email);
   const phoneFingerprint = computeFingerprint(deps.fingerprintSecret, phone);
@@ -1099,7 +1113,9 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
     throw new SpecialApplicationError(409, 'duplicate_application', duplicate.message);
   }
 
-  const applicationCode = crypto.randomUUID();
+  const applicationCode = testApplication
+    ? `TEST-${crypto.randomUUID()}`
+    : crypto.randomUUID();
   const analysis = await analyzePhotos(Array.isArray(payload.photos) ? payload.photos : []);
   const photoResults: Array<AnalyzedPhoto & {
     storageKey: string;
@@ -1206,6 +1222,7 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
         vk_auth_verified_at,
         vk_auth_scope,
         selected_showing_ids_json,
+        russian_citizenship_confirmed,
         status,
         rejection_reason,
         uploaded_photo_count,
@@ -1241,6 +1258,7 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
         @vkAuthVerifiedAt,
         @vkAuthScope,
         @selectedShowingIdsJson,
+        @russianCitizenshipConfirmed,
         @status,
         @rejectionReason,
         @uploadedPhotoCount,
@@ -1274,6 +1292,7 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
       vkAuthVerifiedAt: vkAuth ? new Date().toISOString() : null,
       vkAuthScope: vkAuth?.scope ?? null,
       selectedShowingIdsJson: JSON.stringify(selectedShowingIds),
+      russianCitizenshipConfirmed: 0,
       status,
       rejectionReason: rejectionReason || null,
       uploadedPhotoCount: analysis.uploadedPhotoCount,
@@ -1358,6 +1377,7 @@ export async function createSpecialApplication(payload: SpecialApplicationPayloa
 
   return {
     applicationId,
+    testApplication,
     applicationCode,
     fullName,
     email,

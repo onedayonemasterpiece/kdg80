@@ -7,7 +7,10 @@ import {
   buildSpecialDrawXlsxBuffer,
   listSpecialShowingsDueForAutoDraw,
   runSpecialDraw,
+  type SpecialDrawResult,
 } from './special-draws';
+import type { EmailNotificationService, EmailSendResult, SpecialWinnerEmailInput } from './email-notifications';
+import { recordEmailNotification } from './email-stats';
 import { listTelegramAdmins } from './telegram-admins';
 
 type DailyJobDeps = {
@@ -17,6 +20,9 @@ type DailyJobDeps = {
   privateKeyPemBase64: string | null;
   timeZone: string;
   syncPublicStateManifest: (reason: string) => Promise<boolean>;
+  emailNotifications: EmailNotificationService;
+  fingerprintSecret: string | null;
+  postboxConfigurationSetName: string | null;
 };
 
 const DAILY_EXPORT_JOB = 'daily_export_all';
@@ -169,6 +175,99 @@ async function runDailyBackup(deps: DailyJobDeps) {
   );
 }
 
+function acceptedWinnerEmailExists(db: Database.Database, applicationId: number) {
+  const row = db.prepare(`
+    SELECT 1 AS found
+    FROM email_notifications
+    WHERE entity_type = 'special_application'
+      AND entity_id = ?
+      AND template = 'special_draw_winner'
+      AND status != 'send_failed'
+    LIMIT 1
+  `).get(applicationId) as { found: number } | undefined;
+  return Boolean(row?.found);
+}
+
+async function sendWinnerEmailWithRetry(
+  service: EmailNotificationService,
+  input: SpecialWinnerEmailInput,
+) {
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await service.sendSpecialWinner(input);
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 1_500));
+      }
+    }
+  }
+
+  return {
+    sent: false,
+    provider: 'yandex-postbox',
+    messageId: null,
+    reason: lastError instanceof Error ? lastError.message.slice(0, 240) : 'send_failed',
+  } satisfies EmailSendResult;
+}
+
+async function sendSpecialWinnerEmails(deps: DailyJobDeps, result: SpecialDrawResult) {
+  if (!result.event.winner_email_enabled) {
+    return { sent: 0, failed: 0, skipped: result.winners.length };
+  }
+
+  const replyDeadline = new Date(
+    new Date(result.showing.starts_at).getTime()
+      - result.event.winner_response_deadline_hours * 60 * 60 * 1000,
+  ).toISOString();
+  let sent = 0;
+  let failed = 0;
+  let skipped = 0;
+
+  for (const winner of result.winners) {
+    if (acceptedWinnerEmailExists(deps.db, winner.applicationId)) {
+      skipped += 1;
+      continue;
+    }
+
+    const input: SpecialWinnerEmailInput = {
+      applicationCode: winner.applicationCode,
+      fullName: winner.fullName,
+      email: winner.email,
+      event: {
+        slug: result.event.slug,
+        title: result.event.title,
+        venueName: result.event.venue_name,
+      },
+      showing: {
+        displayLabel: result.showing.display_label,
+        startsAt: result.showing.starts_at,
+      },
+      replyDeadline,
+    };
+    const emailResult = await sendWinnerEmailWithRetry(deps.emailNotifications, input);
+    recordEmailNotification(deps.db, {
+      entityType: 'special_application',
+      entityId: winner.applicationId,
+      template: 'special_draw_winner',
+      recipientEmail: winner.email,
+      subject: emailResult.subject || `Вы победили в розыгрыше: ${result.event.title}`,
+      configurationSetName: deps.postboxConfigurationSetName,
+      fingerprintSecret: deps.fingerprintSecret,
+      result: emailResult,
+    });
+
+    if (emailResult.sent) {
+      sent += 1;
+    } else {
+      failed += 1;
+    }
+  }
+
+  return { sent, failed, skipped };
+}
+
 async function runDueSpecialDraws(deps: DailyJobDeps, now: Date) {
   if (!deps.privateKeyPemBase64) {
     deps.logger.error('special_auto_draw_skipped_missing_private_key');
@@ -187,9 +286,10 @@ async function runDueSpecialDraws(deps: DailyJobDeps, now: Date) {
       }, 'special_auto_draw_started');
 
       const result = runSpecialDraw(deps.db, item.showing.id, 'published', deps.privateKeyPemBase64);
+      const winnerEmailSummary = await sendSpecialWinnerEmails(deps, result);
       try {
         const text = [
-          'Автоматический опубликованный розыгрыш за сутки до показа.',
+          `Автоматический опубликованный розыгрыш за ${result.event.auto_draw_lead_hours} часов до события.`,
           '',
           `${result.event.title}`,
           `${result.showing.display_label}`,
@@ -198,6 +298,7 @@ async function runDueSpecialDraws(deps: DailyJobDeps, now: Date) {
           `Технических билетиков в барабане: ${result.totalWeight}`,
           `Механика: баллы делятся между выбранными датами; полный аудит в XLSX.`,
           `Источник случайности: ${result.drawMechanism.randomSource}`,
+          `Письма победителям: отправлено ${winnerEmailSummary.sent}, пропущено ${winnerEmailSummary.skipped}, ошибок ${winnerEmailSummary.failed}.`,
         ].join('\n');
         await sendMessageToSuperadmins(deps.db, deps.bot, text);
 

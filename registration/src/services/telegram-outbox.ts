@@ -284,7 +284,7 @@ function formatRegistrationCreatedMessage(payload: {
   ].join('\n');
 }
 
-function formatSpecialApplicationCreatedMessage(payload: {
+export function formatSpecialApplicationCreatedMessage(payload: {
   applicationCode: string;
   fullName: string;
   title: string;
@@ -307,8 +307,10 @@ function formatSpecialApplicationCreatedMessage(payload: {
   };
   score: number;
 }) {
+  const testApplication = payload.applicationCode.startsWith('TEST-');
   const lines = [
-    'Новая заявка на розыгрыш',
+    testApplication ? 'ТЕСТОВАЯ заявка на розыгрыш' : 'Новая заявка на розыгрыш',
+    testApplication ? 'Технический E2E: заявка будет удалена после проверки.' : null,
     `ФИО: ${payload.fullName}`,
     `Спецмероприятие: ${payload.title}`,
     `Формат и площадка: ${payload.formatLabel}, ${payload.venueName}`,
@@ -354,13 +356,14 @@ export function enqueueSpecialApplicationCreated(
     applicationId: number;
   },
 ) {
-  db.prepare(`
+  const result = db.prepare(`
     INSERT INTO telegram_outbox(type, payload_json)
     VALUES (?, ?)
   `).run('special_application_created', JSON.stringify({
     type: 'special_application_created',
     applicationId: payload.applicationId,
   } satisfies TelegramOutboxPayload));
+  return Number(result.lastInsertRowid);
 }
 
 export function startTelegramOutboxWorker(options: {

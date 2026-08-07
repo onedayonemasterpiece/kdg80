@@ -26,6 +26,7 @@ export type EmailSendResult = {
 export type EmailNotificationService = {
   sendRegistrationCreated(input: RegistrationEmailInput): Promise<EmailSendResult>;
   sendSpecialApplicationCreated(input: SpecialApplicationEmailInput): Promise<EmailSendResult>;
+  sendSpecialWinner(input: SpecialWinnerEmailInput): Promise<EmailSendResult>;
   sendSpecialSocialActivityReminder(input: SpecialSocialActivityReminderEmailInput): Promise<EmailSendResult>;
 };
 
@@ -65,6 +66,22 @@ export type SpecialApplicationEmailInput = {
   };
   fullName: string;
   email: string;
+};
+
+export type SpecialWinnerEmailInput = {
+  applicationCode: string;
+  fullName: string;
+  email: string;
+  event: {
+    slug: string;
+    title: string;
+    venueName: string;
+  };
+  showing: {
+    displayLabel: string;
+    startsAt: string;
+  };
+  replyDeadline: string;
 };
 
 export type SpecialSocialActivityReminderEmailInput = {
@@ -258,6 +275,73 @@ export function renderSpecialApplicationEmail(input: SpecialApplicationEmailInpu
     ${paragraphsHtml(htmlLines)}
     <hr style="border:0;border-top:1px solid #eadfce;margin:24px 0;">
     <p style="margin:0;color:#554f48;">${footerHtml()}</p>
+  </main>
+</body>
+</html>`;
+
+  return { subject, text, html };
+}
+
+export function renderSpecialWinnerEmail(input: SpecialWinnerEmailInput, timeZone: string) {
+  const startsAt = formatDateTime(input.showing.startsAt, timeZone);
+  const replyDeadline = formatDateTime(input.replyDeadline, timeZone);
+  const subject = `Вы победили в розыгрыше: ${input.event.title}`;
+  const heroImageUrl = input.event.slug === 'amber-combine-jewelry-excursion'
+    ? 'https://znanie-kgd80-fest.fly.dev/shared-assets/email/amber-combine-jewelry-production.png'
+    : null;
+  const text = [
+    `Здравствуйте, ${input.fullName}!`,
+    '',
+    `Вы стали победителем розыгрыша на спецмероприятие «${input.event.title}».`,
+    `Дата и время: ${startsAt}.`,
+    `Площадка: ${input.event.venueName}.`,
+    '',
+    `Ответьте на это письмо не позднее ${replyDeadline} и укажите:`,
+    '1. Полное ФИО.',
+    '2. Серия и номер.',
+    '',
+    'К участию допускаются только граждане Российской Федерации.',
+    'Фотографию или скан паспорта отправлять не нужно.',
+    '',
+    'Если данные не будут получены в указанный срок, организатор вправе передать место другому участнику.',
+    'Точную точку сбора и требования пропускного режима мы направим дополнительно после оформления списка участников.',
+    '',
+    `Код заявки: ${input.applicationCode}.`,
+    '',
+    footerText(),
+  ].join('\n');
+  const html = `<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>${escapeHtml(subject)}</title></head>
+<body style="margin:0;padding:24px;background:#f7f1e8;color:#12110e;font-family:Arial,Helvetica,sans-serif;line-height:1.5;">
+  <main style="max-width:640px;margin:0 auto;background:#fffaf2;border-radius:18px;overflow:hidden;border:1px solid #eadfce;">
+    ${heroImageUrl ? `<img src="${escapeHtml(heroImageUrl)}" width="640" alt="Ювелирное производство Калининградского янтарного комбината" style="display:block;width:100%;height:auto;border:0;">` : ''}
+    <section style="padding:28px;">
+    <p style="margin:0 0 10px;color:#9f3429;font-size:13px;font-weight:bold;letter-spacing:.08em;text-transform:uppercase;">Победа в розыгрыше</p>
+    <h1 style="margin:0 0 18px;font-size:25px;line-height:1.2;">${escapeHtml(input.event.title)}</h1>
+    ${paragraphsHtml([
+      `Здравствуйте, ${input.fullName}!`,
+      `Вы стали победителем розыгрыша. Дата и время: ${startsAt}.`,
+      `Площадка: ${input.event.venueName}.`,
+      `Ответьте на это письмо не позднее ${replyDeadline}.`,
+    ])}
+    <div style="margin:20px 0;padding:18px;border-radius:14px;background:#f3e5d4;border:1px solid #dfc8ae;">
+      <strong>В ответном письме укажите:</strong>
+      <ol style="margin:10px 0 0;padding-left:22px;">
+        <li>полное ФИО;</li>
+        <li>серия и номер.</li>
+      </ol>
+    </div>
+    ${paragraphsHtml([
+      'К участию допускаются только граждане Российской Федерации.',
+      'Фотографию или скан паспорта отправлять не нужно.',
+        'Если данные не будут получены в указанный срок, организатор вправе передать место другому участнику.',
+      'Точную точку сбора и требования пропускного режима мы направим дополнительно после оформления списка участников.',
+      `Код заявки: ${input.applicationCode}.`,
+    ])}
+    <hr style="border:0;border-top:1px solid #eadfce;margin:24px 0;">
+    <p style="margin:0;color:#554f48;">${footerHtml()}</p>
+    </section>
   </main>
 </body>
 </html>`;
@@ -468,6 +552,13 @@ export function createEmailNotificationService(config: PostboxConfig): EmailNoti
     },
     async sendSpecialApplicationCreated(input) {
       const rendered = renderSpecialApplicationEmail(input, config.timeZone);
+      return sendPostboxEmail(config, {
+        to: input.email,
+        ...rendered,
+      });
+    },
+    async sendSpecialWinner(input) {
+      const rendered = renderSpecialWinnerEmail(input, config.timeZone);
       return sendPostboxEmail(config, {
         to: input.email,
         ...rendered,

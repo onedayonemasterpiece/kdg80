@@ -156,6 +156,9 @@ test('send path records email notification and reminder ledger', async () => {
     async sendSpecialApplicationCreated() {
       throw new Error('not used');
     },
+    async sendSpecialWinner() {
+      throw new Error('not used');
+    },
     async sendSpecialSocialActivityReminder(input) {
       return {
         sent: true,

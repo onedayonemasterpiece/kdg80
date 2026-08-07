@@ -1,0 +1,32 @@
+name: Verify KDG80 runtime load after export containment
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/ops-verify-kdg80-runtime-load-20260807.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify-load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      FLY_APP: znanie-kgd80-fest
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+        with:
+          version: 0.4.78
+      - name: Inspect process, load, memory and filesystem without secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FLY_API_TOKEN:-}"
+          flyctl status --app "$FLY_APP"
+          flyctl ssh console \
+            --app "$FLY_APP" \
+            --pty=false \
+            --command "sh -lc 'echo KDG80_RUNTIME_LOAD_EVIDENCE_START; date -u +UTC=%Y-%m-%dT%H:%M:%SZ; uptime; printf LOADAVG=; cat /proc/loadavg; free -m; df -h / /data; echo TOP_PROCESSES; ps -eo pid,ppid,pcpu,pmem,rss,etime,comm,args --sort=-pcpu | head -n 12; echo KDG80_RUNTIME_LOAD_EVIDENCE_END'"

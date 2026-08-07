@@ -2,15 +2,9 @@ name: Amber final production verification
 
 "on":
   workflow_dispatch:
-  push:
-    branches:
-      - feat/amber-combine-jewelry-excursion
-    paths:
-      - .github/workflows/amber-final-production-verification-temp.yml
 
 # This workflow deploys production and sends real verification emails.
-# Serialize accidental duplicate requests while the release verification is active.
-# Retry after making generated TEST-fixture cleanup idempotent for unstored placeholders.
+# Keep it manual-only: a run creates a visible TEST application and sends two real emails.
 concurrency:
   group: amber-final-production-verification
   cancel-in-progress: false
@@ -19,6 +13,7 @@ permissions:
   contents: write
 
 env:
+  ALLOW_AMBER_PRODUCTION_VERIFICATION: "1"
   FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
   FLY_APP: znanie-kgd80-fest
   YC_ACCESS_KEY_ID: ${{ secrets.YC_ACCESS_KEY_ID }}

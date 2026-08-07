@@ -15,6 +15,11 @@ type TestApplicationRow = {
   pii_alg: string;
 };
 
+type TestPhotoRow = {
+  storage_key: string;
+  ocr_json: string | null;
+};
+
 export class SpecialTestCleanupError extends Error {
   statusCode: number;
   code: string;
@@ -35,6 +40,23 @@ export function isSpecialTestFullName(value: unknown) {
     || normalized.startsWith('ТЕСТ ')
     || normalized === 'TEST'
     || normalized.startsWith('TEST ');
+}
+
+function isUnstoredTestFixturePhoto(photo: TestPhotoRow) {
+  if (!photo.ocr_json) {
+    return false;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(photo.ocr_json);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return false;
+    }
+    const metadata = parsed as Record<string, unknown>;
+    return metadata.testFixture === true && metadata.noFileStored === true;
+  } catch {
+    return false;
+  }
 }
 
 export function createSpecialTestCleanupToken(secret: string, applicationCode: string) {
@@ -114,16 +136,24 @@ export async function cleanupSpecialTestApplication(
   }
 
   const photoRows = db.prepare(`
-    SELECT storage_key
+    SELECT storage_key, ocr_json
     FROM special_application_photos
     WHERE application_id = ?
     ORDER BY id ASC
-  `).all(row.id) as Array<{ storage_key: string }>;
+  `).all(row.id) as TestPhotoRow[];
 
   const failedStorageKeys: string[] = [];
+  let removedPrivateAssets = 0;
+  let skippedUnstoredPrivateAssets = 0;
   for (const photo of photoRows) {
+    if (isUnstoredTestFixturePhoto(photo)) {
+      skippedUnstoredPrivateAssets += 1;
+      continue;
+    }
+
     try {
       await options.storagePublisher.deletePrivateAsset(photo.storage_key);
+      removedPrivateAssets += 1;
     } catch {
       failedStorageKeys.push(photo.storage_key);
     }
@@ -203,7 +233,8 @@ export async function cleanupSpecialTestApplication(
 
   return {
     applicationCode: row.application_code,
-    removedPrivateAssets: photoRows.length,
+    removedPrivateAssets,
+    skippedUnstoredPrivateAssets,
     ...removed,
   };
 }

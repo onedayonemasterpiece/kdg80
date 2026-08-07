@@ -3,14 +3,14 @@ name: Amber final production verification
 "on":
   workflow_dispatch:
 
-# This workflow deploys production and sends real verification emails.
-# Keep it manual-only: a run creates a visible TEST application and sends two real emails.
+# Manual production check: creates a visible TEST application, sends two real
+# emails to info@kgd80.ru and removes all generated TEST records afterwards.
 concurrency:
   group: amber-final-production-verification
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   ALLOW_AMBER_PRODUCTION_VERIFICATION: "1"
@@ -21,12 +21,12 @@ env:
 
 jobs:
   verify-release-send-clean:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: feat/amber-combine-jewelry-excursion
           fetch-depth: 0
 
       - uses: actions/setup-node@v4

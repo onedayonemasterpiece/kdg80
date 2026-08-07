@@ -115,4 +115,4 @@ jobs:
           TS
 
           payload="$(base64 -w0 /tmp/cancel-elena-ratkevich.ts)"
-          flyctl ssh console -a "$FLY_APP" -C "sh -lc \"printf '%s' '$payload' | base64 -d > /app/registration/scripts/.cancel-elena-ratkevich.ts && cd /app/registration && npx tsx scripts/.cancel-elena-ratkevich.ts; code=\\$?; rm -f scripts/.cancel-elena-ratkevich.ts; exit \\$code\""
+          flyctl ssh console -a "$FLY_APP" -C "sh -lc \"trap 'rm -f /app/registration/scripts/.cancel-elena-ratkevich.ts' EXIT; printf '%s' '$payload' | base64 -d > /app/registration/scripts/.cancel-elena-ratkevich.ts; cd /app/registration; npx tsx scripts/.cancel-elena-ratkevich.ts\""

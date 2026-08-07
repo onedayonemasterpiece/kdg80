@@ -42,7 +42,6 @@ jobs:
           set -euo pipefail
           umask 077
           test -n "${FLY_API_TOKEN:-}"
-          flyctl status --app "${FLY_APP_NAME}" >/dev/null
 
           script_file="events-bot-new/scripts/ops/add_amber_excursion_digest_20260807.py"
           output_file="$(mktemp)"
@@ -50,7 +49,7 @@ jobs:
           test -s "${script_file}"
 
           remote_command='cd /app && PYTHONPATH=/app python3 -c '\''import sys; exec(compile(sys.stdin.read(), "<amber_digest_seed>", "exec"), {"__name__":"__main__"})'\'''
-          flyctl ssh console --app "${FLY_APP_NAME}" --command "${remote_command}" \
+          flyctl ssh console --app "${FLY_APP_NAME}" --pty=false --command "${remote_command}" \
             < "${script_file}" | tee "${output_file}"
 
           grep -Fxq 'AMBER_DIGEST_ELIGIBLE=true' "${output_file}"

@@ -1,0 +1,309 @@
+name: Build Telegram export incident hotfix
+
+"on":
+  push:
+    branches:
+      - hotfix/telegram-export-idempotency-20260807
+    paths:
+      - .github/workflows/ops-build-telegram-export-hotfix-20260807.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-telegram-export-hotfix-20260807
+  cancel-in-progress: false
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: hotfix/telegram-export-idempotency-20260807
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+          cache-dependency-path: registration/package-lock.json
+
+      - name: Apply export-specific webhook protection
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('registration/src/services/telegram-bot.ts')
+          text = path.read_text(encoding='utf-8')
+
+          storage_import = "import type { StoragePublisher } from '../lib/storage';\n"
+          guard_import = """import {
+            claimTelegramUpdate,
+            getTelegramUpdateId,
+            isFullExportUpdate,
+            isStaleFullExportUpdate,
+            type TelegramUpdateEnvelope,
+          } from './telegram-update-guard';
+          """
+          if guard_import not in text:
+              if storage_import not in text:
+                  raise SystemExit('storage import anchor missing')
+              text = text.replace(storage_import, storage_import + guard_import, 1)
+
+          events_constant = 'const EVENTS_PER_PAGE = 6;\n'
+          age_constant = 'const TELEGRAM_EXPORT_UPDATE_MAX_AGE_SECONDS = 5 * 60;\n'
+          if age_constant not in text:
+              if events_constant not in text:
+                  raise SystemExit('events constant anchor missing')
+              text = text.replace(events_constant, events_constant + age_constant, 1)
+
+          bot_state = "  const pendingFindPrompts = new Map<string, number>();\n"
+          protected_state = """  const pendingFindPrompts = new Map<string, number>();
+            let exportAllInFlight = false;
+          """
+          if 'let exportAllInFlight = false;' not in text:
+              if bot_state not in text:
+                  raise SystemExit('bot state anchor missing')
+              text = text.replace(bot_state, protected_state, 1)
+
+          command_start = "  bot.command('export_all', async (ctx) => {"
+          command_end = "  bot.command('backup_sqlite', async (ctx) => {"
+          command_begin = text.index(command_start)
+          command_finish = text.index(command_end, command_begin)
+          command_replacement = """  bot.command('export_all', async (ctx) => {
+            const admin = requireAdminRole(String(ctx.from?.id ?? ''));
+            if (!admin || admin.role !== 'superadmin') {
+              await ctx.reply('Общий экспорт доступен только суперадмину.');
+              return;
+            }
+
+            if (!deps.privateKeyPemBase64) {
+              await ctx.reply('Нужен приватный ключ, чтобы подготовить общий экспорт.');
+              return;
+            }
+
+            if (exportAllInFlight) {
+              await ctx.reply('Сводный экспорт уже формируется. Дождитесь текущего файла.');
+              return;
+            }
+
+            exportAllInFlight = true;
+            const startedAt = Date.now();
+            const rssBefore = process.memoryUsage().rss;
+            try {
+              const rows = listAllRegistrationsForExport(deps.db, deps.privateKeyPemBase64);
+              const buffer = await buildRegistrationsXlsxBuffer(rows);
+              await ctx.replyWithDocument(
+                new InputFile(buffer, 'registrations-all.xlsx'),
+                {
+                  caption: 'Сводный XLSX по всем событиям.',
+                },
+              );
+              app.log.info({
+                updateId: ctx.update.update_id,
+                rowCount: rows.length,
+                xlsxBytes: buffer.byteLength,
+                durationMs: Date.now() - startedAt,
+                rssBeforeMb: Math.round(rssBefore / 1_048_576),
+                rssAfterMb: Math.round(process.memoryUsage().rss / 1_048_576),
+              }, 'telegram_export_all_completed');
+            } catch (error) {
+              app.log.error({
+                err: error,
+                updateId: ctx.update.update_id,
+                durationMs: Date.now() - startedAt,
+              }, 'telegram_export_all_failed');
+              await ctx.reply('Не удалось подготовить сводный XLSX. Ошибка записана в лог сервера.');
+            } finally {
+              exportAllInFlight = false;
+            }
+          });
+
+          """
+          text = text[:command_begin] + command_replacement + text[command_finish:]
+
+          callback_start = "  bot.callbackQuery(/^exp:(all|backup)$/u, async (ctx) => {"
+          callback_end = "  bot.callbackQuery(/^spl$/u, async (ctx) => {"
+          callback_begin = text.index(callback_start)
+          callback_finish = text.index(callback_end, callback_begin)
+          callback_replacement = """  bot.callbackQuery(/^exp:(all|backup)$/u, async (ctx) => {
+            const admin = requireAdminRole(String(ctx.from?.id ?? ''));
+            if (!admin || admin.role !== 'superadmin') {
+              await ctx.answerCallbackQuery({
+                text: 'Раздел экспорта доступен только суперадмину.',
+                show_alert: true,
+              });
+              return;
+            }
+
+            const [, action] = ctx.match;
+
+            if (action === 'all') {
+              if (!deps.privateKeyPemBase64) {
+                await ctx.answerCallbackQuery({
+                  text: 'Нужен приватный ключ, чтобы подготовить общий экспорт.',
+                  show_alert: true,
+                });
+                return;
+              }
+
+              if (exportAllInFlight) {
+                await ctx.answerCallbackQuery({
+                  text: 'Сводный экспорт уже формируется.',
+                  show_alert: true,
+                });
+                return;
+              }
+
+              exportAllInFlight = true;
+              const startedAt = Date.now();
+              const rssBefore = process.memoryUsage().rss;
+              await ctx.answerCallbackQuery({
+                text: 'Готовлю сводный XLSX.',
+              });
+
+              try {
+                const rows = listAllRegistrationsForExport(deps.db, deps.privateKeyPemBase64);
+                const buffer = await buildRegistrationsXlsxBuffer(rows);
+                await ctx.replyWithDocument(
+                  new InputFile(buffer, 'registrations-all.xlsx'),
+                  {
+                    caption: 'Сводный XLSX по всем событиям.',
+                    reply_markup: buildMainKeyboard(admin.role),
+                  },
+                );
+                app.log.info({
+                  updateId: ctx.update.update_id,
+                  rowCount: rows.length,
+                  xlsxBytes: buffer.byteLength,
+                  durationMs: Date.now() - startedAt,
+                  rssBeforeMb: Math.round(rssBefore / 1_048_576),
+                  rssAfterMb: Math.round(process.memoryUsage().rss / 1_048_576),
+                }, 'telegram_export_all_completed');
+              } catch (error) {
+                app.log.error({
+                  err: error,
+                  updateId: ctx.update.update_id,
+                  durationMs: Date.now() - startedAt,
+                }, 'telegram_export_all_failed');
+                await ctx.reply('Не удалось подготовить сводный XLSX. Ошибка записана в лог сервера.');
+              } finally {
+                exportAllInFlight = false;
+              }
+              return;
+            }
+
+            await ctx.answerCallbackQuery({
+              text: 'Готовлю резервную копию SQLite.',
+            });
+
+            const buffer = await createSqliteBackup(deps.db, 'registration-backup');
+            await ctx.replyWithDocument(
+              new InputFile(buffer, 'registration-backup.sqlite'),
+              {
+                caption: 'Резервная копия SQLite.',
+                reply_markup: buildMainKeyboard(admin.role),
+              },
+            );
+          });
+
+          """
+          text = text[:callback_begin] + callback_replacement + text[callback_finish:]
+
+          webhook_start = "  if (!deps.skipWebhook) {"
+          webhook_end = "  return {\n    bot,"
+          webhook_begin = text.index(webhook_start)
+          webhook_finish = text.index(webhook_end, webhook_begin)
+          webhook_replacement = """  if (!deps.skipWebhook) {
+            const webhookHandler = webhookCallback(bot, 'fastify');
+
+            app.post(deps.webhookPath, async (request, reply) => {
+              const secret = request.headers['x-telegram-bot-api-secret-token'];
+              if (secret !== deps.webhookSecret) {
+                reply.code(401);
+                return {
+                  error: 'telegram_secret_mismatch',
+                };
+              }
+
+              const update = request.body as TelegramUpdateEnvelope;
+              if (!isFullExportUpdate(update)) {
+                return webhookHandler(request, reply);
+              }
+
+              const updateId = getTelegramUpdateId(update);
+              if (updateId === null) {
+                reply.code(400);
+                return {
+                  error: 'telegram_update_id_missing',
+                };
+              }
+
+              if (isStaleFullExportUpdate(update, TELEGRAM_EXPORT_UPDATE_MAX_AGE_SECONDS)) {
+                app.log.warn({ updateId }, 'telegram_stale_export_update_skipped');
+                return {
+                  ok: true,
+                  skipped: 'stale_export',
+                };
+              }
+
+              if (!claimTelegramUpdate(deps.db, updateId)) {
+                app.log.info({ updateId }, 'telegram_duplicate_export_update_skipped');
+                return {
+                  ok: true,
+                  skipped: 'duplicate_export',
+                };
+              }
+
+              reply.code(200).send({ ok: true });
+              setImmediate(() => {
+                void bot.handleUpdate(update as Parameters<typeof bot.handleUpdate>[0])
+                  .then(() => {
+                    app.log.info({ updateId }, 'telegram_export_update_processing_completed');
+                  })
+                  .catch((error) => {
+                    app.log.error({ err: error, updateId }, 'telegram_export_update_processing_failed');
+                  });
+              });
+              return reply;
+            });
+          }
+
+          """
+          text = text[:webhook_begin] + webhook_replacement + text[webhook_finish:]
+
+          path.write_text(text, encoding='utf-8')
+
+      - name: Install backend dependencies
+        working-directory: registration
+        run: npm ci
+
+      - name: Typecheck and run regression tests
+        working-directory: registration
+        run: |
+          set -euo pipefail
+          npm run check
+          npx tsx --test src/services/telegram-update-guard.test.ts
+          npm run test:special-amber-eligibility
+          npm run test:special-test-cleanup
+          npm run test:special-test-draw-exclusion
+          npm run test:special-public-quota
+          npm run test:special-draws
+          npm run test:special-social-reminders
+
+      - name: Verify production profile and build container
+        run: |
+          grep -Fq 'memory = "512mb"' fly.toml
+          docker build -f registration/Dockerfile -t kdg80-telegram-export-hotfix .
+
+      - name: Commit tested source change
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name onedayonemasterpiece
+          git config user.email estershow6@gmail.com
+          git add registration/src/services/telegram-bot.ts
+          git commit -m 'fix: make full Telegram export idempotent'
+          git push origin HEAD:hotfix/telegram-export-idempotency-20260807

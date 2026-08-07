@@ -9,7 +9,6 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "precheck": "python3 scripts/patch-amber-test-bot.py",
     "check": "tsc --noEmit",
     "special:e2e:seed": "tsx scripts/seed-special-e2e-data.ts",
     "telegram:e2e:polling": "tsx scripts/run-telegram-e2e-polling.ts",

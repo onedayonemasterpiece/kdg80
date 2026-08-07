@@ -356,13 +356,14 @@ export function enqueueSpecialApplicationCreated(
     applicationId: number;
   },
 ) {
-  db.prepare(`
+  const result = db.prepare(`
     INSERT INTO telegram_outbox(type, payload_json)
     VALUES (?, ?)
   `).run('special_application_created', JSON.stringify({
     type: 'special_application_created',
     applicationId: payload.applicationId,
   } satisfies TelegramOutboxPayload));
+  return Number(result.lastInsertRowid);
 }
 
 export function startTelegramOutboxWorker(options: {

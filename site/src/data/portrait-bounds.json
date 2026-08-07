@@ -747,40 +747,6 @@
     "visibleRight": 0.9805,
     "visibleBottom": 1
   },
-  "/generated/speaker-strip/oleksin-vladimir.webp": {
-    "slices": {
-      "head": {
-        "y": 0.2198,
-        "visibleLeft": 0.2681,
-        "visibleRight": 0.5573,
-        "coverage": 0.2892
-      },
-      "shoulder": {
-        "y": 0.3399,
-        "visibleLeft": 0.3213,
-        "visibleRight": 0.5553,
-        "coverage": 0.234
-      },
-      "chest": {
-        "y": 0.4803,
-        "visibleLeft": 0.1855,
-        "visibleRight": 0.7517,
-        "coverage": 0.5662
-      },
-      "waist": {
-        "y": 0.6201,
-        "visibleLeft": 0.1078,
-        "visibleRight": 0.852,
-        "coverage": 0.7442
-      }
-    },
-    "width": 1466,
-    "height": 1524,
-    "visibleLeft": 0.0164,
-    "visibleTop": 0.0157,
-    "visibleRight": 0.9836,
-    "visibleBottom": 1
-  },
   "/generated/speaker-strip/perkusov-nikolay.webp": {
     "slices": {
       "head": {

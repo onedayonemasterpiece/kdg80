@@ -5,6 +5,7 @@ import { runMigrations } from '../src/db/migrate.js';
 import { computeFingerprint, encryptPii } from '../src/lib/crypto.js';
 import { createEmailNotificationService } from '../src/services/email-notifications.js';
 import { recordEmailNotification } from '../src/services/email-stats.js';
+import { enqueueSpecialApplicationCreated } from '../src/services/telegram-outbox.js';
 
 const EVENT_SLUG = 'amber-combine-jewelry-excursion';
 const SHOWING_SLUG = '2026-08-11-1100';
@@ -224,6 +225,10 @@ const applicationId = db.transaction(() => {
   return id;
 })();
 
+const telegramOutboxId = enqueueSpecialApplicationCreated(db, {
+  applicationId,
+});
+
 const service = createEmailNotificationService({
   enabled: config.postboxEnabled,
   endpoint: config.postboxEndpoint,
@@ -273,10 +278,27 @@ if (!result.sent) {
   throw new Error(`Test application email was not sent: ${result.reason || 'unknown reason'}`);
 }
 
+let telegramDelivered = false;
+for (let attempt = 0; attempt < 60; attempt += 1) {
+  const pending = db.prepare('SELECT id FROM telegram_outbox WHERE id = ? LIMIT 1')
+    .get(telegramOutboxId) as { id: number } | undefined;
+  if (!pending) {
+    telegramDelivered = true;
+    break;
+  }
+  await new Promise((resolve) => setTimeout(resolve, 1_000));
+}
+
+if (!telegramDelivered) {
+  throw new Error(`Telegram notification was not delivered within 60 seconds: ${telegramOutboxId}`);
+}
+
 db.close();
 console.log(JSON.stringify({
   applicationCode,
   applicationId,
+  telegramOutboxId,
+  telegramDelivered,
   sent: result.sent,
   messageId: result.messageId,
   subject: result.subject,

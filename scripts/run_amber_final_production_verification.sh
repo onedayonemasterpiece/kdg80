@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${ALLOW_AMBER_PRODUCTION_VERIFICATION:-}" != "1" ]]; then
+  echo 'AMBER_PRODUCTION_VERIFICATION_BLOCKED=1'
+  echo 'The production verification script only runs from the explicitly enabled manual workflow.'
+  exit 0
+fi
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 

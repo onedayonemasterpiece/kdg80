@@ -1,0 +1,108 @@
+name: One-off focus-group production lookup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/ops-focus-group-reinvite-lookup-20260807.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-off-focus-group-production-lookup
+  cancel-in-progress: false
+
+env:
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+  FLY_APP: znanie-kgd80-fest
+
+jobs:
+  lookup:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Query production read-only and emit encrypted result
+        shell: bash
+        env:
+          LOOKUP_SCRIPT_GZ_B64: >-
+            H4sIANXHdWoC/8Va6ZIb13n9P0/RZjkGJh6Bd+u7jEyxKHJk0eIWko7LJTOjuw4RYYBRd4PUmOJD5GHyHskb5dxesE0Py3HFjKpEAnf91nO+74Lzy6tV1RS+ur5qVkWqVpfFZLkK8bQbmXx5NO9WPLKNdbaO/RoXmyZWX9Q/LeZN5NtlH4oQ260v5vPiY7/4rr26ulvFi3ndVLaZr5Z368rfXczd3e6WWVPjhCO/WtZNUc8vlrZZV7Eu7hXfHxXFB/xfFHfm4c5pQU+6L3bp366qb239FoN3SpuMVzbiP2ao9Iwn55jWyhjBlHFcRKups9ZrqxTT0nAelaNEMe+ScHf6Uy/m7+JyOJTRxEslrCRYLpUjnvpgNNcxloYEaY2gpeRWaRqlscIKUXougvHMBFXKOzjz48mB/GxUfiJESiqZIHxgSblkBbVBJio8NVYGQo22hMRSUGIM9ymJKJJJjEYjuSej8mMWArtgGTeCKCOEDpKXQSfoXDpFUgiaBcOs4kkKbRhVnJEySFrGkrBR+fm4/cuSGu6gdFmSkJIzInKitQxCwbwJBmOKS55Kyl0gUZsYvAuJOsISk+Pya2qiIio5lnWlNDrueDA8SOOYpYTBKYmbUkpLJJchCBmUVDF6RhKPdlR+MSo/hDAwNkuSlZxYw1W0nkIZGRFYnETjjCbaaUvhdAeLupiiM9SaJDVT4/L7EDgJOkAYldUIPsLJFGdQaI+oYUwxoiTU0yWWWsFL5mwMITH4bFT+cjx+iAiUlxHW0ohJUjoPu1jjYplECSvZ6L1E0EhCrXTeScq0s4qxROCwcfsrhIJmOtDkS+kDRJU58PIebkKEGlwTxBTCRlJlpLOQIlKLj5jQ4/EvR+UPxHthNCUlC9bQJA2LWgdFmA8aPlAi4TqTlI6a2RKe16FEFGjI5YUtR+W3Gg7zUrBIKYP7TCQkOc69t8FYeFeR4FIqgyEymJKWigudCK6mpXdRjcqvxuOf0RylENtSHQEABImccBVyNjjqCUfM+lSK6LmVpSg1yxEskQ48wk+j8kspNZeCw8YmwOAU4iOTIZr0QlspLFFOWukpICeUCBoDFyVTpmSk5eP5q8ftLxThTrgywZxweDRUBBKoslZKRZwm1CEQgJ8WvtfaEAAF8tj65AB/fhx/dJQ4lLBQcm9SzljJvNTIKi6pjxx5xiSlJYDK6kB4pFz5IOH4RCN1o/KbUfmT1T5BIJO4k8go2ETDA0J7l3O2VABBS3B8iXROznOZPIKJCAVYQnSNyo/8NNiglOJGeWk8QS7RoAWACSzDBTcEBlLeltrC6tHTiLPBElZ4rcfxh5JRBWBJBx9KZFVwSOMYM9wD+UtNnJNCSa0A1YhXyB9NNCmyEiAK8AS/WfX5AojewsA4gVMVDdg1WQiZKG5X4Cua2Uwrzb30QDkQMk0MkYbAKS3Eg7lMGT8fg9FxCo7C2iAoE5HFxGDkKIBmyiINuMtpHB1IAWAPszNkh49aceVciYwpvR6HIArYd8EIHqgQXrEScUoUkSRYSC6Aq1bDiTA4MRR4B/ZBmEqAKyoTYsZTgI5zMKJRSwcpA5c+05W1ALGS8GQUioaEvFbgYVEinohkKQpKhSk5WIERX/JRBSI8p2gKCoVGQg0SEwohiT8YRgRHCkfkhAOFg7i4scwFpJimVBKAH/fjCoyTsHIo0riJHEwM/iLJIE418JsFImgQyF7iYHHArGfCgR0M6gjNUHIRglgbJ2GCLI4mF2kkKlEKn32BVEZKBwrgiZwKrnEEBVUjUD1h1jFQpiQWdcy4AuMsbHG2Dk7CpoglqQLL2FAaMEIsHQUYSgAefBtlSIImCgOBGBKQMHjE7agCJgEZieaCOWdAeCKnag67EuHCouUE+qE0AmSKxFHOehShDm5vS1QexxUYp2FGHAVCB+lQBQUBYFTgKlQK3lLqInM4PxqgM2pgRw3sjzRgwqB8sglcN6qA9wSSJvCgtAzpAGhRwaFE1gkZpoknUibU6EIYFIrMGYJiAnAiUacEZ9O4AuM87Ds3CqmjdwwAjaI0eeUBP0ygAAXqoVxhDpjqyuxpbay1ORaMyVzxGVFonIitgOekBQw5gAZh4EpTQkLYxFtWSpXN5rwKNBKvYCDknRYKHkCPgip8vJBDNR5gf6cZoj1pr1E6wRmeWMSkgZi4RBMCwncRhTPKduLQ3TCnJCj1lhwYZ2KtgAEccJLxDJEkUS5EImBwkIzlOpVolJJioDZEMgRnoFTUoIBQgoXjCkRkZfAyZlsQ60uCuEb5V5ZAzigBreDyHOvgamhWKoe+SIE+Az5py8YrOTbOxMBIHnA6oI6BPtGSQU44FOkgc2uTDGGAGwsSY4CiiOjiSqDKQdtJCNOfrxRl40yMCzgwWSoU+ui9FFAveFAD2E2gR0CDAHLQLqFKQkcCcKFomDwtwVWo9Xz5+UoJNs7EBhUcyd2kZchflAyRGIuiFIntONqLXPXLqNBlonwGDnm4BDWqQbtm0YulUQVcRHULKkH3FjP5BWXRXFgQmaMZymAvlJ3os4UDi8kyAbZwl9OJgy1EOa7AOBOjKqReUUWRkKQUAt0j+j+4NqrcTzKlLBiCefQ8oB+jRQRX5xoi98JRhVEFQFYeoEYUeISDcT0qq6TR88LI1Gue1RDGUGCCRBVvCNSlQeVaEq6gt4TQOBMHA7aSDJlKBILSIp9VjnZtkBAmoWcF4KtcV0SJVhP+CQATQEhEHpBbUOgf0g6zW/ph4CTSCaI6IgVSF7fJFOFRjKB8SQBplSs4HJ1UGdEblwzlntOIO1qO8wBSPD/CGNRZLCdumZejj2BGWGdlpKwUAFkD8ARFuNKU6D2SBYlKhsv5uALjTGzyyaEENQIftcp9JM/07y1wFCFCKZoy6iyI2gtAOQpHFB8lehOHapXbz1eNsls6Yk88cyj5JQfxIy5kLOFicJtGFcdBADYFZwCtieb3OZ1zL6DAsCIiN8ZLiciyEYgPGj7iCfqi2sFnkSKMRHKJC6rOzMBxCro75YiRkelI0byWtygwzsQiRgQQuiuGiM7dKXqZGElCgY1MAxSVwE0MEERDfocS8Ae6RJvzgQODx5MYHWVbTJfRlkYhl+BnlLCgAhSEPNfjSHK0RR7kFkQZ0ZGU1nFEJeeE3BJC40xsict9CoHu6CsDenYriEUpKiEzMEmXCXiBvHUMnoCH0HKXsBpAClroz9gTc/L5HoX+TxQ4elPYumhfqzev1sG9sM3b4l5xVa18rOtZXL6bvfqXJ49fn52/ePD62/uzpppfTo+LX34pJneDbezeg/ise0iffNkfd1XN39kmfhevX8TLr20dpTg4+8Xjx+cvXj7+1we44LuzP5+/OHt6/rUUwz0QbJ6K6a9GDjpurd+8rVbvi2V8X5xV1aqaTnDgcG3xY7wu5nWxXtp3dr6wbhGL+TJfH9Y+i1tU62Uzv4wT3PNxawKImA8cfiqYdkY5ae+rUI+tlovr06Kp1jH7Js0X8em6bs5+hhmG4Y84MbjZVWUvLu108tM6VtfneR/Ofv5ssj/r1vX1eZZjtW4wXyKy84qjtF52Yi5X1aVdzP8an9nLOH1nF+t4Cq1+XK7eL497sZp1tSxewWrLi25Fcf9+MZkct9Ez25wwnTz75ruHw3CzerJ6H6uHWct+qIpXC+vj9O5//8fdi/VJMfmv/5wcTn3/b3+5+vDkI/549vHNb7tlxebM1nEHO/5Sb5e1tt7oVr/NHcGgVN0qsKdT/9uKh+WbmBNgOun2TI5n6yuEYG8RHL5uksZomF/EuplO3safD2+7tI1/ixte2+oiNo9DPU3rxSKbdf/uLhSa1Y9dzrU/4uSYeBWbaavavkuGQzq1oXh9hTyYboyCEYRJE6vp16vVItrlZvjSXk07dY5zMGW3bzTf/oR0tHvEdDN+XNz7qj9oR9TZW1tv18y2cDRc+pvffGL5BmeOO+DpPZnl3L94K95sHg7M3Kxex5+bT0VqF6L37sGssF2Gk+3Iehlimi9jKO53s6d7gd3d1VxfxeJs2UZHDC8BAvfa8+fh/il2XbpYFb/0Pv0S41fz+bmfX72NVQPRTouv1ynFaph5X9mrqxjOgRiHU/N3hyN2cXG6c3IXmeHcNvd3h79vz+q+v9kYAbJvwBaOXS8aiF6fFg+qyl7/7mX0qyr8rtt0Muz56qv8E+KbL48WEZuw/JW3y2yeewXpBvsfK78ByvW/OJJd/EBh9DQHfqyn2H66Z7aT4jI2NiP5aXHL9b3jdi7+7b2CtpGaL4dJbmzt/v4q26GprnuexEJItv1hdTqC6if92nb1wx1/4frZvg9Ptgv/1Lnvu2zxYeGOS3dWPn63XTF/tzPxIDt1mIGHu6mM4/iz8Nl8vWiHxu6MkWe62G53HG1AZMAGqN5HMW6YbUY7lO5R8zbAHM6Kl7h0/6BuaP+UPVhv/dSS6OZOZNuv2n3HvUqjgjcDRuLC23GzlS6tqmK6v6tYpe0J23uGiJ9drYHkg6+HhYM/hsOH762ww5eqDbXHoXPXPGTlM0wM830+Pshk3OFQXrfN0uNh4Ww2G2J/z9v7UJbLhpbb6+nyBk/0aNajekcNLbPHK1vF6Q/9Ta/Onpw9fF3Q/us3L58/LbpS6fzS1gD1fuJP3569PCtaaLtXTNqrJ8WDZ4+KZRdA9/t1Tx4/fTwc98PxDLZrZRsoZFPL1F2+vlqtK1Rcg+jfv+nxpK2tdhWc7BZz9eS4U3L/lM5zhyu/3MZNBoqc54dm6IwwOBGO2zj0lsSubsvj6iB9q/2kzQNbd2/HGlQF5yj5zrdXZ+4qHrwqIkiv2RuvF+uL7Uz+tp1r5g1Kyc1k+3VnJ6K5qXHzzvZhaG9Vs673luD7MN/Aym4x9+frapHXNHP/Y2zyt6NNAO15oOhC6PGzZ2cviz88f/ysO7YuIurNTs17MMGgZ7v4ydk3r7u13fF10eTFzWz35PN+Z7/n+ctHuODrP++ZuHh09urhSbuo/XjURqVdLNAooMXYpZs27PYAI9fvwIocNQNM7PPVlhLqNgJfIz1Oi0mnyq6ok5P9dTmwsXA/UjceyNsHEBnMcggl7fgr+H4PSrYhcby38HWOg5GVbXzsL33VBsQBRB3Eyo0diI/x9ZjYLO5c+cdqsbd0Gz/bhciGl+tlNsHuwm2OHN8AxRtwUV9FP7eLc2QogvVvQI3xDf9b8KjtDnrgyzh89BMj+NHPbAGkH9hBEIzchBAM7gh+7lch7kxtM3p30X5eY1kV/z221ILYtfVquZm6DYvqT4FR/Wk0mvZ/byjo9y+f//HF+cPnzx4+eD2t4ZcwR69ir8/RHsdFrjd+2TYtA1PddNp5/Xb1HlRSQ6N6s3oHfYY9vcSb1aiXADH54hZXsHvWTw6otOXBPLl7Z79jtll4nLUetrcK1EefkjpLe/QpQbOAnXyDeLN9RQ5RcC9MehhsJfx8OLgv4I62t8DhaAr+v6Ni78UnrRP3Vu/7d7NhR/yH+R967m45TNKxTSN4ejNtj7c1Z5+0L9uc3dt2mNA3cfPu3eLRvPard+hJ7fI6+3WeN9hFEYeY+CI/XLXgWiOEVoXN7w1Yv/NaVSMSLm0+LUPrKv8b0wUsubgu3s5DxI4qLuI7u0RLBgqZAxHz565cnm16zp/W8yoGtF8PV4v15XL3ZSP/M9XJPpi2kTE5wNHt4Pzd9jPQE1/eHG/6WwR+G3QjgN6jUS5aj26phz9dCz97/hpV8HdniOdu3z9Njnbysj14N/e6/vpDsVvCFx+/yl3yNgW7abR7yMON8F0yZurrivB79w5LitxPbefGKa7PXdzTzJfreNBq/bReIQT6LvGHO7/+kI8bmsEH0GFyZwJsvnNncvzxzg/bftBvXLhr3xcvH/z+6YMumM7ny7Sa/vrD9oaPx3+TXfavyBt3I6W/uHsW6r60b0Ldx1nbjOx0nt+j1boZeW8yElTXIwe017UPU/3U8a0GHCszlkNfemtN0cffP3eht2eefzxirxok1/km88+7DB2H6+VOF1zfhKwDmPq7QPFWzG8vOKC/Qy74O6rInUeAelU106k9KVzr/A8Hbw+P5vnZDYbKafGsfdOb2tnwWHBcfDEMuu3gl33M3TjhV0hOcjx07IfTOyVoNvnezf1ri9082hzPFitvF/Hh6rINp36B2y5AslbryUaYgyP3Rdmf3BGkffUYl6R7vblNjG52c/vhOfvXH8zuPkBvDtw8qQwPTaMX2xvr8lvElg9W6+aq/YUj+/kiLmM1vNP0P7fE9u3q8avn/YFt7GwJ8MHVFbLnr0u7nMcvfrwImnyREGht4rS/sDxtY36Sf6Npf2xpZzpPP1ytl7ho+6Q+A3VeNG9P9l8289eD972TGyCTRy67LD/dedI6aZ92hx+36iZA39n7CuQ0/cOr589mHbjO0/W0M8Rx9yuQX6y6Z7r/AYYRsCbEMgAA
+          RECIPIENT_CERT_GZ_B64: >-
+            H4sIANXHdWoC/4VUtw7jSAzt9RXXCwvJtixbxRYziqMwylboJCtY2UH568+7xTYL3LEgyEfygQDDjx9fgaKM8D+86HhIQjzwxF/gD8JASFR3ngcDWYIFQVAi39uoleydYa7IiPlcUW9dg44/yzQlLoIdqdoQo8d8x8AWdQLa37JdfBjwKoODL4JliZJj1pgCGOOOq7PQGOOTOmfh1w8fS3pSaQMyoeChoyGUC4F3ccUe2ozb8Ac0vT/Y/5ITf7EjBIcaYFg2r0dTydxCw2+rEgAmD6Ir+BWvSu1rf/nm8UWQpz7fzlevC7mYl2qs3l8w5V4iaUX63mqBqNMJc6Mz6sKXUwp375Wo22Tnku4sVTifiYrLjXbaGReYYePO2z6Tt+Y8BKFWsRhOXmD7Hlwxs5UxOlaAkjdU95SdyiqTRthoiaN5QMung3PVmOYBhC1l2al6S0UW6/HwTBUeb3krxOKuIiE1wuq5n9JEUPBdGswurQhH7nyjhot1HxUsX0YQ8e/L9ROS/rtUfV+DQXk4uuCRmWZDPqJpi3V5U+qG8W3LZqknUZGTfSmj7DYogydcH5O4JTeq5CtFVfSezs2JD6KtNT6F4TDQMlO9Th5fFZy7T1q7DoGfLPzkdz3aOan3LWHSMvRcjOkw+mt15PqX4YFAaGGS9LM9u281sb1yxUBVu2yb4jcR+q6+GiBIjoLPYb+jz8fZuEkluizC1LfD4lnfxsR9sCNpvOR2IcyPR42pJ1vLOd12BLW4oh7ld8zG5xOaY/+Badiu206ODktBu3I3m7WXIFOp3Zefe/xhb/VlKxqyx6A0IAGAXPs7dAxI/9q2TCjtAELXTBC/7QWZyZOn73525636WjoNJwiggCW+Ka4hygIIiPK/k63fyV96UFxF6AEB2AplAFrm3ZfsovRECLYI+cUHgEGwtAXgcswlvnxu1PWtTvOZo8Q0eyA18baQVUZon8DxbIoHCepqfR/zE+HqOa4DnOAwirVihGiopvB4XY4Mt7UqU+clqqzdDPF6mXhf5NVb09ycl9AVH6xtovq9BSFolgrgLiOD7+yW58C8rfc5Gcl1zvjefubnndRLgRbcbGr7iZnq4C5Zm2E1Tu/ExIveOcy6m7zPVPVRdNl4WodXMR37w5ssGra5VtwYO0pT1azx3HFC+/yZVg8c0gr9fQDE8z3WL2dWdOXcbwsDVe3wyfaIV8a1PUzZO9QdZOeCuR3VlE/rRHqo1y2+Sb0pubgteeIkd6e8OCnkHXrLeL5u0mbKbC7J2iwYcGLfQe8NSFvJ+DNoilakAJXi8tpOx2TZAtojKuVAv5W3aF+0SK7DrnC6fPXs9EUrXD48L7KE+ahspMshydS7fGEZRW+PcSvLBa09k5BofGXqkvPmJ5rqjp8x61bmKXUSaLm6D1UURsPapSFH+1dqXA/CKytyMunhMLbDReELYlcEV2VcXr2frE4ofxK/n7WIhb8f+L/GalI43QUAAA==
+        run: |
+          set -euo pipefail
+          umask 077
+
+          cleanup() {
+            rm -f \
+              /tmp/focus-group-production-result.json \
+              /tmp/focus-group-production-result.cms \
+              /tmp/focus-group-recipient-cert.pem \
+              /tmp/focus-group-production-lookup.ts
+            flyctl ssh console \
+              -a "$FLY_APP" \
+              -q \
+              --pty=false \
+              -C 'sh -lc "rm -f /tmp/focus-group-production-lookup.ts"' \
+              >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          printf '%s' "$LOOKUP_SCRIPT_GZ_B64" \
+            | base64 -d \
+            | gzip -d \
+            > /tmp/focus-group-production-lookup.ts
+
+          printf '%s' "$RECIPIENT_CERT_GZ_B64" \
+            | base64 -d \
+            | gzip -d \
+            > /tmp/focus-group-recipient-cert.pem
+
+          flyctl ssh sftp put \
+            /tmp/focus-group-production-lookup.ts \
+            /tmp/focus-group-production-lookup.ts \
+            -a "$FLY_APP" \
+            -q
+
+          flyctl ssh console \
+            -a "$FLY_APP" \
+            -q \
+            --pty=false \
+            -C 'sh -lc "cd /app/registration && npx tsx /tmp/focus-group-production-lookup.ts"' \
+            > /tmp/focus-group-production-result.json
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path('/tmp/focus-group-production-result.json').read_text(encoding='utf-8')
+          )
+          assert payload.get('queryMode') == 'read_only'
+          assert payload.get('productionApp') == 'znanie-kgd80-fest'
+          assert isinstance(payload.get('matches'), list)
+          assert payload.get('targetCount') == 30
+          print(
+              'Read-only production lookup completed: '
+              f"matched_rows={len(payload['matches'])}, "
+              f"rows_scanned={payload.get('rowsScanned')}"
+          )
+          PY
+
+          openssl cms -encrypt \
+            -binary \
+            -aes-256-cbc \
+            -outform DER \
+            -in /tmp/focus-group-production-result.json \
+            -out /tmp/focus-group-production-result.cms \
+            /tmp/focus-group-recipient-cert.pem
+
+          rm -f /tmp/focus-group-production-result.json
+
+          echo 'KDG80_FOCUS_GROUP_RESULT_BEGIN'
+          base64 -w 76 /tmp/focus-group-production-result.cms
+          echo 'KDG80_FOCUS_GROUP_RESULT_END'

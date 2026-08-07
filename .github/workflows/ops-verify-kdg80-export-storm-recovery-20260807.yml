@@ -1,0 +1,126 @@
+name: Verify KDG80 export storm recovery
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/ops-verify-kdg80-export-storm-recovery-20260807.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-kdg80-export-storm-recovery-20260807
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      FLY_APP: znanie-kgd80-fest
+    steps:
+      - name: Install Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+        with:
+          version: 0.4.78
+
+      - name: Verify runtime, Telegram queue, guard code and SQLite migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FLY_API_TOKEN:-}"
+
+          flyctl status --app "$FLY_APP"
+
+          healthy=false
+          for _ in $(seq 1 24); do
+            body="$(curl --silent --show-error --max-time 10 https://znanie-kgd80-fest.fly.dev/api/v1/health || true)"
+            if printf '%s' "$body" | grep -q '"ok":true'; then
+              healthy=true
+              break
+            fi
+            sleep 5
+          done
+          test "$healthy" = true
+          echo 'KDG80_HEALTH_OK=true'
+
+          cat > "$RUNNER_TEMP/kdg80-verify.cjs" <<'JS'
+          const fs = require('node:fs');
+          const Database = require('better-sqlite3');
+
+          (async () => {
+            const token = process.env.TELEGRAM_BOT_TOKEN;
+            if (!token) throw new Error('TELEGRAM_BOT_TOKEN is missing');
+
+            async function call(method) {
+              const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+                method: 'POST',
+              });
+              const payload = await response.json();
+              if (!payload.ok) throw new Error(`${method} failed`);
+              return payload.result;
+            }
+
+            const webhook = await call('getWebhookInfo');
+            const webhookOk = Boolean(webhook.url)
+              && String(webhook.url).endsWith('/api/v1/telegram/webhook');
+            const pending = Number(webhook.pending_update_count || 0);
+
+            const sourcePath = '/app/registration/src/services/telegram-bot.ts';
+            const source = fs.readFileSync(sourcePath, 'utf8');
+            const codeOk = source.includes('telegram_stale_export_update_skipped')
+              && source.includes('telegram_duplicate_export_update_skipped')
+              && source.includes('reply.code(200).send({ ok: true })')
+              && source.includes('claimTelegramUpdate(deps.db, updateId)');
+
+            const db = new Database(
+              process.env.SQLITE_PATH || '/data/registration.sqlite',
+              { readonly: true },
+            );
+            const quickCheck = String(db.pragma('quick_check', { simple: true }));
+            const migration = db.prepare(
+              "SELECT name FROM sqlite_master WHERE type='table' AND name='telegram_update_claims' LIMIT 1",
+            ).get();
+            const claims = migration
+              ? Number(db.prepare('SELECT COUNT(*) AS count FROM telegram_update_claims').get().count || 0)
+              : -1;
+            db.close();
+
+            const evidence = {
+              webhookUrl: webhook.url || null,
+              webhookOk,
+              pending,
+              lastErrorPresent: Boolean(webhook.last_error_message),
+              codeOk,
+              quickCheck,
+              migrationPresent: Boolean(migration),
+              claims,
+            };
+            console.log(`KDG80_RECOVERY_EVIDENCE=${JSON.stringify(evidence)}`);
+
+            if (!webhookOk) throw new Error('Webhook was not restored to the expected URL');
+            if (pending !== 0) throw new Error(`Pending Telegram updates remain: ${pending}`);
+            if (!codeOk) throw new Error('Running image lacks the full-export idempotency guard');
+            if (quickCheck.toLowerCase() !== 'ok') {
+              throw new Error(`SQLite quick_check failed: ${quickCheck}`);
+            }
+            if (!migration) throw new Error('telegram_update_claims migration is missing');
+
+            console.log('KDG80_EXPORT_STORM_HOTFIX_VERIFIED=true');
+          })().catch((error) => {
+            console.error(error instanceof Error ? error.stack : String(error));
+            process.exit(1);
+          });
+          JS
+
+          verify_log="$RUNNER_TEMP/kdg80-runtime-verification.log"
+          flyctl ssh console \
+            --app "$FLY_APP" \
+            --pty=false \
+            --command "sh -lc 'cd /app/registration && cat > /tmp/kdg80-verify.cjs && node /tmp/kdg80-verify.cjs'" \
+            < "$RUNNER_TEMP/kdg80-verify.cjs" | tee "$verify_log"
+
+          grep -Fxq 'KDG80_EXPORT_STORM_HOTFIX_VERIFIED=true' "$verify_log"
+          flyctl scale show --app "$FLY_APP"

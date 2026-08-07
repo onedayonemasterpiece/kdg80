@@ -20,7 +20,7 @@ jobs:
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       FLY_APP: znanie-kgd80-fest
-      KDG80_HOTFIX_SHA: 69ef8037f6bae118b79ac8812e08e893324b9001
+      KDG80_HOTFIX_SHA: 1a8dba6015be99a9795f2d999748407bed2e8fe8
     steps:
       - name: Install Fly CLI
         uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
@@ -32,7 +32,9 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${FLY_API_TOKEN:-}"
-          flyctl status --app "$FLY_APP" >/dev/null
+          echo 'PREFLIGHT_FLY_ACCESS_START=true'
+          flyctl status --app "$FLY_APP"
+          echo 'PREFLIGHT_FLY_ACCESS_OK=true'
 
           workdir="$RUNNER_TEMP/kdg80-hotfix"
           rm -rf "$workdir"

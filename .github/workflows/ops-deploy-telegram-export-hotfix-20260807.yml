@@ -1,0 +1,116 @@
+name: Deploy Telegram export incident hotfix
+
+"on":
+  push:
+    branches:
+      - feat/amber-combine-jewelry-excursion
+    paths:
+      - .github/workflows/ops-deploy-telegram-export-hotfix-20260807.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-telegram-export-hotfix-20260807
+  cancel-in-progress: false
+
+env:
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+  FLY_APP: znanie-kgd80-fest
+  EXPECTED_SOURCE_SHA: 75cc1292a94d1232940aa2095c74acee3c674c97
+
+jobs:
+  deploy-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/amber-combine-jewelry-excursion
+          fetch-depth: 0
+
+      - name: Verify exact source and production profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "${EXPECTED_SOURCE_SHA}"
+          grep -Fq 'memory = "512mb"' fly.toml
+          test -f registration/src/db/migrations/021_telegram_update_claims.sql
+          grep -Fq 'telegram_stale_export_update_skipped' registration/src/services/telegram-bot.ts
+          grep -Fq 'telegram_duplicate_export_update_skipped' registration/src/services/telegram-bot.ts
+
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+        with:
+          version: 0.4.79
+
+      - name: Confirm Fly authorization and current machine
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FLY_API_TOKEN:-}"
+          flyctl status --app "${FLY_APP}"
+          flyctl machine list --app "${FLY_APP}"
+          flyctl scale show --app "${FLY_APP}"
+
+      - name: Deploy tested hotfix
+        shell: bash
+        run: |
+          set -euo pipefail
+          flyctl deploy \
+            --remote-only \
+            --app "${FLY_APP}" \
+            --config fly.toml \
+            --strategy rolling
+
+      - name: Verify backend and 11 August registration
+        shell: bash
+        run: |
+          set -euo pipefail
+          health=''
+          for attempt in $(seq 1 30); do
+            if health="$(curl -fsS --max-time 10 "https://${FLY_APP}.fly.dev/api/v1/health")"; then
+              break
+            fi
+            sleep 4
+          done
+          grep -Fq '"ok":true' <<<"${health}"
+
+          for attempt in $(seq 1 10); do
+            curl -fsS --max-time 10 "https://${FLY_APP}.fly.dev/api/v1/health" | grep -Fq '"ok":true'
+            sleep 5
+          done
+
+          event_json="$(curl -fsS --max-time 15 "https://${FLY_APP}.fly.dev/api/v1/special/events/amber-combine-jewelry-excursion?token=amber-combine-jewelry-20260811")"
+          grep -Fq '"slug":"amber-combine-jewelry-excursion"' <<<"${event_json}"
+          grep -Fq '"slug":"2026-08-11-1100"' <<<"${event_json}"
+          curl -fsS --max-time 15 -o /dev/null https://kgd80.ru/special/amber-combine-jewelry-excursion/
+
+      - name: Verify migration, Telegram queue and final Fly state
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_command="node -e 'const Database=require(\"better-sqlite3\");const db=new Database(process.env.SQLITE_PATH||\"/data/registration.sqlite\",{readonly:true});const row=db.prepare(\"SELECT name FROM sqlite_master WHERE type=\\\"table\\\" AND name=\\\"telegram_update_claims\\\"\").get();console.log(JSON.stringify({telegram_update_claims_table:Boolean(row)}));db.close();const token=process.env.TELEGRAM_BOT_TOKEN;if(!token){console.log(JSON.stringify({telegram_bot_token_present:false}));process.exit(0)};fetch(\`https://api.telegram.org/bot\${token}/getWebhookInfo\`).then(r=>r.json()).then(x=>{const y=x&&x.result?x.result:{};console.log(JSON.stringify({telegram_webhook_ok:x.ok===true,pending_update_count:y.pending_update_count??null,last_error_date:y.last_error_date??null,last_error_message:y.last_error_message??null}))}).catch(e=>{console.log(JSON.stringify({telegram_webhook_probe_error:String(e&&e.message||e)}));process.exitCode=1})'"
+          flyctl ssh console --app "${FLY_APP}" --pty=false --command "${remote_command}"
+          flyctl status --app "${FLY_APP}"
+          flyctl machine list --app "${FLY_APP}"
+          flyctl scale show --app "${FLY_APP}"
+          flyctl releases --app "${FLY_APP}" --json | head -c 4000
+
+      - name: Read redacted incident-relevant logs
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          raw="$(mktemp)"
+          filtered="$(mktemp)"
+          trap 'rm -f "${raw}" "${filtered}"' EXIT
+          timeout 30s flyctl logs --app "${FLY_APP}" --no-tail >"${raw}" 2>&1 || true
+          grep -Ei 'telegram_(stale|duplicate|export|update)|webhook|timeout|timed out|oom|out of memory|killed|signal|restart|fatal|unhandled|heap|memory|exit code|machine.*(start|stop)|migration' "${raw}" \
+            | tail -n 500 \
+            | sed -E \
+                -e 's/[0-9]{8,}:[A-Za-z0-9_-]{20,}/[BOT_TOKEN]/g' \
+                -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[EMAIL]/g' \
+                -e 's/(secret|token|key)=([^ &]+)/\1=[REDACTED]/gi' \
+            >"${filtered}" || true
+          echo "INCIDENT_LOG_LINES=$(wc -l < "${filtered}" | tr -d ' ')"
+          cat "${filtered}"

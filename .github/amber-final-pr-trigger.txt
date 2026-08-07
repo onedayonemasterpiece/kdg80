@@ -1,0 +1,2 @@
+Trigger final amber production verification. This branch is temporary and must not be merged.
+Synchronization trigger: 2026-08-06T22:01:00+02:00

@@ -62,6 +62,6 @@ swap_size_mb = 512
   # always-on VK social monitor and operator controls remain available.
   # Intermediate fallback if this profile becomes tight: memory = "512mb".
   # Previous registration/high-traffic profile: memory = "1gb".
-  memory = "256mb"
+  memory = "512mb"
   cpus = 1
   cpu_kind = "shared"

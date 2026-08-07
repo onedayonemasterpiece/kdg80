@@ -58,10 +58,9 @@ swap_size_mb = 512
 
 [[vm]]
   size = "shared-cpu-1x"
-  # Low-activity profile since 2026-07-31: registration is paused, while the
-  # always-on VK social monitor and operator controls remain available.
-  # Intermediate fallback if this profile becomes tight: memory = "512mb".
-  # Previous registration/high-traffic profile: memory = "1gb".
-  memory = "256mb"
+  # Registration and Telegram exports share one Node.js process. The 256 MB
+  # low-activity profile caused severe swap pressure during a full XLSX export
+  # and is unsafe while the 11 August special-event registration is active.
+  memory = "1gb"
   cpus = 1
   cpu_kind = "shared"

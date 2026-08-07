@@ -174,6 +174,7 @@ test('special TEST application cleanup removes DB rows and private photos', asyn
     assert.equal(result.removedApplication, 1);
     assert.equal(result.removedProfile, 1);
     assert.equal(result.removedPrivateAssets, 2);
+    assert.equal(result.skippedUnstoredPrivateAssets, 0);
     assert.equal(result.removedTelegramOutboxRows, 1);
     assert.equal(result.removedEmailNotifications, 1);
     assert.equal(result.removedEmailEvents, 1);
@@ -182,6 +183,61 @@ test('special TEST application cleanup removes DB rows and private photos', asyn
     for (const key of keys) {
       assert.equal(fs.existsSync(path.join(root, key)), false);
     }
+  } finally {
+    db.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('cleanup skips the intentionally unstored photo placeholder of a generated TEST fixture', async () => {
+  const db = new Database(':memory:');
+  runMigrations(db);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kgd80-special-test-unstored-'));
+  const storagePublisher = createStoragePublisher({
+    driver: 'local',
+    publicTicketBaseUrl: 'https://kgd80.ru',
+    ticketsPrefix: 'tickets',
+    localPublicRoot: root,
+    s3Bucket: null,
+    s3Endpoint: null,
+    s3Region: null,
+    s3AccessKeyId: null,
+    s3SecretAccessKey: null,
+    s3ForcePathStyle: true,
+  });
+  const { publicKeyPemBase64, privateKeyPemBase64 } = keyPair();
+  const code = 'TEST-AMBER-MAIL-UNSTORED-1';
+
+  try {
+    const { applicationId, profileId } = insertApplication(db, publicKeyPemBase64, {
+      code,
+      fullName: 'ТЕСТ Проверка Почты',
+      suffix: 'unstored1',
+    });
+    db.prepare(`
+      INSERT INTO special_application_photos(
+        application_id, storage_key, original_filename, content_type,
+        size_bytes, sha256, has_full_name, stamp_count, accepted, confidence, ocr_json
+      ) VALUES (?, ?, 'test-fixture.jpg', 'image/jpeg', 0, 'unstored-sha', 1, 5, 1, 1, ?)
+    `).run(
+      applicationId,
+      `test-fixtures/${code}/passport.jpg`,
+      JSON.stringify({ testFixture: true, noFileStored: true }),
+    );
+
+    const result = await cleanupSpecialTestApplication(db, {
+      applicationCode: code,
+      privateKeyPemBase64,
+      storagePublisher,
+    });
+
+    assert.ok(result);
+    assert.equal(result.removedApplication, 1);
+    assert.equal(result.removedProfile, 1);
+    assert.equal(result.removedPrivateAssets, 0);
+    assert.equal(result.skippedUnstoredPrivateAssets, 1);
+    assert.equal(db.prepare('SELECT COUNT(*) FROM special_applications WHERE id = ?').pluck().get(applicationId), 0);
+    assert.equal(db.prepare('SELECT COUNT(*) FROM special_participant_profiles WHERE id = ?').pluck().get(profileId), 0);
   } finally {
     db.close();
     fs.rmSync(root, { recursive: true, force: true });

@@ -1,0 +1,74 @@
+name: Run events-bot amber digest seed
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/ops-run-events-bot-amber-digest-20260807.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ops-run-events-bot-amber-digest-20260807
+  cancel-in-progress: false
+
+env:
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+  FLY_APP_NAME: events-bot-new-wngqia
+
+jobs:
+  apply:
+    name: Execute canonical events-bot operation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out canonical events-bot repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: onedayonemasterpiece/events-bot-new
+          ref: main
+          path: events-bot-new
+          persist-credentials: false
+
+      - name: Set up pinned flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+        with:
+          version: 0.4.78
+
+      - name: Apply and verify production digest candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "${FLY_API_TOKEN:-}"
+          flyctl status --app "${FLY_APP_NAME}" >/dev/null
+
+          script_file="events-bot-new/scripts/ops/add_amber_excursion_digest_20260807.py"
+          output_file="$(mktemp)"
+          trap 'rm -f "${output_file}"' EXIT
+          test -s "${script_file}"
+
+          remote_command='cd /app && PYTHONPATH=/app python3 -c '\''import sys; exec(compile(sys.stdin.read(), "<amber_digest_seed>", "exec"), {"__name__":"__main__"})'\'''
+          flyctl ssh console --app "${FLY_APP_NAME}" --command "${remote_command}" \
+            < "${script_file}" | tee "${output_file}"
+
+          grep -Fxq 'AMBER_DIGEST_ELIGIBLE=true' "${output_file}"
+          grep -Fxq 'AMBER_DIGEST_URL=https://kgd80.ru/special/amber-combine-jewelry-excursion/' "${output_file}"
+          occurrence_id="$(sed -n 's/^AMBER_DIGEST_OCCURRENCE_ID=//p' "${output_file}" | tail -n 1)"
+          preview_position="$(sed -n 's/^AMBER_DIGEST_PREVIEW_POSITION=//p' "${output_file}" | tail -n 1)"
+          preview_items="$(sed -n 's/^AMBER_DIGEST_PREVIEW_ITEMS=//p' "${output_file}" | tail -n 1)"
+          action="$(sed -n 's/^AMBER_DIGEST_ACTION=//p' "${output_file}" | tail -n 1)"
+          if [[ ! "${occurrence_id}" =~ ^[0-9]+$ || ! "${preview_position}" =~ ^[0-9]+$ ]]; then
+            echo "::error title=Production verification failed::Missing occurrence ID or preview position."
+            exit 1
+          fi
+
+          {
+            echo '### Events-bot amber excursion digest result'
+            echo
+            echo "- action: \`${action}\`"
+            echo "- production occurrence ID: \`${occurrence_id}\`"
+            echo "- exact next-digest position: \`${preview_position}\` of \`${preview_items}\`"
+            echo '- exact title, 11 August date, active jewelry production distinction and application URL: **verified**'
+          } >> "${GITHUB_STEP_SUMMARY}"

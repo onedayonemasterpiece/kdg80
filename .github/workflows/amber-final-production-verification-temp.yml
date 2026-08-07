@@ -10,6 +10,7 @@ name: Amber final production verification
 
 # This workflow deploys production and sends real verification emails.
 # Serialize accidental duplicate requests while the release verification is active.
+# Retry after making generated TEST-fixture cleanup idempotent for unstored placeholders.
 concurrency:
   group: amber-final-production-verification
   cancel-in-progress: false

@@ -45,6 +45,13 @@ import {
   type SpecialDrawResult,
 } from './special-draws';
 import type { StoragePublisher } from '../lib/storage';
+import {
+  claimTelegramUpdate,
+  getTelegramUpdateId,
+  isFullExportUpdate,
+  isStaleFullExportUpdate,
+  type TelegramUpdateEnvelope,
+} from './telegram-update-guard';
 
 type TelegramBotDeps = {
   db: Database.Database;
@@ -59,6 +66,7 @@ type TelegramBotDeps = {
 };
 
 const EVENTS_PER_PAGE = 6;
+const TELEGRAM_EXPORT_UPDATE_MAX_AGE_SECONDS = 5 * 60;
 
 function formatDisplayName(from: {
   first_name?: string;
@@ -555,6 +563,7 @@ async function sendSpecialShowingPanel(
 export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps) {
   const bot = new Bot(deps.token);
   const pendingFindPrompts = new Map<string, number>();
+  let exportAllInFlight = false;
 
   const requireAdminRole = (telegramUserId: string) => getTelegramAdminByUserId(deps.db, telegramUserId);
 
@@ -698,17 +707,26 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
   });
 
   bot.command('export_all', async (ctx) => {
-    const admin = requireAdminRole(String(ctx.from?.id ?? ''));
-    if (!admin || admin.role !== 'superadmin') {
-      await ctx.reply('Общий экспорт доступен только суперадмину.');
-      return;
-    }
+  const admin = requireAdminRole(String(ctx.from?.id ?? ''));
+  if (!admin || admin.role !== 'superadmin') {
+    await ctx.reply('Общий экспорт доступен только суперадмину.');
+    return;
+  }
 
-    if (!deps.privateKeyPemBase64) {
-      await ctx.reply('Нужен приватный ключ, чтобы подготовить общий экспорт.');
-      return;
-    }
+  if (!deps.privateKeyPemBase64) {
+    await ctx.reply('Нужен приватный ключ, чтобы подготовить общий экспорт.');
+    return;
+  }
 
+  if (exportAllInFlight) {
+    await ctx.reply('Сводный экспорт уже формируется. Дождитесь текущего файла.');
+    return;
+  }
+
+  exportAllInFlight = true;
+  const startedAt = Date.now();
+  const rssBefore = process.memoryUsage().rss;
+  try {
     const rows = listAllRegistrationsForExport(deps.db, deps.privateKeyPemBase64);
     const buffer = await buildRegistrationsXlsxBuffer(rows);
     await ctx.replyWithDocument(
@@ -717,7 +735,25 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
         caption: 'Сводный XLSX по всем событиям.',
       },
     );
-  });
+    app.log.info({
+      updateId: ctx.update.update_id,
+      rowCount: rows.length,
+      xlsxBytes: buffer.byteLength,
+      durationMs: Date.now() - startedAt,
+      rssBeforeMb: Math.round(rssBefore / 1_048_576),
+      rssAfterMb: Math.round(process.memoryUsage().rss / 1_048_576),
+    }, 'telegram_export_all_completed');
+  } catch (error) {
+    app.log.error({
+      err: error,
+      updateId: ctx.update.update_id,
+      durationMs: Date.now() - startedAt,
+    }, 'telegram_export_all_failed');
+    await ctx.reply('Не удалось подготовить сводный XLSX. Ошибка записана в лог сервера.');
+  } finally {
+    exportAllInFlight = false;
+  }
+});
 
   bot.command('backup_sqlite', async (ctx) => {
     const admin = requireAdminRole(String(ctx.from?.id ?? ''));
@@ -893,31 +929,43 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
   });
 
   bot.callbackQuery(/^exp:(all|backup)$/u, async (ctx) => {
-    const admin = requireAdminRole(String(ctx.from?.id ?? ''));
-    if (!admin || admin.role !== 'superadmin') {
+  const admin = requireAdminRole(String(ctx.from?.id ?? ''));
+  if (!admin || admin.role !== 'superadmin') {
+    await ctx.answerCallbackQuery({
+      text: 'Раздел экспорта доступен только суперадмину.',
+      show_alert: true,
+    });
+    return;
+  }
+
+  const [, action] = ctx.match;
+
+  if (action === 'all') {
+    if (!deps.privateKeyPemBase64) {
       await ctx.answerCallbackQuery({
-        text: 'Раздел экспорта доступен только суперадмину.',
+        text: 'Нужен приватный ключ, чтобы подготовить общий экспорт.',
         show_alert: true,
       });
       return;
     }
 
-    const [, action] = ctx.match;
-
-    if (action === 'all') {
-      if (!deps.privateKeyPemBase64) {
-        await ctx.answerCallbackQuery({
-          text: 'Нужен приватный ключ, чтобы подготовить общий экспорт.',
-          show_alert: true,
-        });
-        return;
-      }
-
-      const rows = listAllRegistrationsForExport(deps.db, deps.privateKeyPemBase64);
+    if (exportAllInFlight) {
       await ctx.answerCallbackQuery({
-        text: rows.length ? 'Готовлю сводный XLSX.' : 'Регистраций пока нет.',
+        text: 'Сводный экспорт уже формируется.',
+        show_alert: true,
       });
+      return;
+    }
 
+    exportAllInFlight = true;
+    const startedAt = Date.now();
+    const rssBefore = process.memoryUsage().rss;
+    await ctx.answerCallbackQuery({
+      text: 'Готовлю сводный XLSX.',
+    });
+
+    try {
+      const rows = listAllRegistrationsForExport(deps.db, deps.privateKeyPemBase64);
       const buffer = await buildRegistrationsXlsxBuffer(rows);
       await ctx.replyWithDocument(
         new InputFile(buffer, 'registrations-all.xlsx'),
@@ -926,22 +974,40 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
           reply_markup: buildMainKeyboard(admin.role),
         },
       );
-      return;
+      app.log.info({
+        updateId: ctx.update.update_id,
+        rowCount: rows.length,
+        xlsxBytes: buffer.byteLength,
+        durationMs: Date.now() - startedAt,
+        rssBeforeMb: Math.round(rssBefore / 1_048_576),
+        rssAfterMb: Math.round(process.memoryUsage().rss / 1_048_576),
+      }, 'telegram_export_all_completed');
+    } catch (error) {
+      app.log.error({
+        err: error,
+        updateId: ctx.update.update_id,
+        durationMs: Date.now() - startedAt,
+      }, 'telegram_export_all_failed');
+      await ctx.reply('Не удалось подготовить сводный XLSX. Ошибка записана в лог сервера.');
+    } finally {
+      exportAllInFlight = false;
     }
+    return;
+  }
 
-    await ctx.answerCallbackQuery({
-      text: 'Готовлю резервную копию SQLite.',
-    });
-
-    const buffer = await createSqliteBackup(deps.db, 'registration-backup');
-    await ctx.replyWithDocument(
-      new InputFile(buffer, 'registration-backup.sqlite'),
-      {
-        caption: 'Резервная копия SQLite.',
-        reply_markup: buildMainKeyboard(admin.role),
-      },
-    );
+  await ctx.answerCallbackQuery({
+    text: 'Готовлю резервную копию SQLite.',
   });
+
+  const buffer = await createSqliteBackup(deps.db, 'registration-backup');
+  await ctx.replyWithDocument(
+    new InputFile(buffer, 'registration-backup.sqlite'),
+    {
+      caption: 'Резервная копия SQLite.',
+      reply_markup: buildMainKeyboard(admin.role),
+    },
+  );
+});
 
   bot.callbackQuery(/^spl$/u, async (ctx) => {
     const admin = requireAdminRole(String(ctx.from?.id ?? ''));
@@ -1426,20 +1492,59 @@ export function registerTelegramBot(app: FastifyInstance, deps: TelegramBotDeps)
   });
 
   if (!deps.skipWebhook) {
-    const webhookHandler = webhookCallback(bot, 'fastify');
+  const webhookHandler = webhookCallback(bot, 'fastify');
 
-    app.post(deps.webhookPath, async (request, reply) => {
-      const secret = request.headers['x-telegram-bot-api-secret-token'];
-      if (secret !== deps.webhookSecret) {
-        reply.code(401);
-        return {
-          error: 'telegram_secret_mismatch',
-        };
-      }
+  app.post(deps.webhookPath, async (request, reply) => {
+    const secret = request.headers['x-telegram-bot-api-secret-token'];
+    if (secret !== deps.webhookSecret) {
+      reply.code(401);
+      return {
+        error: 'telegram_secret_mismatch',
+      };
+    }
 
+    const update = request.body as TelegramUpdateEnvelope;
+    if (!isFullExportUpdate(update)) {
       return webhookHandler(request, reply);
+    }
+
+    const updateId = getTelegramUpdateId(update);
+    if (updateId === null) {
+      reply.code(400);
+      return {
+        error: 'telegram_update_id_missing',
+      };
+    }
+
+    if (isStaleFullExportUpdate(update, TELEGRAM_EXPORT_UPDATE_MAX_AGE_SECONDS)) {
+      app.log.warn({ updateId }, 'telegram_stale_export_update_skipped');
+      return {
+        ok: true,
+        skipped: 'stale_export',
+      };
+    }
+
+    if (!claimTelegramUpdate(deps.db, updateId)) {
+      app.log.info({ updateId }, 'telegram_duplicate_export_update_skipped');
+      return {
+        ok: true,
+        skipped: 'duplicate_export',
+      };
+    }
+
+    reply.code(200).send({ ok: true });
+    setImmediate(() => {
+      void bot.handleUpdate(update as Parameters<typeof bot.handleUpdate>[0])
+        .then(() => {
+          app.log.info({ updateId }, 'telegram_export_update_processing_completed');
+        })
+        .catch((error) => {
+          app.log.error({ err: error, updateId }, 'telegram_export_update_processing_failed');
+        });
     });
-  }
+    return reply;
+  });
+}
 
   return {
     bot,

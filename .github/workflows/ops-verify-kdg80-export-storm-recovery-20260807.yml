@@ -119,7 +119,7 @@ jobs:
           flyctl ssh console \
             --app "$FLY_APP" \
             --pty=false \
-            --command "sh -lc 'cd /app/registration && cat > /tmp/kdg80-verify.cjs && node /tmp/kdg80-verify.cjs'" \
+            --command "sh -lc 'cd /app/registration && cat > .kdg80-verify.cjs && node .kdg80-verify.cjs; status=\$?; rm -f .kdg80-verify.cjs; exit \$status'" \
             < "$RUNNER_TEMP/kdg80-verify.cjs" | tee "$verify_log"
 
           grep -Fxq 'KDG80_EXPORT_STORM_HOTFIX_VERIFIED=true' "$verify_log"

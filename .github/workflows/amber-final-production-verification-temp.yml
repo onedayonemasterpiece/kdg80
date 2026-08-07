@@ -2,9 +2,14 @@ name: Amber final production verification
 
 "on":
   workflow_dispatch:
+  push:
+    branches:
+      - feat/amber-combine-jewelry-excursion
+    paths:
+      - .github/workflows/amber-final-production-verification-temp.yml
 
 # This workflow deploys production and sends real verification emails.
-# Keep it manual-only and serialize accidental duplicate requests.
+# Serialize accidental duplicate requests while the release verification is active.
 concurrency:
   group: amber-final-production-verification
   cancel-in-progress: false

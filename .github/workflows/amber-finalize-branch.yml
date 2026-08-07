@@ -33,50 +33,14 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq imagemagick
 
-      - name: Merge current main and resolve the verification workflow
+      - name: Merge current main
         shell: bash
         run: |
           set -euo pipefail
           git config user.name onedayonemasterpiece
           git config user.email estershow6@gmail.com
           git fetch origin main
-          set +e
           git merge --no-commit --no-ff origin/main
-          merge_status=$?
-          set -e
-          if [[ $merge_status -ne 0 && ! -f .git/MERGE_HEAD ]]; then
-            echo 'Main merge did not start.' >&2
-            exit "$merge_status"
-          fi
-
-          # Keep the already-reviewed feature version so secret expressions remain
-          # literal repository text rather than being expanded inside a run script.
-          git checkout --ours .github/workflows/amber-final-production-verification-temp.yml
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path('.github/workflows/amber-final-production-verification-temp.yml')
-          text = path.read_text(encoding='utf-8')
-          text = text.replace(
-              '# Keep it manual-only: a run creates a visible TEST application and sends two real emails.',
-              '# Manual production check: creates a visible TEST application, sends two real emails to info@kgd80.ru and removes all generated TEST records afterwards.',
-          )
-          text = text.replace('permissions:\n  contents: write', 'permissions:\n  contents: read')
-          text = text.replace(
-              "      - uses: actions/checkout@v4\n        with:\n          ref: feat/amber-combine-jewelry-excursion\n          fetch-depth: 0",
-              "      - uses: actions/checkout@v4\n        with:\n          fetch-depth: 0",
-          )
-          job_anchor = '  verify-release-send-clean:\n    runs-on: ubuntu-latest'
-          if "if: github.ref == 'refs/heads/main'" not in text:
-              text = text.replace(
-                  job_anchor,
-                  "  verify-release-send-clean:\n    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest",
-                  1,
-              )
-          path.write_text(text, encoding='utf-8')
-          PY
-          git add .github/workflows/amber-final-production-verification-temp.yml
-
           unresolved="$(git diff --name-only --diff-filter=U)"
           if [[ -n "$unresolved" ]]; then
             echo "Unresolved merge paths:" >&2
@@ -102,13 +66,12 @@ jobs:
           path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
           PY
 
-      - name: Remove one-time implementation machinery
+      - name: Remove one-time non-workflow implementation machinery
         shell: bash
         run: |
           set -euo pipefail
           git rm -f --ignore-unmatch \
             .github/amber-email-verification.trigger \
-            .github/workflows/apply-amber-48h-citizenship-winner-email.yml \
             registration/scripts/patch-amber-test-bot.py \
             scripts/apply_amber_48h_citizenship_winner_email.py \
             scripts/ensure_amber_test_fixture.py \
@@ -144,13 +107,12 @@ jobs:
             site/src/data/portrait-bounds.json \
             site/src/data/registration-state-manifest.json
 
-      - name: Commit finalized merge and remove this one-time workflow
+      - name: Commit and push finalized merge
         shell: bash
         run: |
           set -euo pipefail
-          git rm -f .github/workflows/amber-finalize-branch.yml
           git add -A
           git diff --check
           git status --short
-          git commit -m 'feat: finalize amber combine excursion release'
+          git commit -m 'feat: finalize amber combine excursion release [skip ci]'
           git push origin HEAD:feat/amber-combine-jewelry-excursion

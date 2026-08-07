@@ -1,0 +1,176 @@
+name: Cancel Elena Ratkevich amber application
+
+"on":
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/cancel-elena-ratkevich.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cancel-elena-ratkevich-amber
+  cancel-in-progress: false
+
+env:
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+  FLY_APP: znanie-kgd80-fest
+
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Cancel the accepted application and verify exclusion
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/cancel-elena-ratkevich.ts <<'TS'
+          const { loadConfig } = await import('file:///app/registration/src/config.js');
+          const { createDatabase } = await import('file:///app/registration/src/db/client.js');
+          const { runMigrations } = await import('file:///app/registration/src/db/migrate.js');
+          const { decryptPii } = await import('file:///app/registration/src/lib/crypto.js');
+          const { normalizeFullName } = await import('file:///app/registration/src/lib/normalize.js');
+
+          const EVENT_SLUG = 'amber-combine-jewelry-excursion';
+          const REASON = 'Отменено по обращению участника 7 августа 2026 года.';
+          const targetTokens = ['елена', 'раткевич'];
+          const normalize = (value: unknown) => normalizeFullName(String(value ?? ''))
+            .toLowerCase()
+            .replace(/ё/gu, 'е');
+
+          const config = loadConfig();
+          if (!config.piiPrivateKeyPemBase64) {
+            throw new Error('PII_PRIVATE_KEY_PEM_B64 is required.');
+          }
+
+          const db = createDatabase(config.sqlitePath);
+          try {
+            runMigrations(db);
+            const event = db.prepare(`
+              SELECT id
+              FROM special_events
+              WHERE slug = ?
+              LIMIT 1
+            `).get(EVENT_SLUG) as { id: number } | undefined;
+            if (!event) {
+              throw new Error('Amber event not found.');
+            }
+
+            const showing = db.prepare(`
+              SELECT id, draw_status
+              FROM special_event_showings
+              WHERE special_event_id = ?
+              ORDER BY starts_at ASC
+              LIMIT 1
+            `).get(event.id) as { id: number; draw_status: string } | undefined;
+            if (!showing) {
+              throw new Error('Amber showing not found.');
+            }
+            if (showing.draw_status === 'published' || showing.draw_status === 'final') {
+              throw new Error(`Draw is already ${showing.draw_status}; cancellation requires draw correction.`);
+            }
+
+            const rows = db.prepare(`
+              SELECT id, application_code, status,
+                     pii_ciphertext, pii_wrapped_key, pii_iv, pii_alg
+              FROM special_applications
+              WHERE special_event_id = ?
+              ORDER BY id DESC
+            `).all(event.id) as Array<{
+              id: number;
+              application_code: string;
+              status: string;
+              pii_ciphertext: Buffer;
+              pii_wrapped_key: Buffer;
+              pii_iv: Buffer;
+              pii_alg: string;
+            }>;
+
+            const matches = rows.flatMap((row) => {
+              try {
+                const pii = decryptPii(config.piiPrivateKeyPemBase64, {
+                  piiCiphertext: row.pii_ciphertext,
+                  piiWrappedKey: row.pii_wrapped_key,
+                  piiIv: row.pii_iv,
+                  piiAlg: row.pii_alg,
+                });
+                const tokens = normalize(pii.fullName).split(/\s+/u).filter(Boolean);
+                return targetTokens.every((token) => tokens.includes(token))
+                  ? [{ id: row.id, applicationCode: row.application_code, status: row.status }]
+                  : [];
+              } catch {
+                return [];
+              }
+            });
+
+            const accepted = matches.filter((item) => item.status === 'accepted');
+            if (accepted.length > 1) {
+              throw new Error(`More than one accepted match found: ${accepted.map((item) => item.applicationCode).join(', ')}`);
+            }
+
+            if (accepted.length === 0) {
+              const rejected = matches.filter((item) => item.status === 'rejected');
+              if (rejected.length > 0) {
+                console.log(JSON.stringify({
+                  status: 'already_cancelled',
+                  applicationCode: rejected[0].applicationCode,
+                  acceptedMatches: 0,
+                  drawStatus: showing.draw_status,
+                }));
+                process.exit(0);
+              }
+              throw new Error('No application matching Elena Ratkevich was found.');
+            }
+
+            const application = accepted[0];
+            const result = db.prepare(`
+              UPDATE special_applications
+              SET status = 'rejected',
+                  rejection_reason = ?
+              WHERE id = ?
+                AND status = 'accepted'
+            `).run(REASON, application.id);
+            if (result.changes !== 1) {
+              throw new Error(`Expected one updated application, got ${result.changes}.`);
+            }
+
+            const verified = db.prepare(`
+              SELECT status, rejection_reason
+              FROM special_applications
+              WHERE id = ?
+              LIMIT 1
+            `).get(application.id) as { status: string; rejection_reason: string | null } | undefined;
+            const candidateCount = db.prepare(`
+              SELECT COUNT(*) AS count
+              FROM special_applications a
+              INNER JOIN special_application_showings aps ON aps.application_id = a.id
+              WHERE aps.showing_id = ?
+                AND a.id = ?
+                AND a.status = 'accepted'
+                AND a.score > 0
+                AND a.application_code NOT LIKE 'TEST-%'
+            `).get(showing.id, application.id) as { count: number };
+
+            if (verified?.status !== 'rejected' || verified.rejection_reason !== REASON || candidateCount.count !== 0) {
+              throw new Error('Cancellation verification failed.');
+            }
+
+            console.log(JSON.stringify({
+              status: 'cancelled',
+              applicationCode: application.applicationCode,
+              rejectionReason: verified.rejection_reason,
+              drawCandidateCount: candidateCount.count,
+              drawStatus: showing.draw_status,
+            }));
+          } finally {
+            db.close();
+          }
+          TS
+
+          payload="$(base64 -w0 /tmp/cancel-elena-ratkevich.ts)"
+          flyctl ssh console -a "$FLY_APP" -C "printf '%s' '$payload' | base64 -d > /tmp/cancel-elena-ratkevich.ts && cd /app/registration && npx tsx /tmp/cancel-elena-ratkevich.ts"
